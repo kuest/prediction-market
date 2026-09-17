@@ -69,7 +69,7 @@ export function getSelectedWalletTokenId(items: LiFiWalletTokenItem[], preferred
   return firstEnabledItem?.id ?? ''
 }
 
-type WalletDepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
+type WalletDepositView = 'fund' | 'receive' | 'wallets' | 'bridge' | 'amount' | 'confirm' | 'success'
 
 export interface WalletDepositModalProps {
   open: boolean

@@ -71,4 +71,15 @@ describe('walletTokenList', () => {
     expect(screen.getByText('Could not load wallet balances. Please try again.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
   })
+
+  it('exposes the bridge action for another network', () => {
+    const onConnectAnotherNetwork = mock()
+
+    renderWalletTokenList({ onConnectAnotherNetwork })
+
+    const bridgeButton = screen.getByRole('button', { name: /Bridge from another network/ })
+    fireEvent.click(bridgeButton)
+
+    expect(onConnectAnotherNetwork).toHaveBeenCalledTimes(1)
+  })
 })

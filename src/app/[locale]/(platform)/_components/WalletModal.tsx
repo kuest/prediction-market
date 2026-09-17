@@ -15,6 +15,7 @@ import { getSelectedWalletTokenId } from '@/app/[locale]/(platform)/_components/
 import WalletAmountStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletAmountStep'
 import WalletConfirmStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletConfirmStep'
 import WalletFundMenu from '@/app/[locale]/(platform)/_components/wallet-modal/WalletFundMenu'
+import WalletLiFiBridge from '@/app/[locale]/(platform)/_components/wallet-modal/WalletLiFiBridge'
 import WalletReceiveView from '@/app/[locale]/(platform)/_components/wallet-modal/WalletReceiveView'
 import WalletSendForm from '@/app/[locale]/(platform)/_components/wallet-modal/WalletSendForm'
 import WalletSuccessStep from '@/app/[locale]/(platform)/_components/wallet-modal/WalletSuccessStep'
@@ -27,7 +28,7 @@ import { useLiFiWalletTokens } from '@/hooks/useLiFiWalletTokens'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { formatDisplayAmount } from '@/lib/amount-input'
 import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
-import { DEFAULT_CHAIN_ID, IS_TEST_MODE } from '@/lib/network'
+import { DEFAULT_CHAIN_ID, IS_TEST_MODE, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 import { cn } from '@/lib/utils'
 import { defaultViemNetwork } from '@/lib/viem-network'
 
@@ -57,6 +58,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const site = useSiteIdentity()
   const siteLabel = siteName ?? site.name
   const isDirectTestModeDeposit = IS_TEST_MODE
+  const canUseLiFiBridge = !isDirectTestModeDeposit && hasDeployedDepositWallet && Boolean(walletAddress)
   const tokensQueryEnabled = open && (view === 'wallets' || view === 'amount' || view === 'confirm')
   const { balance: directWalletBalance, isLoadingBalance: isLoadingDirectWalletBalance } = useBalance({
     depositWalletAddress: walletEoaAddress,
@@ -148,6 +150,11 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
   const quote = isDirectTestModeDeposit ? directQuote : lifiQuote
   const effectiveWalletBalance = isDirectTestModeDeposit ? directWalletBalance.text : walletBalance
   const isEffectiveWalletBalanceLoading = isDirectTestModeDeposit ? isLoadingDirectWalletBalance : isBalanceLoading
+  const modalTitle = view === 'bridge' ? t('Bridge funds') : t('Deposit')
+
+  function handleBack() {
+    onViewChange(view === 'bridge' ? 'wallets' : 'fund')
+  }
 
   const content =
     view === 'fund' ? (
@@ -165,15 +172,30 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       <WalletReceiveView walletAddress={walletAddress} onCopy={handleCopy} copied={copied} />
     ) : view === 'wallets' ? (
       <WalletTokenList
-        onContinue={() => onViewChange('amount')}
+        onContinue={() => onViewChange(selectedToken?.chainId === POLYGON_MAINNET_CHAIN_ID ? 'amount' : 'bridge')}
         items={walletTokenItems}
         isLoadingTokens={isLoadingTokens}
         hasError={!isDirectTestModeDeposit && isLiFiTokensError}
         selectedId={selectedTokenId}
         onSelect={setPreferredSelectedTokenId}
+        onConnectAnotherNetwork={canUseLiFiBridge ? () => onViewChange('bridge') : undefined}
         emptyMessage={isDirectTestModeDeposit ? t('No Amoy USDC balance found.') : undefined}
         errorMessage={isDirectTestModeDeposit ? undefined : t('Could not load wallet balances. Please try again.')}
       />
+    ) : view === 'bridge' ? (
+      walletAddress ? (
+        <WalletLiFiBridge
+          destinationAddress={walletAddress}
+          siteName={siteLabel}
+          isMobile={isMobile}
+          initialFromChain={selectedToken?.chainId}
+          initialFromToken={selectedToken?.address}
+        />
+      ) : (
+        <div className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
+          {t('Deposit Wallet not ready yet.')}
+        </div>
+      )
     ) : view === 'amount' ? (
       <WalletAmountStep
         onContinue={() => onViewChange('confirm')}
@@ -238,7 +260,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
                   className={cn(
                     `rounded-md p-2 opacity-70 ring-offset-background transition hover:bg-muted hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
                   )}
-                  onClick={() => onViewChange('fund')}
+                  onClick={handleBack}
                 >
                   <ChevronLeftIcon />
                 </button>
@@ -246,7 +268,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
                 <span className="size-8" aria-hidden="true" />
               )}
               <DrawerTitle className="flex-1 text-center text-xl font-semibold text-foreground">
-                {t('Deposit')}
+                {modalTitle}
               </DrawerTitle>
               <span className="size-8" aria-hidden="true" />
             </div>
@@ -270,7 +292,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       }}
     >
       <DialogContent
-        className="max-w-md border bg-background pt-4 sm:max-w-md"
+        className={cn('max-w-md border bg-background pt-4 sm:max-w-md', view === 'bridge' && 'max-w-3xl sm:max-w-3xl')}
         showCloseButton={view !== 'confirm'}
         closeLabel={t('Close')}
       >
@@ -283,16 +305,14 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
                 className={cn(
                   `rounded-md p-2 opacity-70 ring-offset-background transition hover:bg-muted hover:opacity-100 focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4`,
                 )}
-                onClick={() => onViewChange('fund')}
+                onClick={handleBack}
               >
                 <ChevronLeftIcon />
               </button>
             ) : (
               <span className="size-8" aria-hidden="true" />
             )}
-            <DialogTitle className="flex-1 text-center text-lg font-semibold text-foreground">
-              {t('Deposit')}
-            </DialogTitle>
+            <DialogTitle className="flex-1 text-center text-lg font-semibold text-foreground">{modalTitle}</DialogTitle>
             <span className="size-8" aria-hidden="true" />
           </div>
           <DialogDescription className="text-center text-xs text-muted-foreground">{balanceLabel}</DialogDescription>

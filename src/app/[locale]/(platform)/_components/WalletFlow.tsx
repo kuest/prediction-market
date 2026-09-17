@@ -32,7 +32,7 @@ import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildSendErc20Call } from '@/lib/wallet/transactions'
 
-type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
+type DepositView = 'fund' | 'receive' | 'wallets' | 'bridge' | 'amount' | 'confirm' | 'success'
 
 interface WalletFlowProps {
   depositOpen: boolean

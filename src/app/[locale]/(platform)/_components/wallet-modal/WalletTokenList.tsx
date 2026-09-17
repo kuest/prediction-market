@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowLeftRightIcon, ChevronRightIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 
@@ -17,6 +18,7 @@ function WalletTokenList({
   onSelect,
   emptyMessage,
   errorMessage,
+  onConnectAnotherNetwork,
 }: {
   onContinue: () => void
   items: Array<{
@@ -35,6 +37,7 @@ function WalletTokenList({
   onSelect: (id: string) => void
   emptyMessage?: string
   errorMessage?: string
+  onConnectAnotherNetwork?: () => void
 }) {
   const t = useExtracted()
   const showErrorState = !isLoadingTokens && hasError && items.length === 0
@@ -185,6 +188,33 @@ function WalletTokenList({
       >
         {t('Continue')}
       </Button>
+      {onConnectAnotherNetwork && (
+        <>
+          <div className="-mx-6 border-t" />
+          <button
+            type="button"
+            className={cn(
+              'group flex w-full items-center justify-between gap-4 rounded-lg border border-border px-4 py-2 text-left transition hover:bg-muted/50',
+            )}
+            onClick={onConnectAnotherNetwork}
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex size-12 items-center justify-center text-foreground">
+                <ArrowLeftRightIcon className="size-6" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">{t('Bridge from another network')}</p>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span>{t('Connect a wallet via LI.FI')}</span>
+                  <span className="size-1 rounded-full bg-muted-foreground" />
+                  <span>{t('All supported networks')}</span>
+                </div>
+              </div>
+            </div>
+            <ChevronRightIcon className="size-4 text-muted-foreground transition-colors group-hover:text-foreground" />
+          </button>
+        </>
+      )}
     </div>
   )
 }

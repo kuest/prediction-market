@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { encodeFunctionData, erc20Abi, maxUint256, parseUnits } from 'viem'
-import { usePublicClient, useWalletClient } from 'wagmi'
+import { useConfig } from 'wagmi'
+import { getAccount, getPublicClient, getWalletClient, switchChain } from 'wagmi/actions'
 
 import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
 
@@ -15,19 +16,42 @@ interface UseLiFiExecutionParams {
 }
 
 export function useLiFiExecution({ fromToken, amountValue, fromAddress, toAddress }: UseLiFiExecutionParams) {
-  const { data: walletClient } = useWalletClient()
-  const publicClient = usePublicClient()
+  const wagmiConfig = useConfig()
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!walletClient) {
+      if (!fromToken || !fromAddress || !toAddress) {
+        throw new Error('Missing token or wallet addresses.')
+      }
+
+      const accountBeforeSwitch = getAccount(wagmiConfig)
+      if (!accountBeforeSwitch.isConnected || !accountBeforeSwitch.address) {
         throw new Error('Wallet not connected.')
+      }
+      if (accountBeforeSwitch.address.toLowerCase() !== fromAddress.toLowerCase()) {
+        throw new Error('Connected wallet changed. Reconnect the original wallet.')
+      }
+
+      const sourceChainId = fromToken.chainId
+      if (accountBeforeSwitch.chainId !== sourceChainId) {
+        await switchChain(wagmiConfig, { chainId: sourceChainId })
+      }
+
+      const accountAfterSwitch = getAccount(wagmiConfig)
+      if (!accountAfterSwitch.isConnected || !accountAfterSwitch.address) {
+        throw new Error('Wallet not connected after network switch.')
+      }
+      if (accountAfterSwitch.address.toLowerCase() !== fromAddress.toLowerCase()) {
+        throw new Error('Connected wallet changed. Reconnect the original wallet.')
+      }
+
+      const walletClient = await getWalletClient(wagmiConfig, { chainId: sourceChainId })
+      const publicClient = getPublicClient(wagmiConfig, { chainId: sourceChainId })
+      if (!walletClient) {
+        throw new Error('Wallet client not available.')
       }
       if (!publicClient) {
         throw new Error('Public client not available.')
-      }
-      if (!fromToken || !fromAddress || !toAddress) {
-        throw new Error('Missing token or wallet addresses.')
       }
 
       const sanitizedAmount = sanitizeLiFiAmount(amountValue, fromToken.decimals)
