@@ -21,14 +21,14 @@ export const defaultViemNetwork = VIEM_NETWORKS_BY_KEY[resolveDefaultNetworkKey(
 
 export type ViemRpcUrls = readonly string[]
 
-export function resolveViemRpcUrls(configuredRpcUrlValue?: string): ViemRpcUrls {
+function resolveRpcUrls(configuredRpcUrlValue: string | undefined, fallbackRpcUrl: string): ViemRpcUrls {
   const configuredRpcUrls = configuredRpcUrlValue
     ?.split(',')
     .map((rpcUrl) => rpcUrl.trim())
     .filter(Boolean)
 
   if (!configuredRpcUrls?.length) {
-    return [defaultViemNetwork.rpcUrls.default.http[0]]
+    return [fallbackRpcUrl]
   }
 
   for (const configuredRpcUrl of configuredRpcUrls) {
@@ -45,6 +45,10 @@ export function resolveViemRpcUrls(configuredRpcUrlValue?: string): ViemRpcUrls 
   return configuredRpcUrls
 }
 
+export function resolveViemRpcUrls(configuredRpcUrlValue?: string): ViemRpcUrls {
+  return resolveRpcUrls(configuredRpcUrlValue, defaultViemNetwork.rpcUrls.default.http[0])
+}
+
 export const defaultViemRpcUrls = resolveViemRpcUrls()
 
 export function createViemTransport(rpcUrls: ViemRpcUrls = defaultViemRpcUrls) {
@@ -53,6 +57,10 @@ export function createViemTransport(rpcUrls: ViemRpcUrls = defaultViemRpcUrls) {
 
 export function resolveRuntimeViemRpcUrls(env: NodeJS.ProcessEnv = process.env) {
   return resolveViemRpcUrls(resolvePublicRuntimeEnv(env).polygonRpcUrl)
+}
+
+export function resolveRuntimePolygonMainnetRpcUrls(env: NodeJS.ProcessEnv = process.env) {
+  return resolveRpcUrls(resolvePublicRuntimeEnv(env).polygonRpcUrl, polygon.rpcUrls.default.http[0])
 }
 
 export function resolveViemNetworkByChainId(chainId: number | string | null | undefined) {

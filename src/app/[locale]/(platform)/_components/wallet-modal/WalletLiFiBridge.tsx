@@ -13,6 +13,7 @@ import {
 } from '@lifi/widget-provider'
 import { BitcoinProvider } from '@lifi/widget-provider-bitcoin'
 import { SolanaProvider } from '@lifi/widget-provider-solana'
+import { useAppKitAccount } from '@reown/appkit/react'
 import { WalletReadyState } from '@tronweb3/tronwallet-abstract-adapter'
 import { MetaMaskAdapter } from '@tronweb3/tronwallet-adapter-metamask-tron'
 import { useExtracted } from 'next-intl'
@@ -145,7 +146,16 @@ function KuestTronProvider({ children }: PropsWithChildren) {
 function KuestEthereumProvider({ children }: PropsWithChildren<WidgetProviderProps>) {
   const wagmiConfig = useConfig()
   const account = useAccount()
+  const { embeddedWalletInfo } = useAppKitAccount({ namespace: 'eip155' })
+  const isEmbeddedWallet = Boolean(embeddedWalletInfo)
   const connectors = useConnectors()
+  const [widgetDisconnectedAccount, setWidgetDisconnectedAccount] = useState<string | null>(null)
+  const normalizedAccountAddress = account.address?.toLowerCase() ?? null
+  const isWidgetConnected =
+    !isEmbeddedWallet &&
+    account.isConnected &&
+    Boolean(account.address) &&
+    widgetDisconnectedAccount !== normalizedAccountAddress
 
   const getWalletClient = useCallback(
     async () => (await getConnectorClient(wagmiConfig, { assertChainId: false })) as unknown as Client,
@@ -207,7 +217,7 @@ function KuestEthereumProvider({ children }: PropsWithChildren<WidgetProviderPro
 
   const activeConnector = useMemo(
     () =>
-      account.connector
+      !isEmbeddedWallet && account.connector
         ? {
             id: account.connector.id,
             uid: account.connector.uid,
@@ -216,27 +226,31 @@ function KuestEthereumProvider({ children }: PropsWithChildren<WidgetProviderPro
             icon: account.connector.icon,
           }
         : undefined,
-    [account.connector],
+    [account.connector, isEmbeddedWallet],
   )
   const installedWallets = useMemo(() => (activeConnector ? [activeConnector] : []), [activeConnector])
   const widgetAccount = useMemo<Account>(
     () => ({
-      address: account.address,
-      addresses: account.addresses,
-      chainId: account.chainId,
+      address: isWidgetConnected ? account.address : undefined,
+      addresses: isWidgetConnected ? account.addresses : undefined,
+      chainId: isWidgetConnected ? account.chainId : undefined,
       chainType: ChainType.EVM,
-      connector: activeConnector,
-      isConnected: account.isConnected,
-      isConnecting: account.isConnecting,
-      isDisconnected: account.isDisconnected,
-      isReconnecting: account.isReconnecting,
-      status: account.status,
+      connector: isWidgetConnected ? activeConnector : undefined,
+      isConnected: isWidgetConnected,
+      isConnecting: isWidgetConnected ? account.isConnecting : false,
+      isDisconnected: !isWidgetConnected,
+      isReconnecting: isWidgetConnected && account.isReconnecting,
+      status: isWidgetConnected ? account.status : 'disconnected',
     }),
-    [account, activeConnector],
+    [account, activeConnector, isWidgetConnected],
   )
 
   const handleConnect = useCallback(
     async (connectorIdOrName: string, onSuccess?: (address: string, chainId: number) => void) => {
+      if (isEmbeddedWallet) {
+        throw new Error('Embedded wallets are not supported by the LI.FI widget')
+      }
+
       const connector = connectors.find(
         (candidate) => candidate.id === connectorIdOrName || candidate.name === connectorIdOrName,
       )
@@ -255,20 +269,21 @@ function KuestEthereumProvider({ children }: PropsWithChildren<WidgetProviderPro
       const result = await connect(wagmiConfig, { connector })
       const address = result.accounts[0]
       if (address) {
+        setWidgetDisconnectedAccount(null)
         onSuccess?.(address, result.chainId)
       }
     },
-    [activeConnector, connectors, wagmiConfig],
+    [activeConnector, connectors, isEmbeddedWallet, wagmiConfig],
   )
   const handleDisconnect = useCallback(async () => {
-    return undefined
-  }, [])
+    setWidgetDisconnectedAccount(normalizedAccountAddress)
+  }, [normalizedAccountAddress])
 
   const contextValue = useMemo(
     () => ({
-      isEnabled: true,
+      isEnabled: !isEmbeddedWallet,
       isExternalContext: true,
-      isConnected: account.isConnected,
+      isConnected: isWidgetConnected,
       account: widgetAccount,
       sdkProvider,
       installedWallets,
@@ -278,11 +293,12 @@ function KuestEthereumProvider({ children }: PropsWithChildren<WidgetProviderPro
       getTransactionCount: getTransactionCountForAddress,
     }),
     [
-      account.isConnected,
       getBytecodeForAddress,
       getTransactionCountForAddress,
       handleConnect,
       handleDisconnect,
+      isEmbeddedWallet,
+      isWidgetConnected,
       installedWallets,
       sdkProvider,
       widgetAccount,

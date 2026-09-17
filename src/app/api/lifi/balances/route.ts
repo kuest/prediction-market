@@ -5,9 +5,8 @@ import { isAddress } from 'viem'
 
 import { POLYGON_USDC_TOKEN_ADDRESS, ZERO_ADDRESS } from '@/lib/contracts'
 import { getLiFiEvmBalanceClient } from '@/lib/lifi'
+import { isLiFiNativeToken } from '@/lib/lifi-token'
 import { POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
-
-const LIFI_NATIVE_TOKEN_ADDRESS = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
 
 const fallbackPolygonTokens: TokenExtended[] = [
   {
@@ -32,18 +31,13 @@ interface BalancesRequestBody {
   walletAddress: string
 }
 
-function isNativeToken(token: TokenExtended) {
-  const address = token.address.toLowerCase()
-  return address === ZERO_ADDRESS.toLowerCase() || address === LIFI_NATIVE_TOKEN_ADDRESS
-}
-
 async function getLimitedPolygonTokens(lifi: ReturnType<typeof actions>) {
   const tokenResults = await Promise.allSettled([
     lifi.getToken(POLYGON_MAINNET_CHAIN_ID, ZERO_ADDRESS),
     lifi.getToken(POLYGON_MAINNET_CHAIN_ID, POLYGON_USDC_TOKEN_ADDRESS),
   ])
   const resolvedTokens = tokenResults.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []))
-  const nativeToken = resolvedTokens.find(isNativeToken)
+  const nativeToken = resolvedTokens.find(isLiFiNativeToken)
   const usdcToken = resolvedTokens.find(
     (token) => token.address.toLowerCase() === POLYGON_USDC_TOKEN_ADDRESS.toLowerCase(),
   )

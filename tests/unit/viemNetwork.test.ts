@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { polygon } from 'viem/chains'
 
 import { stubEnv, stubGlobal, unstubAllEnvs, unstubAllGlobals } from '../bun-test-helpers'
 
@@ -32,6 +33,18 @@ describe('viem-network RPC URL resolution', () => {
 
     expect(resolveRuntimeViemRpcUrls()).toEqual(['https://rpc.example.com/path'])
   })
+
+  it.each(['', '80002'])(
+    'uses a Polygon mainnet fallback for LI.FI balance RPCs when the app uses Amoy (%s)',
+    async (chainId) => {
+      stubEnv('CHAIN_ID', chainId)
+      stubEnv('POLYGON_RPC_URL', '')
+
+      const { resolveRuntimePolygonMainnetRpcUrls } = await importViemNetwork()
+
+      expect(resolveRuntimePolygonMainnetRpcUrls()).toEqual([polygon.rpcUrls.default.http[0]])
+    },
+  )
 
   it('parses comma-separated POLYGON_RPC_URL values in priority order', async () => {
     stubEnv('CHAIN_ID', '')

@@ -1,34 +1,15 @@
 import type { WalletTokenExtended } from '@lifi/sdk'
 
 import { useQuery } from '@tanstack/react-query'
-import { formatUnits } from 'viem'
 
 import { formatNumber } from '@/lib/formatters'
+import { getLiFiTokenUsdValue, isLiFiNativeToken, normalizeLiFiTokenAmount } from '@/lib/lifi-token'
 
 const LIFI_WALLET_USD_BALANCE_QUERY_KEY = 'lifi-wallet-usd-balance'
 
-function normalizeAmount(token: WalletTokenExtended) {
-  try {
-    const decimals = Number(token.decimals)
-    if (!Number.isFinite(decimals)) {
-      return 0
-    }
-    const amount = BigInt(token.amount)
-    return Number(formatUnits(amount, decimals))
-  } catch {
-    return 0
-  }
-}
-
-function toUsdValue(token: WalletTokenExtended) {
-  const priceUsd = Number(token.priceUSD ?? 0)
-
-  if (!Number.isFinite(priceUsd)) {
-    return 0
-  }
-
-  const normalizedAmount = normalizeAmount(token)
-  return normalizedAmount * priceUsd
+interface LiFiWalletUsdBalance {
+  value: number
+  hasUnknownValue: boolean
 }
 
 interface UseLiFiWalletUsdBalanceOptions {
@@ -45,9 +26,9 @@ export function useLiFiWalletUsdBalance(walletAddress?: string | null, options: 
     staleTime: 60_000,
     gcTime: 5 * 60_000,
     refetchOnMount: 'always',
-    queryFn: async () => {
+    queryFn: async (): Promise<LiFiWalletUsdBalance> => {
       if (!walletAddress) {
-        return 0
+        return { value: 0, hasUnknownValue: false }
       }
 
       try {
@@ -58,33 +39,48 @@ export function useLiFiWalletUsdBalance(walletAddress?: string | null, options: 
         })
 
         if (!balancesResult.ok) {
-          return 0
+          return { value: 0, hasUnknownValue: false }
         }
 
         const balancesJson = await balancesResult.json()
         const balancesByChain = balancesJson.balances as Record<number, WalletTokenExtended[]>
 
         let totalUsd = 0
+        let hasUnknownValue = false
 
         for (const walletTokens of Object.values(balancesByChain)) {
           for (const token of walletTokens) {
-            totalUsd += toUsdValue(token)
+            const usdValue = getLiFiTokenUsdValue(token)
+            if (usdValue !== null) {
+              totalUsd += usdValue
+              continue
+            }
+
+            if (isLiFiNativeToken(token) && normalizeLiFiTokenAmount(token) > 0) {
+              hasUnknownValue = true
+            }
           }
         }
 
         if (!Number.isFinite(totalUsd)) {
-          return 0
+          return { value: 0, hasUnknownValue: false }
         }
 
-        return totalUsd
+        return { value: totalUsd, hasUnknownValue }
       } catch {
-        return 0
+        return { value: 0, hasUnknownValue: false }
       }
     },
   })
 
-  const usdBalance = typeof query.data === 'number' && Number.isFinite(query.data) ? query.data : 0
-  const formattedUsdBalance = formatNumber(usdBalance, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const usdBalance = query.data?.hasUnknownValue
+    ? null
+    : query.data && Number.isFinite(query.data.value)
+      ? query.data.value
+      : 0
+  const formattedUsdBalance = query.data?.hasUnknownValue
+    ? '—'
+    : formatNumber(usdBalance, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   const isLoadingUsdBalance = query.isLoading || (query.isFetching && query.data === undefined)
 
   return {

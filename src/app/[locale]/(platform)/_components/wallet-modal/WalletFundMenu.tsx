@@ -44,6 +44,7 @@ function WalletFundMenu({
   )
   const walletLabel = formatWalletModalAddress(walletEoaAddress) ?? '----'
   const formattedWalletBalance = walletBalance && walletBalance !== '' ? walletBalance : '0.00'
+  const walletBalanceDisplay = formattedWalletBalance === '—' ? '—' : `$${formattedWalletBalance}`
 
   return (
     <div className="grid gap-2">
@@ -102,11 +103,7 @@ function WalletFundMenu({
           <div className="space-y-1">
             <p className="text-sm font-semibold text-foreground">{t('Wallet ({address})', { address: walletLabel })}</p>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {isBalanceLoading ? (
-                <Skeleton className="h-3 w-10 rounded-full" />
-              ) : (
-                <span>${formattedWalletBalance}</span>
-              )}
+              {isBalanceLoading ? <Skeleton className="h-3 w-10 rounded-full" /> : <span>{walletBalanceDisplay}</span>}
               <span className="size-1 rounded-full bg-muted-foreground" />
               <span>{t('Instant')}</span>
             </div>

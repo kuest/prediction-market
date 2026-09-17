@@ -5,7 +5,7 @@ import { actions, createClient } from '@lifi/sdk'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { decryptSecret } from '@/lib/encryption'
 import { POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
-import { resolveRuntimeViemRpcUrls } from '@/lib/viem-network'
+import { resolveRuntimePolygonMainnetRpcUrls } from '@/lib/viem-network'
 import 'server-only'
 
 const GENERAL_SETTINGS_GROUP = 'general'
@@ -90,7 +90,7 @@ export async function getLiFiEvmBalanceClient() {
   const { EthereumProvider } = await import('@lifi/sdk-provider-ethereum')
   const configuration = (await resolveLiFiConfiguration()) ?? defaultLiFiConfiguration
   const rpcUrls = {
-    [POLYGON_MAINNET_CHAIN_ID]: [...resolveRuntimeViemRpcUrls()],
+    [POLYGON_MAINNET_CHAIN_ID]: [...resolveRuntimePolygonMainnetRpcUrls()],
   }
 
   return createLiFiClient(configuration, {

@@ -1,9 +1,9 @@
 import type { ExtendedChain, WalletTokenExtended } from '@lifi/sdk'
 
 import { useQuery } from '@tanstack/react-query'
-import { formatUnits } from 'viem'
 
 import { formatNumber } from '@/lib/formatters'
+import { getLiFiTokenUsdValue, isLiFiNativeToken, normalizeLiFiTokenAmount } from '@/lib/lifi-token'
 
 const LIFI_WALLET_TOKENS_QUERY_KEY = 'lifi-wallet-tokens'
 
@@ -17,32 +17,8 @@ function buildChainMap(chains: ExtendedChain[]) {
   return chainMap
 }
 
-function normalizeAmount(token: WalletTokenExtended) {
-  try {
-    const decimals = Number(token.decimals)
-    if (!Number.isFinite(decimals)) {
-      return 0
-    }
-    const amount = BigInt(token.amount)
-    return Number(formatUnits(amount, decimals))
-  } catch {
-    return 0
-  }
-}
-
-function toUsdValue(token: WalletTokenExtended) {
-  const priceUsd = Number(token.priceUSD ?? 0)
-
-  if (!Number.isFinite(priceUsd)) {
-    return 0
-  }
-
-  const normalizedAmount = normalizeAmount(token)
-  return normalizedAmount * priceUsd
-}
-
 function formatTokenAmount(token: WalletTokenExtended) {
-  const normalizedAmount = normalizeAmount(token)
+  const normalizedAmount = normalizeLiFiTokenAmount(token)
 
   return formatNumber(normalizedAmount, {
     minimumFractionDigits: 2,
@@ -63,6 +39,7 @@ export interface LiFiWalletTokenItem {
   balanceRaw: number
   usd: string
   usdValue: number
+  hasUsdValue: boolean
   disabled: boolean
 }
 
@@ -108,10 +85,17 @@ export function useLiFiWalletTokens(walletAddress?: string | null, options: UseL
         const networkIcon = chain?.logoURI
 
         for (const token of walletTokens) {
-          const usdValue = toUsdValue(token)
-          if (!Number.isFinite(usdValue) || usdValue <= 0) {
+          const balanceRaw = normalizeLiFiTokenAmount(token)
+          if (!Number.isFinite(balanceRaw) || balanceRaw <= 0) {
             continue
           }
+
+          const usdValue = getLiFiTokenUsdValue(token)
+          const hasUsdValue = usdValue !== null
+          if (!hasUsdValue && !isLiFiNativeToken(token)) {
+            continue
+          }
+          const normalizedUsdValue = usdValue ?? 0
 
           items.push({
             id: `${chainId}:${token.address}`,
@@ -123,10 +107,13 @@ export function useLiFiWalletTokens(walletAddress?: string | null, options: UseL
             icon: token.logoURI ?? '/images/deposit/transfer/usdc_dark.png',
             chainIcon: networkIcon,
             balance: formatTokenAmount(token),
-            balanceRaw: normalizeAmount(token),
-            usd: formatNumber(usdValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            usdValue,
-            disabled: usdValue < MIN_USD_BALANCE,
+            balanceRaw,
+            usd: hasUsdValue
+              ? formatNumber(normalizedUsdValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+              : '—',
+            usdValue: normalizedUsdValue,
+            hasUsdValue,
+            disabled: hasUsdValue && normalizedUsdValue < MIN_USD_BALANCE,
           })
         }
       }

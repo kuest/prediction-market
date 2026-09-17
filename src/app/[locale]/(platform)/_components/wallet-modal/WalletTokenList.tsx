@@ -29,6 +29,7 @@ function WalletTokenList({
     chainIcon?: string
     balance: string
     usd: string
+    hasUsdValue: boolean
     disabled: boolean
   }>
   isLoadingTokens: boolean
@@ -172,7 +173,9 @@ function WalletTokenList({
                       </TooltipContent>
                     </Tooltip>
                   )}
-                  <span className="text-lg font-semibold text-foreground">${item.usd}</span>
+                  <span className="text-lg font-semibold text-foreground">
+                    {item.hasUsdValue ? `$${item.usd}` : '—'}
+                  </span>
                 </div>
               </button>
             )

@@ -92,6 +92,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         balanceRaw: directWalletBalance.raw,
         usd: formattedUsdBalance,
         usdValue: directWalletBalance.raw,
+        hasUsdValue: true,
         disabled: false,
       },
     ]
@@ -172,7 +173,11 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       <WalletReceiveView walletAddress={walletAddress} onCopy={handleCopy} copied={copied} />
     ) : view === 'wallets' ? (
       <WalletTokenList
-        onContinue={() => onViewChange(selectedToken?.chainId === POLYGON_MAINNET_CHAIN_ID ? 'amount' : 'bridge')}
+        onContinue={() =>
+          onViewChange(
+            isDirectTestModeDeposit || selectedToken?.chainId === POLYGON_MAINNET_CHAIN_ID ? 'amount' : 'bridge',
+          )
+        }
         items={walletTokenItems}
         isLoadingTokens={isLoadingTokens}
         hasError={!isDirectTestModeDeposit && isLiFiTokensError}
