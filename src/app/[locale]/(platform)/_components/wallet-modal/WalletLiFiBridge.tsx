@@ -266,6 +266,12 @@ function KuestEthereumProvider({ children }: PropsWithChildren<WidgetProviderPro
         throw new Error('Connect the wallet already connected to the site')
       }
 
+      if (account.isConnected && account.address && account.chainId !== undefined) {
+        setWidgetDisconnectedAccount(null)
+        onSuccess?.(account.address, account.chainId)
+        return
+      }
+
       const result = await connect(wagmiConfig, { connector })
       const address = result.accounts[0]
       if (address) {
@@ -273,7 +279,7 @@ function KuestEthereumProvider({ children }: PropsWithChildren<WidgetProviderPro
         onSuccess?.(address, result.chainId)
       }
     },
-    [activeConnector, connectors, isEmbeddedWallet, wagmiConfig],
+    [account, activeConnector, connectors, isEmbeddedWallet, wagmiConfig],
   )
   const handleDisconnect = useCallback(async () => {
     setWidgetDisconnectedAccount(normalizedAccountAddress)
