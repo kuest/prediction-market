@@ -119,7 +119,7 @@ interface LocaleBodyProps extends LocaleDocumentProps {
 interface LocaleRuntimeData {
   globalAnnouncement: Awaited<ReturnType<typeof loadGlobalAnnouncementSettings>>
   hasGlobalAnnouncement: boolean
-  publicRuntimeConfig: ReturnType<typeof getPublicRuntimeConfig>
+  publicRuntimeConfig: Awaited<ReturnType<typeof getPublicRuntimeConfig>>
   runtimeTheme: RuntimeThemeState
 }
 
@@ -132,7 +132,7 @@ async function loadLocaleRuntimeData(locale: SupportedLocale): Promise<LocaleRun
   }
 
   const runtimeTheme = await loadRuntimeThemeState()
-  const publicRuntimeConfig = getPublicRuntimeConfig()
+  const publicRuntimeConfig = await getPublicRuntimeConfig()
   const globalAnnouncement = await loadGlobalAnnouncementSettings()
   const hasGlobalAnnouncement = globalAnnouncement.message.trim().length > 0
 

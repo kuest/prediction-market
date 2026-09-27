@@ -34,7 +34,7 @@ export async function createAdminSupportContextAction() {
 
   const [{ data: settings }, runtimeConfig] = await Promise.all([
     SettingsRepository.getSettings(),
-    Promise.resolve(getPublicRuntimeConfig()),
+    getPublicRuntimeConfig(),
   ])
   const siteSettings = getThemeSiteSettingsFormState(settings ?? undefined)
   const context = normalizeKuestSupportContext({

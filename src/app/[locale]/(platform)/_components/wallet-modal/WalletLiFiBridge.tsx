@@ -7,6 +7,7 @@ import { TronProvider } from '@lifi/widget-provider-tron'
 import { useTheme } from 'next-themes'
 import { useMemo } from 'react'
 
+import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { POLYGON_USDC_TOKEN_ADDRESS } from '@/lib/contracts'
 import { POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 
@@ -22,10 +23,11 @@ export default function WalletLiFiBridge({
   siteName: string
 }) {
   const { resolvedTheme } = useTheme()
+  const { lifiIntegrator } = usePublicRuntimeConfig()
   const providers = useMemo(() => [BitcoinProvider(), SolanaProvider(), TronProvider()], [])
   const config = useMemo<WidgetConfig>(
     () => ({
-      integrator: 'kuest',
+      integrator: lifiIntegrator,
       variant: 'drawer',
       mode: 'split',
       modeOptions: { split: 'bridge' },
@@ -50,8 +52,8 @@ export default function WalletLiFiBridge({
         reverseTokensButton: true,
       },
     }),
-    [destinationAddress, providers, resolvedTheme, siteName],
+    [destinationAddress, lifiIntegrator, providers, resolvedTheme, siteName],
   )
 
-  return <LiFiWidget integrator="kuest" config={config} open={open} onClose={onClose} />
+  return <LiFiWidget integrator={lifiIntegrator} config={config} open={open} onClose={onClose} />
 }

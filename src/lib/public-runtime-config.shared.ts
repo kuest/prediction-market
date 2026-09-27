@@ -1,3 +1,4 @@
+import { DEFAULT_LIFI_INTEGRATOR } from '@/lib/lifi-config.shared'
 import { AMOY_CHAIN_ID, parseNetworkChainId, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 
 export interface PublicRuntimeConfig {
@@ -10,6 +11,7 @@ export interface PublicRuntimeConfig {
   gammaUrl: string
   geoblockUrl: string
   isVercel: string
+  lifiIntegrator: string
   notificationsUrl: string
   chainId: number
   polygonRpcUrl: string
@@ -67,6 +69,7 @@ export const defaultPublicRuntimeConfig: PublicRuntimeConfig = {
   gammaUrl: DEFAULT_AMOY_SERVICE_URLS.gammaUrl,
   geoblockUrl: 'https://geoblock.kuest.com',
   isVercel: 'false',
+  lifiIntegrator: DEFAULT_LIFI_INTEGRATOR,
   notificationsUrl: 'https://notifications.kuest.com',
   chainId: AMOY_CHAIN_ID,
   polygonRpcUrl: '',
@@ -103,6 +106,7 @@ export function resolvePublicRuntimeEnv(
     gammaUrl: normalizePublicRuntimeEnvValue(env.GAMMA_URL, networkServiceUrls.gammaUrl),
     geoblockUrl: normalizePublicRuntimeEnvValue(env.GEOBLOCK_URL, defaultPublicRuntimeConfig.geoblockUrl),
     isVercel: env.VERCEL_ENV ? 'true' : 'false',
+    lifiIntegrator: DEFAULT_LIFI_INTEGRATOR,
     notificationsUrl: normalizePublicRuntimeEnvValue(
       env.NOTIFICATIONS_URL,
       defaultPublicRuntimeConfig.notificationsUrl,

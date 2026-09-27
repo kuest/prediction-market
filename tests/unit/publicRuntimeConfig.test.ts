@@ -1,8 +1,20 @@
-import { describe, expect, it } from 'bun:test'
+import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
 import { resolveClobUrl } from '@/lib/clob'
-import { getPublicRuntimeConfig } from '@/lib/public-runtime-config.server'
+import { DEFAULT_LIFI_INTEGRATOR, resolveLiFiIntegrator } from '@/lib/lifi-config.shared'
 import { defaultPublicRuntimeConfig, resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
+
+import { hoisted } from '../bun-test-helpers'
+
+const mocks = hoisted(() => ({
+  getSettings: mock(),
+}))
+
+void mock.module('@/lib/db/queries/settings', () => ({
+  SettingsRepository: {
+    getSettings: (...args: unknown[]) => mocks.getSettings(...args),
+  },
+}))
 
 const RUNTIME_ENV_KEYS_BY_CONFIG_KEY = {
   clobUrl: 'CLOB_URL',
@@ -34,6 +46,11 @@ const KUEST_DEFAULT_CONFIG_KEYS = (
 })
 
 describe('public runtime config resolution', () => {
+  beforeEach(() => {
+    mocks.getSettings.mockReset()
+    mocks.getSettings.mockResolvedValue({ data: null, error: 'Settings unavailable.' })
+  })
+
   it('uses Kuest defaults for blank Kuest service URLs', () => {
     const config = resolvePublicRuntimeEnv({})
 
@@ -67,6 +84,12 @@ describe('public runtime config resolution', () => {
     expect(resolvePublicRuntimeEnv({ CHAIN_ID: ' ' }).chainId).toBe(defaultPublicRuntimeConfig.chainId)
   })
 
+  it('uses the configured LI.FI integrator and the shared fallback', () => {
+    expect(resolveLiFiIntegrator('  kuest-widget  ')).toBe('kuest-widget')
+    expect(resolveLiFiIntegrator('  ')).toBe(DEFAULT_LIFI_INTEGRATOR)
+    expect(defaultPublicRuntimeConfig.lifiIntegrator).toBe(DEFAULT_LIFI_INTEGRATOR)
+  })
+
   it('selects mainnet service URLs for Polygon mainnet', () => {
     const config = resolvePublicRuntimeEnv({ CHAIN_ID: '137' })
 
@@ -93,12 +116,19 @@ describe('public runtime config resolution', () => {
     expect(resolveClobUrl()).toBe('https://clob-staging.kuest.com')
   })
 
-  it('resolves commit SHA from the runtime config environment', () => {
-    const config = getPublicRuntimeConfig({
+  it('resolves the LI.FI integrator and commit SHA into public runtime config', async () => {
+    mocks.getSettings.mockResolvedValue({
+      data: { general: { lifi_integrator: { value: 'kuest-widget' } } },
+      error: null,
+    })
+
+    const { getPublicRuntimeConfig } = await import('@/lib/public-runtime-config.server')
+    const config = await getPublicRuntimeConfig({
       SITE_URL: 'https://kuest.test',
       VERCEL_GIT_COMMIT_MESSAGE: 'Sync fork\n\nUpstream: abcdef1234567890',
     })
 
     expect(config.commitSha).toBe('abcdef1')
+    expect(config.lifiIntegrator).toBe('kuest-widget')
   })
 })

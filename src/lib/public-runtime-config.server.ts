@@ -1,15 +1,21 @@
 import type { PublicRuntimeConfig } from '@/lib/public-runtime-config.shared'
 
 import { resolveCommitSha } from '@/lib/git'
+import { getLiFiIntegrator } from '@/lib/lifi-config.server'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import resolveSiteUrl from '@/lib/site-url'
 
 export type { PublicRuntimeConfig } from '@/lib/public-runtime-config.shared'
 
-export function getPublicRuntimeConfig(env: Readonly<Partial<NodeJS.ProcessEnv>> = process.env): PublicRuntimeConfig {
+export async function getPublicRuntimeConfig(
+  env: Readonly<Partial<NodeJS.ProcessEnv>> = process.env,
+): Promise<PublicRuntimeConfig> {
+  const lifiIntegrator = await getLiFiIntegrator()
+
   return {
     ...resolvePublicRuntimeEnv(env),
     commitSha: resolveCommitSha(env),
+    lifiIntegrator,
     siteUrl: resolveSiteUrl(env),
   }
 }

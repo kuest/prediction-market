@@ -1,7 +1,7 @@
-import { ChainType } from '@lifi/sdk'
 import { NextResponse } from 'next/server'
 
 import { getLiFiServerActions } from '@/lib/lifi'
+import { getLiFiEvmTokenCatalog } from '@/lib/lifi-token-catalog'
 
 interface BalancesRequestBody {
   walletAddress: string
@@ -22,9 +22,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const chains = await lifi.getChains()
-    const evmChainIds = chains.filter((chain) => chain.chainType === ChainType.EVM).map((chain) => chain.id)
-    const { tokens } = await lifi.getTokens({ extended: true, chains: evmChainIds })
+    const { tokens } = await getLiFiEvmTokenCatalog(lifi)
     const balances = await lifi.getTokenBalancesByChain(body.walletAddress, tokens)
     const serializedBalances = Object.fromEntries(
       Object.entries(balances).map(([chainId, chainTokens]) => [
