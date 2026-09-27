@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  isCustomJavascriptCodeConfiguredToRunOnDepositModal,
+  isCustomJavascriptCodeConfiguredToRunOnPathname,
   isCustomJavascriptCodeEnabledOnPathname,
   parseCustomJavascriptCodeTags,
   resolveCustomJavascriptCodePageBucket,
@@ -44,7 +46,7 @@ describe('custom javascript code helpers', () => {
     ])
   })
 
-  it('validates custom javascript codes json and keeps disable rules', () => {
+  it('converts legacy disable rules to positive run-on contexts', () => {
     const result = validateCustomJavascriptCodesJson(
       JSON.stringify([
         {
@@ -61,12 +63,12 @@ describe('custom javascript code helpers', () => {
       {
         name: 'Crisp',
         snippet: '<script>window.$crisp = [];</script>',
-        disabledOn: ['admin', 'portfolio'],
+        runOn: ['home', 'event', 'settings', 'docs', 'other'],
       },
     ])
   })
 
-  it('preserves the deposit-modal trigger for a custom integration', () => {
+  it('converts the legacy deposit-modal trigger and page exclusions to positive run-on contexts', () => {
     const result = validateCustomJavascriptCodesJson(
       JSON.stringify([
         {
@@ -84,10 +86,35 @@ describe('custom javascript code helpers', () => {
       {
         name: 'Deposit chat',
         snippet: '<script src="https://chat.example/widget.js"></script>',
-        disabledOn: [],
-        onlyWhenDepositModalOpen: true,
+        runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'admin', 'other', 'deposit'],
       },
     ])
+  })
+
+  it('preserves page scope and Deposit-only execution for legacy snippets', () => {
+    const result = validateCustomJavascriptCodesJson(
+      JSON.stringify([
+        {
+          name: 'Deposit chat',
+          snippet: 'window.chat = true',
+          disabledOn: ['admin'],
+          onlyWhenDepositModalOpen: true,
+        },
+      ]),
+      'Custom javascript code',
+    )
+
+    expect(result.value).toEqual([
+      {
+        name: 'Deposit chat',
+        snippet: 'window.chat = true',
+        runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'other', 'deposit'],
+      },
+    ])
+    expect(isCustomJavascriptCodeConfiguredToRunOnDepositModal(result.value![0]!, '/admin')).toBe(false)
+    expect(isCustomJavascriptCodeConfiguredToRunOnDepositModal(result.value![0]!, '/portfolio')).toBe(true)
+    expect(isCustomJavascriptCodeConfiguredToRunOnPathname(result.value![0]!, '/portfolio')).toBe(false)
+    expect(isCustomJavascriptCodeConfiguredToRunOnDepositModal(result.value![0]!, '/other-page')).toBe(true)
   })
 
   it('rejects an invalid deposit-modal trigger setting', () => {
@@ -123,7 +150,7 @@ describe('custom javascript code helpers', () => {
       {
         name: 'Counter',
         snippet: 'if (count < 10) { window.count = count + 1 }',
-        disabledOn: [],
+        runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'admin', 'other'],
       },
     ])
   })
@@ -145,7 +172,7 @@ describe('custom javascript code helpers', () => {
       {
         name: 'Guard',
         snippet: 'if (x<Y) { window.guard = true }',
-        disabledOn: [],
+        runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'admin', 'other'],
       },
     ])
   })
@@ -167,7 +194,7 @@ describe('custom javascript code helpers', () => {
       {
         name: 'Pattern guard',
         snippet: 'const htmlPattern = /<(div|span)>/i\nwindow.isHtmlTag = htmlPattern.test(tagName)',
-        disabledOn: [],
+        runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'admin', 'other'],
       },
     ])
   })
@@ -189,7 +216,7 @@ describe('custom javascript code helpers', () => {
       {
         name: 'Division regex',
         snippet: 'const ratio = 1 / /<(div|span)>/i.test(tagName)',
-        disabledOn: [],
+        runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'admin', 'other'],
       },
     ])
   })
@@ -283,5 +310,14 @@ describe('custom javascript code helpers', () => {
         '/',
       ),
     ).toBe(true)
+  })
+
+  it('runs scripts only on selected page contexts', () => {
+    const code = { runOn: ['home', 'portfolio'] as ('home' | 'portfolio')[] }
+
+    expect(isCustomJavascriptCodeConfiguredToRunOnPathname(code, '/')).toBe(true)
+    expect(isCustomJavascriptCodeConfiguredToRunOnPathname(code, '/portfolio')).toBe(true)
+    expect(isCustomJavascriptCodeConfiguredToRunOnPathname(code, '/admin')).toBe(false)
+    expect(isCustomJavascriptCodeConfiguredToRunOnPathname(code, '/unlisted-page')).toBe(false)
   })
 })

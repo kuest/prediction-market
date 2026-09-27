@@ -62,7 +62,7 @@ describe('themeSettings social links', () => {
       {
         name: 'Crisp',
         snippet: '<script>window.$crisp = [];</script>',
-        disabledOn: ['admin'],
+        runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'other'],
       },
     ])
   })
@@ -122,7 +122,7 @@ describe('themeSettings social links', () => {
       {
         name: 'Crisp',
         snippet: '<script>window.$crisp = [];</script>',
-        disabledOn: ['portfolio'],
+        runOn: ['home', 'event', 'settings', 'docs', 'admin', 'other'],
       },
     ])
   })

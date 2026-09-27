@@ -7,7 +7,8 @@ import type { CustomJavascriptCodeAttributeValue, CustomJavascriptCodeConfig } f
 
 import {
   DEPOSIT_MODAL_OPEN_EVENT,
-  isCustomJavascriptCodeEnabledOnPathname,
+  isCustomJavascriptCodeConfiguredToRunOnDepositModal,
+  isCustomJavascriptCodeConfiguredToRunOnPathname,
   parseCustomJavascriptCodeTags,
 } from '@/lib/custom-javascript-code'
 
@@ -196,24 +197,26 @@ function reloadOnCustomJavascriptCodeChange(
 function useCustomJavascriptCodeExecution(locale: string, codes: CustomJavascriptCodeConfig[]) {
   const pathname = usePathname()
   const localizedPathname = useMemo(() => stripLocalePrefix(pathname, locale), [locale, pathname])
-  const activeCodes = useMemo(
-    () => codes.filter((code) => isCustomJavascriptCodeEnabledOnPathname(code, localizedPathname)),
+  const interactionCodes = useMemo(
+    () => codes.filter((code) => isCustomJavascriptCodeConfiguredToRunOnPathname(code, localizedPathname)),
     [codes, localizedPathname],
   )
-  const interactionCodes = useMemo(() => activeCodes.filter((code) => !code.onlyWhenDepositModalOpen), [activeCodes])
-  const depositModalCodes = useMemo(() => activeCodes.filter((code) => code.onlyWhenDepositModalOpen), [activeCodes])
+  const depositModalCodes = useMemo(
+    () => codes.filter((code) => isCustomJavascriptCodeConfiguredToRunOnDepositModal(code, localizedPathname)),
+    [codes, localizedPathname],
+  )
   const activeCodeSignature = useMemo(
     () =>
-      activeCodes
-        .map((code) => `${code.name}\u0000${code.snippet}\u0000${code.onlyWhenDepositModalOpen === true}`)
+      [...new Set([...interactionCodes, ...depositModalCodes])]
+        .map((code) => `${code.name}\u0000${code.snippet}\u0000${code.runOn.join(',')}`)
         .sort()
         .join('\u0001'),
-    [activeCodes],
+    [depositModalCodes, interactionCodes],
   )
   const interactionCodeSignature = useMemo(
     () =>
       interactionCodes
-        .map((code) => `${code.name}\u0000${code.snippet}`)
+        .map((code) => `${code.name}\u0000${code.snippet}\u0000${code.runOn.join(',')}`)
         .sort()
         .join('\u0001'),
     [interactionCodes],

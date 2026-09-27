@@ -16,9 +16,20 @@ export const CUSTOM_JAVASCRIPT_CODE_DISABLE_PAGE_OPTIONS = [
 ] as const
 export type CustomJavascriptCodeDisablePage = (typeof CUSTOM_JAVASCRIPT_CODE_DISABLE_PAGE_OPTIONS)[number]
 export type CustomJavascriptCodePageBucket = CustomJavascriptCodeDisablePage | 'other'
+export const CUSTOM_JAVASCRIPT_CODE_RUN_ON_OPTIONS = [
+  ...CUSTOM_JAVASCRIPT_CODE_DISABLE_PAGE_OPTIONS,
+  'other',
+  'deposit',
+] as const
+export type CustomJavascriptCodeRunOn = (typeof CUSTOM_JAVASCRIPT_CODE_RUN_ON_OPTIONS)[number]
+export const CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON: CustomJavascriptCodePageBucket[] = [
+  ...CUSTOM_JAVASCRIPT_CODE_DISABLE_PAGE_OPTIONS,
+  'other',
+]
 export type CustomJavascriptCodeAttributeValue = string | true
 
 const CUSTOM_JAVASCRIPT_CODE_DISABLE_PAGE_SET = new Set<string>(CUSTOM_JAVASCRIPT_CODE_DISABLE_PAGE_OPTIONS)
+const CUSTOM_JAVASCRIPT_CODE_RUN_ON_SET = new Set<string>(CUSTOM_JAVASCRIPT_CODE_RUN_ON_OPTIONS)
 const JAVASCRIPT_REGEX_PREFIX_KEYWORD_SET = new Set([
   'await',
   'case',
@@ -38,8 +49,7 @@ const JAVASCRIPT_CONTROL_FLOW_KEYWORD_SET = new Set(['catch', 'do', 'else', 'for
 export interface CustomJavascriptCodeConfig {
   name: string
   snippet: string
-  disabledOn: CustomJavascriptCodeDisablePage[]
-  onlyWhenDepositModalOpen?: boolean
+  runOn: CustomJavascriptCodeRunOn[]
 }
 
 export interface ParsedCustomJavascriptCodeTag {
@@ -467,6 +477,31 @@ function normalizeCustomJavascriptCodeDisabledOn(value: unknown, sourceLabel: st
   return { value: deduped, error: null as string | null }
 }
 
+function normalizeCustomJavascriptCodeRunOn(value: unknown, sourceLabel: string) {
+  if (!Array.isArray(value)) {
+    return { value: [] as CustomJavascriptCodeRunOn[], error: `${sourceLabel} is invalid.` }
+  }
+
+  const deduped: CustomJavascriptCodeRunOn[] = []
+  const seen = new Set<CustomJavascriptCodeRunOn>()
+
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !CUSTOM_JAVASCRIPT_CODE_RUN_ON_SET.has(entry)) {
+      return { value: [] as CustomJavascriptCodeRunOn[], error: `${sourceLabel} is invalid.` }
+    }
+
+    const normalizedEntry = entry as CustomJavascriptCodeRunOn
+    if (seen.has(normalizedEntry)) {
+      continue
+    }
+
+    seen.add(normalizedEntry)
+    deduped.push(normalizedEntry)
+  }
+
+  return { value: deduped, error: null as string | null }
+}
+
 function normalizeCustomJavascriptCodeEntry(value: unknown, index: number) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {
@@ -489,14 +524,6 @@ function normalizeCustomJavascriptCodeEntry(value: unknown, index: number) {
     return { value: null as CustomJavascriptCodeConfig | null, error: snippetValidated.error }
   }
 
-  const disabledOnValidated = normalizeCustomJavascriptCodeDisabledOn(
-    rawEntry.disabledOn,
-    `Custom javascript code ${index + 1} disabled pages`,
-  )
-  if (disabledOnValidated.error) {
-    return { value: null as CustomJavascriptCodeConfig | null, error: disabledOnValidated.error }
-  }
-
   if (rawEntry.onlyWhenDepositModalOpen !== undefined && typeof rawEntry.onlyWhenDepositModalOpen !== 'boolean') {
     return {
       value: null as CustomJavascriptCodeConfig | null,
@@ -504,12 +531,47 @@ function normalizeCustomJavascriptCodeEntry(value: unknown, index: number) {
     }
   }
 
+  const runOnValidated =
+    rawEntry.runOn === undefined
+      ? null
+      : normalizeCustomJavascriptCodeRunOn(rawEntry.runOn, `Custom javascript code ${index + 1} run on options`)
+  if (runOnValidated?.error) {
+    return { value: null as CustomJavascriptCodeConfig | null, error: runOnValidated.error }
+  }
+
+  const disabledOnValidated = normalizeCustomJavascriptCodeDisabledOn(
+    runOnValidated ? rawEntry.legacyDepositDisabledOn : rawEntry.disabledOn,
+    `Custom javascript code ${index + 1} disabled pages`,
+  )
+  if (disabledOnValidated.error) {
+    return { value: null as CustomJavascriptCodeConfig | null, error: disabledOnValidated.error }
+  }
+
+  const legacyDepositRules = !!runOnValidated && disabledOnValidated.value.length > 0
+  const selectedRunOn = runOnValidated
+    ? runOnValidated.value
+    : CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON.filter(
+        (page) => page === 'other' || !disabledOnValidated.value.includes(page),
+      )
+  const runOn: CustomJavascriptCodeRunOn[] = runOnValidated
+    ? legacyDepositRules && selectedRunOn.includes('deposit')
+      ? [
+          ...(selectedRunOn.some((context) => context !== 'deposit')
+            ? selectedRunOn.filter((context): context is CustomJavascriptCodePageBucket => context !== 'deposit')
+            : CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON
+          ).filter((page) => page === 'other' || !disabledOnValidated.value.includes(page)),
+          'deposit',
+        ]
+      : selectedRunOn
+    : rawEntry.onlyWhenDepositModalOpen === true
+      ? [...selectedRunOn, 'deposit']
+      : selectedRunOn
+
   return {
     value: {
       name: nameValidated.value!,
       snippet: snippetValidated.value!,
-      disabledOn: disabledOnValidated.value,
-      ...(rawEntry.onlyWhenDepositModalOpen === true ? { onlyWhenDepositModalOpen: true } : {}),
+      runOn,
     },
     error: null as string | null,
   }
@@ -635,7 +697,7 @@ export function resolveCustomJavascriptCodePageBucket(
 }
 
 export function isCustomJavascriptCodeEnabledOnPathname(
-  code: Pick<CustomJavascriptCodeConfig, 'disabledOn'>,
+  code: { disabledOn: CustomJavascriptCodeDisablePage[] },
   pathname: string | null | undefined,
 ) {
   const pageBucket = resolveCustomJavascriptCodePageBucket(pathname)
@@ -644,6 +706,21 @@ export function isCustomJavascriptCodeEnabledOnPathname(
   }
 
   return !code.disabledOn.includes(pageBucket)
+}
+
+export function isCustomJavascriptCodeConfiguredToRunOnPathname(
+  code: Pick<CustomJavascriptCodeConfig, 'runOn'>,
+  pathname: string | null | undefined,
+) {
+  return !code.runOn.includes('deposit') && code.runOn.includes(resolveCustomJavascriptCodePageBucket(pathname))
+}
+
+export function isCustomJavascriptCodeConfiguredToRunOnDepositModal(
+  code: Pick<CustomJavascriptCodeConfig, 'runOn'>,
+  pathname: string | null | undefined,
+) {
+  const pageBucket = resolveCustomJavascriptCodePageBucket(pathname)
+  return code.runOn.includes('deposit') && code.runOn.includes(pageBucket)
 }
 
 export function parseCustomJavascriptCodeTags(snippet: string | null | undefined): ParsedCustomJavascriptCodeTag[] {

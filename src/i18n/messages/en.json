@@ -2756,5 +2756,6 @@
   "t-2AAt": "Could not update follow status.",
   "-RU9lJ": "{trader} bought {shares} {outcome} in {marketTitle}",
   "l7onJY": "{trader} sold {shares} {outcome} in {marketTitle}",
-  "8587of": "Your payment status is open in the original tab. Close this tab manually if it stays open, or go to the home page."
+  "8587of": "Your payment status is open in the original tab. Close this tab manually if it stays open, or go to the home page.",
+  "1nQfj-": "Run on"
 }

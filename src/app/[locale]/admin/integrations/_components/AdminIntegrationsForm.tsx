@@ -6,7 +6,7 @@ import Image from 'next/image'
 import { useActionState, useCallback, useMemo, useState } from 'react'
 
 import type { KuestSupportPosition } from '@/lib/admin-support-settings'
-import type { CustomJavascriptCodeConfig, CustomJavascriptCodeDisablePage } from '@/lib/custom-javascript-code'
+import type { CustomJavascriptCodeConfig, CustomJavascriptCodeRunOn } from '@/lib/custom-javascript-code'
 import type { SumsubEnforcement } from '@/lib/sumsub/types'
 
 import SettingsAccordionSection from '@/app/[locale]/admin/(general)/_components/SettingsAccordionSection'
@@ -26,6 +26,8 @@ import {
   MAX_CUSTOM_JAVASCRIPT_CODE_NAME_LENGTH,
   MAX_CUSTOM_JAVASCRIPT_CODE_SNIPPET_LENGTH,
   MAX_CUSTOM_JAVASCRIPT_CODES,
+  CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON,
+  CUSTOM_JAVASCRIPT_CODE_RUN_ON_OPTIONS,
   serializeCustomJavascriptCodes,
 } from '@/lib/custom-javascript-code'
 import { cn } from '@/lib/utils'
@@ -238,7 +240,7 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
     () => serializeCustomJavascriptCodes(customJavascriptCodes.map(({ id: _id, ...code }) => code)),
     [customJavascriptCodes],
   )
-  const customDisablePageOptions = useMemo(
+  const customRunOnOptions = useMemo(
     () => [
       { value: 'home' as const, label: t('Home') },
       { value: 'event' as const, label: '/event' },
@@ -246,6 +248,8 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
       { value: 'settings' as const, label: '/settings' },
       { value: 'docs' as const, label: '/docs' },
       { value: 'admin' as const, label: '/admin' },
+      { value: 'other' as const, label: t('Other') },
+      { value: 'deposit' as const, label: t('Deposit') },
     ],
     [t],
   )
@@ -355,17 +359,20 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
     )
   }
 
-  function toggleCustomDisabledOn(index: number, page: CustomJavascriptCodeDisablePage, checked: boolean) {
-    updateCustomCode(index, (code) => ({
-      ...code,
-      disabledOn: checked
-        ? Array.from(new Set([...code.disabledOn, page]))
-        : code.disabledOn.filter((value) => value !== page),
-    }))
-  }
+  function toggleCustomRunOn(index: number, context: CustomJavascriptCodeRunOn, checked: boolean) {
+    updateCustomCode(index, (code) => {
+      const nextRunOn = new Set(code.runOn)
+      if (checked) {
+        nextRunOn.add(context)
+      } else {
+        nextRunOn.delete(context)
+      }
 
-  function toggleCustomDepositModal(index: number, checked: boolean) {
-    updateCustomCode(index, (code) => ({ ...code, onlyWhenDepositModalOpen: checked }))
+      return {
+        ...code,
+        runOn: CUSTOM_JAVASCRIPT_CODE_RUN_ON_OPTIONS.filter((value) => nextRunOn.has(value)),
+      }
+    })
   }
 
   return (
@@ -1013,7 +1020,12 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
                 onClick={() =>
                   setCustomJavascriptCodes((previous) => [
                     ...previous,
-                    { id: `custom-integration-${Date.now()}`, name: '', snippet: '', disabledOn: [] },
+                    {
+                      id: `custom-integration-${Date.now()}`,
+                      name: '',
+                      snippet: '',
+                      runOn: [...CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON],
+                    },
                   ])
                 }
               >
@@ -1065,39 +1077,25 @@ function AdminIntegrationsFormInner(props: AdminIntegrationsFormProps) {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <div
-                    className={cn(
-                      'flex items-center gap-2 rounded-lg border px-3 py-2 text-sm',
-                      code.onlyWhenDepositModalOpen && 'border-primary/50 bg-primary/5',
-                    )}
-                  >
-                    <Checkbox
-                      id={`custom-deposit-modal-${code.id}`}
-                      checked={code.onlyWhenDepositModalOpen === true}
-                      disabled={isPending}
-                      onCheckedChange={(checked) => toggleCustomDepositModal(index, checked === true)}
-                    />
-                    <Label htmlFor={`custom-deposit-modal-${code.id}`}>{t('Deposit')}</Label>
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Label>{t('Disable on')}</Label>
+                  <Label>{t('Run on')}</Label>
                   <div className="flex flex-wrap gap-3">
-                    {customDisablePageOptions.map((option) => (
-                      <label
+                    {customRunOnOptions.map((option) => (
+                      <div
                         key={option.value}
                         className={cn(
-                          `flex min-w-32 items-center gap-2 rounded-lg border px-3 py-2 text-sm`,
-                          code.disabledOn.includes(option.value) && `border-primary/50 bg-primary/5`,
+                          'flex min-w-32 items-center gap-2 rounded-lg border px-3 py-2 text-sm',
+                          code.runOn.includes(option.value) && 'border-primary/50 bg-primary/5',
                         )}
                       >
                         <Checkbox
-                          checked={code.disabledOn.includes(option.value)}
+                          id={`custom-run-on-${code.id}-${option.value}`}
+                          aria-label={option.label}
+                          checked={code.runOn.includes(option.value)}
                           disabled={isPending}
-                          onCheckedChange={(checked) => toggleCustomDisabledOn(index, option.value, checked === true)}
+                          onCheckedChange={(checked) => toggleCustomRunOn(index, option.value, checked === true)}
                         />
-                        <span>{option.label}</span>
-                      </label>
+                        <Label htmlFor={`custom-run-on-${code.id}-${option.value}`}>{option.label}</Label>
+                      </div>
                     ))}
                   </div>
                 </div>

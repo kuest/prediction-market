@@ -2756,5 +2756,6 @@
   "t-2AAt": "No se pudo actualizar el estado de seguimiento.",
   "-RU9lJ": "{trader} compró {shares} {outcome} en {marketTitle}",
   "l7onJY": "{trader} vendió {shares} {outcome} en {marketTitle}",
-  "8587of": "El estado del pago está abierto en la pestaña original. Si esta pestaña sigue abierta, ciérrala manualmente o ve a la página de inicio."
+  "8587of": "El estado del pago está abierto en la pestaña original. Si esta pestaña sigue abierta, ciérrala manualmente o ve a la página de inicio.",
+  "1nQfj-": "Ejecutar en"
 }

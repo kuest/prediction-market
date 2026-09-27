@@ -2756,5 +2756,6 @@
   "t-2AAt": "Impossible de mettre à jour le statut de suivi.",
   "-RU9lJ": "{trader} a acheté {shares} {outcome} sur {marketTitle}",
   "l7onJY": "{trader} a vendu {shares} {outcome} sur {marketTitle}",
-  "8587of": "Le statut du paiement est ouvert dans l’onglet d’origine. Si cet onglet reste ouvert, fermez-le manuellement ou accédez à la page d’accueil."
+  "8587of": "Le statut du paiement est ouvert dans l’onglet d’origine. Si cet onglet reste ouvert, fermez-le manuellement ou accédez à la page d’accueil.",
+  "1nQfj-": "Exécuter sur"
 }

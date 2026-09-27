@@ -119,7 +119,7 @@ describe('adminIntegrationsForm', () => {
     expect(container.querySelector('[data-settings-section="custom"] svg')).toBeInTheDocument()
   })
 
-  it('saves custom integration snippets for the Deposit modal trigger', () => {
+  it('saves Deposit as an exclusive trigger scoped to the selected pages', () => {
     render(<AdminIntegrationsForm {...props} />)
     fireEvent.click(screen.getByRole('button', { name: /Custom Integrations/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Add Integration' }))
@@ -130,8 +130,7 @@ describe('adminIntegrationsForm', () => {
         {
           name: '',
           snippet: '',
-          disabledOn: [],
-          onlyWhenDepositModalOpen: true,
+          runOn: ['home', 'event', 'portfolio', 'settings', 'docs', 'admin', 'other', 'deposit'],
         },
       ]),
     )
