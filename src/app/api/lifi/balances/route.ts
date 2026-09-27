@@ -1,3 +1,4 @@
+import { ChainType } from '@lifi/sdk'
 import { NextResponse } from 'next/server'
 
 import { getLiFiServerActions } from '@/lib/lifi'
@@ -21,8 +22,30 @@ export async function POST(request: Request) {
   }
 
   try {
-    const balances = await lifi.getWalletBalances(body.walletAddress)
-    return NextResponse.json({ balances })
+    const chains = await lifi.getChains()
+    const evmChainIds = chains.filter((chain) => chain.chainType === ChainType.EVM).map((chain) => chain.id)
+    const { tokens } = await lifi.getTokens({ extended: true, chains: evmChainIds })
+    const balances = await lifi.getTokenBalancesByChain(body.walletAddress, tokens)
+    const serializedBalances = Object.fromEntries(
+      Object.entries(balances).map(([chainId, chainTokens]) => [
+        chainId,
+        chainTokens.flatMap(({ amount, blockNumber, ...token }) => {
+          if (amount === undefined || amount <= 0n) {
+            return []
+          }
+
+          return [
+            {
+              ...token,
+              amount: amount.toString(),
+              ...(blockNumber === undefined ? {} : { blockNumber: blockNumber.toString() }),
+            },
+          ]
+        }),
+      ]),
+    )
+
+    return NextResponse.json({ balances: serializedBalances })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch LI.FI balances.'
     return NextResponse.json({ error: message }, { status: 500 })

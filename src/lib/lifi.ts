@@ -1,12 +1,7 @@
-import type {
-  LiFiStep,
-  QuoteRequestFromAmount,
-  QuoteRequestToAmount,
-  RequestOptions,
-  WalletTokenExtended,
-} from '@lifi/sdk'
+import type { LiFiStep, QuoteRequestFromAmount, QuoteRequestToAmount, RequestOptions } from '@lifi/sdk'
 
 import { actions, createClient } from '@lifi/sdk'
+import { EthereumProvider } from '@lifi/sdk-provider-ethereum'
 
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { decryptSecret } from '@/lib/encryption'
@@ -20,7 +15,6 @@ const DEFAULT_LIFI_INTEGRATOR = 'lifi-sdk'
 type LiFiServerActions = Omit<ReturnType<typeof actions>, 'getQuote'> & {
   getQuote: ((params: QuoteRequestFromAmount, options?: RequestOptions) => Promise<LiFiStep>) &
     ((params: QuoteRequestToAmount, options?: RequestOptions) => Promise<LiFiStep>)
-  getWalletBalances: (walletAddress: string) => Promise<Record<number, WalletTokenExtended[]>>
 }
 
 let configuredSignature: string | null = null
@@ -32,30 +26,10 @@ function normalizeSettingValue(value: string | undefined) {
 }
 
 function createLiFiServerActions(integrator: string, apiKey: string | null) {
-  const client = createClient(apiKey ? { integrator, apiKey } : { integrator })
-  const clientActions = actions(client) as Omit<LiFiServerActions, 'getWalletBalances'>
+  const config = { integrator, providers: [EthereumProvider()] }
+  const client = createClient(apiKey ? { ...config, apiKey } : config)
 
-  return Object.assign(clientActions, {
-    async getWalletBalances(walletAddress: string) {
-      const headers: Record<string, string> = {
-        'x-lifi-integrator': client.config.integrator,
-      }
-      if (client.config.apiKey) {
-        headers['x-lifi-api-key'] = client.config.apiKey
-      }
-
-      const response = await fetch(
-        `${client.config.apiUrl}/wallets/${encodeURIComponent(walletAddress)}/balances?extended=true`,
-        { headers },
-      )
-      if (!response.ok) {
-        throw new Error(`LI.FI wallet balances request failed with status ${response.status}.`)
-      }
-
-      const result = (await response.json()) as { balances?: Record<number, WalletTokenExtended[]> }
-      return result.balances ?? {}
-    },
-  }) as LiFiServerActions
+  return actions(client) as LiFiServerActions
 }
 
 export async function getLiFiServerActions() {

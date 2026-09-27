@@ -1,7 +1,6 @@
 'use client'
 
-import { ChainId, ChainType } from '@lifi/sdk'
-import { LiFiWidget, type WidgetConfig } from '@lifi/widget'
+import { LiFiWidget, ChainId, ChainType, type WidgetConfig } from '@lifi/widget'
 import { BitcoinProvider } from '@lifi/widget-provider-bitcoin'
 import { SolanaProvider } from '@lifi/widget-provider-solana'
 import { TronProvider } from '@lifi/widget-provider-tron'
