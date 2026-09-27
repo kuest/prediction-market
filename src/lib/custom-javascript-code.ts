@@ -540,29 +540,20 @@ function normalizeCustomJavascriptCodeEntry(value: unknown, index: number) {
   }
 
   const disabledOnValidated = normalizeCustomJavascriptCodeDisabledOn(
-    runOnValidated ? rawEntry.legacyDepositDisabledOn : rawEntry.disabledOn,
+    rawEntry.disabledOn,
     `Custom javascript code ${index + 1} disabled pages`,
   )
   if (disabledOnValidated.error) {
     return { value: null as CustomJavascriptCodeConfig | null, error: disabledOnValidated.error }
   }
 
-  const legacyDepositRules = !!runOnValidated && disabledOnValidated.value.length > 0
   const selectedRunOn = runOnValidated
     ? runOnValidated.value
     : CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON.filter(
         (page) => page === 'other' || !disabledOnValidated.value.includes(page),
       )
   const runOn: CustomJavascriptCodeRunOn[] = runOnValidated
-    ? legacyDepositRules && selectedRunOn.includes('deposit')
-      ? [
-          ...(selectedRunOn.some((context) => context !== 'deposit')
-            ? selectedRunOn.filter((context): context is CustomJavascriptCodePageBucket => context !== 'deposit')
-            : CUSTOM_JAVASCRIPT_CODE_DEFAULT_RUN_ON
-          ).filter((page) => page === 'other' || !disabledOnValidated.value.includes(page)),
-          'deposit',
-        ]
-      : selectedRunOn
+    ? selectedRunOn
     : rawEntry.onlyWhenDepositModalOpen === true
       ? [...selectedRunOn, 'deposit']
       : selectedRunOn
@@ -720,7 +711,9 @@ export function isCustomJavascriptCodeConfiguredToRunOnDepositModal(
   pathname: string | null | undefined,
 ) {
   const pageBucket = resolveCustomJavascriptCodePageBucket(pathname)
-  return code.runOn.includes('deposit') && code.runOn.includes(pageBucket)
+  const pageScopes = code.runOn.filter((context): context is CustomJavascriptCodePageBucket => context !== 'deposit')
+
+  return code.runOn.includes('deposit') && (pageScopes.length === 0 || pageScopes.includes(pageBucket))
 }
 
 export function parseCustomJavascriptCodeTags(snippet: string | null | undefined): ParsedCustomJavascriptCodeTag[] {

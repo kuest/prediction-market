@@ -115,6 +115,26 @@ describe('custom javascript code helpers', () => {
     expect(isCustomJavascriptCodeConfiguredToRunOnDepositModal(result.value![0]!, '/portfolio')).toBe(true)
     expect(isCustomJavascriptCodeConfiguredToRunOnPathname(result.value![0]!, '/portfolio')).toBe(false)
     expect(isCustomJavascriptCodeConfiguredToRunOnDepositModal(result.value![0]!, '/other-page')).toBe(true)
+    expect(JSON.parse(result.valueJson)).toEqual(result.value)
+  })
+
+  it('runs a Deposit-only config on every page and keeps it modal-only after serialization', () => {
+    const result = validateCustomJavascriptCodesJson(
+      JSON.stringify([
+        {
+          name: 'Deposit chat',
+          snippet: 'window.chat = true',
+          runOn: ['deposit'],
+        },
+      ]),
+      'Custom javascript code',
+    )
+
+    expect(result.value).toEqual([{ name: 'Deposit chat', snippet: 'window.chat = true', runOn: ['deposit'] }])
+    expect(isCustomJavascriptCodeConfiguredToRunOnDepositModal(result.value![0]!, '/')).toBe(true)
+    expect(isCustomJavascriptCodeConfiguredToRunOnDepositModal(result.value![0]!, '/admin')).toBe(true)
+    expect(isCustomJavascriptCodeConfiguredToRunOnPathname(result.value![0]!, '/')).toBe(false)
+    expect(JSON.parse(result.valueJson)).toEqual(result.value)
   })
 
   it('rejects an invalid deposit-modal trigger setting', () => {
