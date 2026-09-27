@@ -10,6 +10,9 @@ import { useMemo } from 'react'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { POLYGON_USDC_TOKEN_ADDRESS } from '@/lib/contracts'
 import { POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
+import { supportedEvmChainIds } from '@/lib/supported-networks'
+
+import KuestLiFiEthereumProvider from './KuestLiFiEthereumProvider'
 
 export default function WalletLiFiBridge({
   open,
@@ -24,7 +27,7 @@ export default function WalletLiFiBridge({
 }) {
   const { resolvedTheme } = useTheme()
   const { lifiIntegrator } = usePublicRuntimeConfig()
-  const providers = useMemo(() => [BitcoinProvider(), SolanaProvider(), TronProvider()], [])
+  const providers = useMemo(() => [KuestLiFiEthereumProvider, BitcoinProvider(), SolanaProvider(), TronProvider()], [])
   const config = useMemo<WidgetConfig>(
     () => ({
       integrator: lifiIntegrator,
@@ -40,8 +43,11 @@ export default function WalletLiFiBridge({
         chainType: ChainType.EVM,
       },
       providers,
+      walletConfig: {
+        usePartialWalletManagement: true,
+      },
       chains: {
-        from: { allow: [ChainId.BTC, ChainId.SOL, ChainId.TRN] },
+        from: { allow: [...supportedEvmChainIds, ChainId.BTC, ChainId.SOL, ChainId.TRN] },
         to: { allow: [POLYGON_MAINNET_CHAIN_ID] },
       },
       disabledUI: {

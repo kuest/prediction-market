@@ -46,7 +46,9 @@ function WalletFundMenu({
   const transferLogos = TRANSFER_PAYMENT_METHODS.map(
     (method) => `/images/deposit/transfer/${method}_${logoVariant}.png`,
   )
-  const bridgeLogos = ['bitcoin', 'solana', 'tron'].map((network) => `/images/deposit/bridge/${network}.svg`)
+  const bridgeLogos = ['bitcoin', 'solana', 'tron', 'ethereum'].map(
+    (network) => `/images/deposit/bridge/${network}.svg`,
+  )
   const walletLabel = formatWalletModalAddress(walletEoaAddress) ?? '----'
   const formattedWalletBalance = walletBalance && walletBalance !== '' ? walletBalance : '0.00'
 
@@ -174,7 +176,7 @@ function WalletFundMenu({
             </div>
             <div className="space-y-1">
               <p className="text-sm font-semibold">{t('Transfer from another network')}</p>
-              <p className="text-xs text-muted-foreground">{t('Bitcoin, Solana, or TRON to Polygon')}</p>
+              <p className="text-xs text-muted-foreground">{t('To USDC on Polygon')}</p>
             </div>
           </div>
           <div className="flex items-center -space-x-2 transition-all group-hover:-space-x-1">
