@@ -175,8 +175,8 @@ function WalletFundMenu({
               <ArrowLeftRightIcon className="size-6" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-semibold">{t('Transfer from another network')}</p>
-              <p className="text-xs text-muted-foreground">{t('To USDC on Polygon')}</p>
+              <p className="text-sm font-semibold">{t('Convert Crypto')}</p>
+              <p className="text-xs text-muted-foreground">{t('Other networks → Polygon USDC')}</p>
             </div>
           </div>
           <div className="flex items-center -space-x-2 transition-all group-hover:-space-x-1">
