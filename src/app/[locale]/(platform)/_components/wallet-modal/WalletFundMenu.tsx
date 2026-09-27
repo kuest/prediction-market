@@ -174,7 +174,7 @@ function WalletFundMenu({
             </div>
             <div className="space-y-1">
               <p className="text-sm font-semibold">{t('Transfer from another network')}</p>
-              <p className="text-xs text-muted-foreground">{t('Bitcoin, Solana, or Tron to Polygon')}</p>
+              <p className="text-xs text-muted-foreground">{t('Bitcoin, Solana, or TRON to Polygon')}</p>
             </div>
           </div>
           <div className="flex items-center -space-x-2 transition-all group-hover:-space-x-1">
