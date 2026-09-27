@@ -6,12 +6,17 @@ const mocks = hoisted(() => ({
   actions: mock(),
   createClient: mock(),
   decryptSecret: mock(),
+  ethereumProvider: mock(),
   getSettings: mock(),
 }))
 
 void mock.module('@lifi/sdk', () => ({
   actions: (...args: any[]) => mocks.actions(...args),
   createClient: (...args: any[]) => mocks.createClient(...args),
+}))
+
+void mock.module('@lifi/sdk-provider-ethereum', () => ({
+  EthereumProvider: (...args: any[]) => mocks.ethereumProvider(...args),
 }))
 
 void mock.module('@/lib/db/queries/settings', () => ({
@@ -29,9 +34,11 @@ describe('getLiFiServerActions', () => {
     mocks.actions.mockReset()
     mocks.createClient.mockReset()
     mocks.decryptSecret.mockReset()
+    mocks.ethereumProvider.mockReset()
     mocks.getSettings.mockReset()
 
     mocks.createClient.mockImplementation((config: unknown) => ({ config }))
+    mocks.ethereumProvider.mockReturnValue({ type: 'EVM' })
     mocks.actions.mockImplementation((client: unknown) => ({
       client,
       getQuote: mock(),
@@ -46,7 +53,10 @@ describe('getLiFiServerActions', () => {
 
     expect(lifi).toBe(mocks.actions.mock.results[0].value)
     expect(mocks.createClient).toHaveBeenCalledTimes(1)
-    expect(mocks.createClient).toHaveBeenCalledWith({ integrator: 'lifi-sdk' })
+    expect(mocks.createClient).toHaveBeenCalledWith({
+      integrator: 'lifi-sdk',
+      providers: [{ type: 'EVM' }],
+    })
   })
 
   it('keeps the configured client when a later settings read fails', async () => {
@@ -72,6 +82,7 @@ describe('getLiFiServerActions', () => {
     expect(mocks.createClient).toHaveBeenCalledWith({
       integrator: 'kuest-prod',
       apiKey: 'lifi-key',
+      providers: [{ type: 'EVM' }],
     })
   })
 })
