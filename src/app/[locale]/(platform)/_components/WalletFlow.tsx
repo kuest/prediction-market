@@ -1,6 +1,7 @@
 'use client'
 
 import { useExtracted } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isAddress } from 'viem'
 import { useSignTypedData } from 'wagmi'
@@ -32,7 +33,7 @@ import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
 import { buildSendErc20Call } from '@/lib/wallet/transactions'
 
-type DepositView = 'fund' | 'receive' | 'wallets' | 'bridge' | 'amount' | 'confirm' | 'success'
+type DepositView = 'fund' | 'receive' | 'wallets' | 'amount' | 'confirm' | 'success'
 
 interface WalletFlowProps {
   depositOpen: boolean
@@ -58,6 +59,11 @@ interface WalletSendMessages {
 }
 
 const MELD_CHECKOUT_POPUP_REFERENCE_TTL_MS = 24 * 60 * 60 * 1_000
+
+const WalletLiFiBridge = dynamic(() => import('@/app/[locale]/(platform)/_components/wallet-modal/WalletLiFiBridge'), {
+  ssr: false,
+  loading: () => null,
+})
 
 interface MeldCheckoutPopupReference {
   popup: Window
@@ -263,6 +269,7 @@ export function WalletFlow({
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
   const { open: openAppKit } = useAppKit()
   const { depositView, setDepositView, handleDepositModalChange } = useDepositViewState(onDepositOpenChange)
+  const [isLiFiBridgeOpen, setIsLiFiBridgeOpen] = useState(false)
   const meldCheckoutPopupsRef = useRef(new Map<string, MeldCheckoutPopupReference>())
   const meldCheckoutPollStopsRef = useRef(new Map<string, () => void>())
   const {
@@ -284,6 +291,17 @@ export function WalletFlow({
   const site = useSiteIdentity()
   const connectedWalletAddress = user?.address ?? null
   const { openTradeRequirements } = useTradingOnboarding()
+
+  const handleOpenLiFiBridge = useCallback(() => {
+    handleDepositModalChange(false)
+    setIsLiFiBridgeOpen(true)
+  }, [handleDepositModalChange])
+
+  const handleReturnToDeposit = useCallback(() => {
+    setDepositView('fund')
+    setIsLiFiBridgeOpen(false)
+    handleDepositModalChange(true)
+  }, [handleDepositModalChange, setDepositView])
 
   const walletSendMessages = useMemo<WalletSendMessages>(
     () => ({
@@ -526,8 +544,9 @@ export function WalletFlow({
   return (
     <>
       <WalletDepositModal
-        open={depositOpen}
+        open={depositOpen && !isLiFiBridgeOpen}
         onOpenChange={handleDepositModalChange}
+        onBridge={handleOpenLiFiBridge}
         isMobile={isMobile}
         walletAddress={depositWalletAddress}
         walletEoaAddress={user?.address ?? null}
@@ -542,6 +561,14 @@ export function WalletFlow({
         walletBalance={formattedConnectedWalletUsdBalance}
         isBalanceLoading={isLoadingConnectedWalletUsdBalance}
       />
+      {depositWalletAddress && isLiFiBridgeOpen && (
+        <WalletLiFiBridge
+          open
+          onClose={handleReturnToDeposit}
+          destinationAddress={depositWalletAddress}
+          siteName={site.name}
+        />
+      )}
       <WalletWithdrawModal
         open={withdrawOpen}
         onOpenChange={handleWithdrawModalChange}

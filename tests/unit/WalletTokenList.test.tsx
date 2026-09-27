@@ -24,7 +24,6 @@ const cachedItems = [
     icon: '/images/usdc.png',
     balance: '10.00',
     usd: '10.00',
-    hasUsdValue: true,
     disabled: false,
   },
 ]
@@ -71,36 +70,5 @@ describe('walletTokenList', () => {
 
     expect(screen.getByText('Could not load wallet balances. Please try again.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled()
-  })
-
-  it('exposes the bridge action for another network', () => {
-    const onConnectAnotherNetwork = mock()
-
-    renderWalletTokenList({ onConnectAnotherNetwork })
-
-    const bridgeButton = screen.getByRole('button', { name: /Bridge from another network/ })
-    fireEvent.click(bridgeButton)
-
-    expect(onConnectAnotherNetwork).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps a native token selectable when its USD price is unavailable', () => {
-    renderWalletTokenList({
-      items: [
-        {
-          ...cachedItems[0],
-          id: '137:pol',
-          symbol: 'POL',
-          balance: '1.50',
-          usd: '—',
-          hasUsdValue: false,
-        },
-      ],
-      selectedId: '137:pol',
-    })
-
-    expect(screen.getByText('1.50 POL')).toBeInTheDocument()
-    expect(screen.getByText('—')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Continue' })).not.toBeDisabled()
   })
 })
