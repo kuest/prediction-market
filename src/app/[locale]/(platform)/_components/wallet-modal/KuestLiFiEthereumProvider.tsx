@@ -17,11 +17,11 @@ export default function KuestLiFiEthereumProvider({ children }: PropsWithChildre
   const connectors = useConnectors()
   const [widgetDisconnectedAccount, setWidgetDisconnectedAccount] = useState<string | null>(null)
   const normalizedAccountAddress = account.address?.toLowerCase() ?? null
-  const isWidgetConnected =
-    !isEmbeddedWallet &&
-    account.isConnected &&
-    Boolean(account.address) &&
-    widgetDisconnectedAccount !== normalizedAccountAddress
+  const isWidgetAccountExplicitlyDisconnected =
+    widgetDisconnectedAccount !== null &&
+    (normalizedAccountAddress === null || normalizedAccountAddress === widgetDisconnectedAccount)
+  const canExposeWagmiState = !isEmbeddedWallet && !isWidgetAccountExplicitlyDisconnected
+  const isWidgetConnected = canExposeWagmiState && account.isConnected && Boolean(account.address)
 
   const activeConnector = useMemo(
     () =>
@@ -92,18 +92,18 @@ export default function KuestLiFiEthereumProvider({ children }: PropsWithChildre
   const installedWallets = useMemo(() => (activeConnector ? [activeConnector] : []), [activeConnector])
   const widgetAccount = useMemo<Account>(
     () => ({
-      address: isWidgetConnected ? account.address : undefined,
-      addresses: isWidgetConnected ? account.addresses : undefined,
-      chainId: isWidgetConnected ? account.chainId : undefined,
+      address: canExposeWagmiState ? account.address : undefined,
+      addresses: canExposeWagmiState ? account.addresses : undefined,
+      chainId: canExposeWagmiState ? account.chainId : undefined,
       chainType: ChainType.EVM,
-      connector: isWidgetConnected ? activeConnector : undefined,
+      connector: canExposeWagmiState ? activeConnector : undefined,
       isConnected: isWidgetConnected,
-      isConnecting: isWidgetConnected ? account.isConnecting : false,
-      isDisconnected: !isWidgetConnected,
-      isReconnecting: isWidgetConnected && account.isReconnecting,
-      status: isWidgetConnected ? account.status : 'disconnected',
+      isConnecting: canExposeWagmiState ? account.isConnecting : false,
+      isDisconnected: canExposeWagmiState ? account.isDisconnected : true,
+      isReconnecting: canExposeWagmiState ? account.isReconnecting : false,
+      status: canExposeWagmiState ? account.status : 'disconnected',
     }),
-    [account, activeConnector, isWidgetConnected],
+    [account, activeConnector, canExposeWagmiState, isWidgetConnected],
   )
 
   const handleConnect = useCallback(
