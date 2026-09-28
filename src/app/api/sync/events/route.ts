@@ -39,6 +39,7 @@ import {
   tryAcquireSyncLock,
   updateSyncStatus,
 } from '@/lib/sync/cron-route'
+import { triggerTranslationEnqueue } from '@/lib/translations/trigger-enqueue'
 
 export const maxDuration = 300
 
@@ -51,6 +52,7 @@ const INITIAL_MARKET_CURSOR_PREFIX = 'initial-market-sync:'
 const EXPIRED_MARKET_GRACE_MS = 24 * 60 * 60 * 1000
 const SYNC_HARD_DEADLINE_MS = 285_000
 const SYNC_FINALIZATION_RESERVE_MS = 10_000
+const TRANSLATION_TRIGGER_RESERVE_MS = 30_000
 const MISSING_IMAGE_REPAIR_MAX_ITEMS = 6
 const MISSING_IMAGE_REPAIR_MARKET_MAX_ITEMS = 3
 const MISSING_IMAGE_REPAIR_SCAN_LIMIT = 30
@@ -199,6 +201,7 @@ interface ProcessMarketResult {
   eventIdsForCacheInvalidation: string[]
   seriesSlugsForCacheInvalidation: string[]
   changed: boolean
+  translationSourceChanged: boolean
   listAffectingChange: boolean
   urlSetChanged: boolean
   skippedExpired: boolean
@@ -207,6 +210,7 @@ interface ProcessMarketResult {
 interface ProcessEventResult {
   eventId: string
   eventChanged: boolean
+  translationSourceChanged: boolean
   seriesSlugsForCacheInvalidation: string[]
   listAffectingChange: boolean
   urlSetChanged: boolean
@@ -531,6 +535,7 @@ async function syncMarkets(
   let processedCount = 0
   let skippedCreatorCount = 0
   let skippedExpiredCount = 0
+  let translationSourceChanged = false
   let initialScanExhausted = false
   const errors: { conditionId: string; error: string }[] = []
   let timeLimitReached = false
@@ -603,6 +608,7 @@ async function syncMarkets(
           console.log(`⌛ Skipped expired market: ${condition.id}`)
           continue
         }
+        translationSourceChanged ||= processResult.translationSourceChanged
         if (processResult.eventIdForStatusUpdate && processResult.changed) {
           eventIdsNeedingStatusUpdate.add(processResult.eventIdForStatusUpdate)
         }
@@ -717,6 +723,14 @@ async function syncMarkets(
   if (initialCreationTimestamp != null && initialScanExhausted && cursor) {
     await updatePnLCursor(cursor, null)
     console.log('✅ Initial PnL sync completed; future runs will use the incremental cursor')
+  }
+
+  // Keep room for this sync request to finish; the discovery cron covers skipped triggers.
+  if (
+    translationSourceChanged &&
+    Date.now() - requestStartedAt < SYNC_HARD_DEADLINE_MS - TRANSLATION_TRIGGER_RESERVE_MS
+  ) {
+    await triggerTranslationEnqueue()
   }
 
   return {
@@ -894,6 +908,7 @@ async function processMarket(
       eventIdsForCacheInvalidation: [],
       seriesSlugsForCacheInvalidation: [],
       changed: false,
+      translationSourceChanged: false,
       listAffectingChange: false,
       urlSetChanged: false,
       skippedExpired: true,
@@ -941,6 +956,7 @@ async function processMarket(
     eventIdsForCacheInvalidation: changed ? Array.from(eventIdsForCacheInvalidation) : [],
     seriesSlugsForCacheInvalidation: changed ? eventResult.seriesSlugsForCacheInvalidation : [],
     changed,
+    translationSourceChanged: eventResult.translationSourceChanged,
     listAffectingChange: eventResult.listAffectingChange || hiddenChanged,
     urlSetChanged: eventResult.urlSetChanged || marketResult.urlSetChanged,
     skippedExpired: false,
@@ -1328,6 +1344,7 @@ async function processEvent(
   if (existingEvent) {
     const updatePayload: Record<string, any> = {}
     let eventChanged = false
+    let translationSourceChanged = false
     let listAffectingChange = false
 
     const incomingEventIconReference = normalizeAssetReference(eventData.icon)
@@ -1406,6 +1423,7 @@ async function processEvent(
     if (existingEvent.title !== normalizedEventTitle) {
       updatePayload.title = normalizedEventTitle
       eventChanged = true
+      translationSourceChanged = true
       listAffectingChange = true
     }
 
@@ -1451,6 +1469,7 @@ async function processEvent(
       const normalizedTagsChanged = await processNormalizedTags(existingEvent.id, normalizedEventTags)
       if (normalizedTagsChanged) {
         eventChanged = true
+        translationSourceChanged = true
         listAffectingChange = true
 
         for (const slug of normalizedEventTags.keys()) {
@@ -1496,6 +1515,7 @@ async function processEvent(
     return {
       eventId: existingEvent.id,
       eventChanged,
+      translationSourceChanged,
       seriesSlugsForCacheInvalidation: seriesSlugChanged
         ? getSeriesSlugsForCacheInvalidation(previousSeriesSlug, eventSeriesSlug)
         : [],
@@ -1595,6 +1615,7 @@ async function processEvent(
   return {
     eventId: newEvent.id,
     eventChanged: true,
+    translationSourceChanged: true,
     seriesSlugsForCacheInvalidation: getSeriesSlugsForCacheInvalidation(null, eventSeriesSlug),
     listAffectingChange: true,
     urlSetChanged: true,

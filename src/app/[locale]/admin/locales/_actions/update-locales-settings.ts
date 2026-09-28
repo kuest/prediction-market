@@ -10,11 +10,12 @@ import {
   serializeEnabledLocales,
   serializeLocaleOrder,
 } from '@/i18n/locale-settings'
-import { resolveSupportedLocale, SUPPORTED_LOCALES } from '@/i18n/locales'
+import { DEFAULT_LOCALE, resolveSupportedLocale, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { loadOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { UserRepository } from '@/lib/db/queries/user'
+import { triggerTranslationEnqueue } from '@/lib/translations/trigger-enqueue'
 
 export interface LocalesSettingsActionState {
   error: string | null
@@ -132,6 +133,13 @@ export async function updateLocalesSettingsAction(
 
   if (error) {
     return { error: DEFAULT_ERROR_MESSAGE }
+  }
+
+  if (
+    parsed.data.enabledLocales.some((enabledLocale) => enabledLocale !== DEFAULT_LOCALE) &&
+    (normalizedAutomaticTranslationsEnabled || normalizedRulesTranslationsEnabled)
+  ) {
+    await triggerTranslationEnqueue()
   }
 
   revalidatePath('/admin/locales')

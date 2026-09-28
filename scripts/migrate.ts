@@ -24,6 +24,7 @@ interface SyncCronOptions {
   siteUrl: string
   cronSecret: string
   timeoutMilliseconds?: number
+  runCondition?: string
 }
 
 interface MigrationRow {
@@ -86,6 +87,7 @@ function buildSyncCronSql({
   siteUrl,
   cronSecret,
   timeoutMilliseconds = 20000,
+  runCondition,
 }: SyncCronOptions): string {
   const endpointUrl = joinSiteUrlPath(siteUrl, endpointPath)
   const escapedJobName = escapeSqlLiteral(jobName)
@@ -101,6 +103,8 @@ function buildSyncCronSql({
     }),
   )
 
+  const runClause = runCondition ? `WHERE (${runCondition})` : ''
+
   return `
   DO $$
   DECLARE
@@ -110,7 +114,7 @@ function buildSyncCronSql({
         url := '${escapedEndpointUrl}',
         headers := '${escapedHeaders}',
         timeout_milliseconds := ${normalizedTimeout}
-      );
+      ) ${runClause};
     $c$;
   BEGIN
     SELECT jobid INTO job_id FROM cron.job WHERE jobname = '${escapedJobName}';
@@ -335,6 +339,20 @@ async function createSyncVolumeCron(sql: ReservedSql, siteUrl: string, cronSecre
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 10000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.markets AS market
+      LEFT JOIN public.jobs AS job
+        ON job.job_type = 'sync_market_volume'
+        AND job.dedupe_key = market.condition_id
+      WHERE market.is_active IS TRUE
+        AND market.is_resolved IS FALSE
+        AND (
+          job.id IS NULL
+          OR (job.status = 'completed' AND job.updated_at < NOW() - interval '10 minutes')
+          OR (job.status = 'failed' AND job.updated_at < NOW() - interval '1 hour')
+        )
+    )`,
   })
 
   await createSyncCron(sql, {
@@ -344,6 +362,15 @@ async function createSyncVolumeCron(sql: ReservedSql, siteUrl: string, cronSecre
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 30000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.jobs AS job
+      WHERE job.job_type = 'sync_market_volume'
+        AND (
+          (job.status = 'pending' AND job.available_at <= NOW())
+          OR (job.status = 'processing' AND job.reserved_at <= NOW() - interval '2 minutes')
+        )
+    )`,
   })
 }
 
@@ -359,11 +386,66 @@ async function createSyncTranslationsCron(sql: ReservedSql, siteUrl: string, cro
 
   await createSyncCron(sql, {
     jobName: 'sync-translations',
-    schedule: '4,13,22,31,40,49,58 * * * *',
+    schedule: '* * * * *',
     endpointPath: '/api/sync/translations',
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 60000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.jobs AS job
+      WHERE job.job_type IN (
+        'translate_event_title',
+        'translate_event_rules',
+        'translate_tag_name'
+      )
+        AND EXISTS (
+          SELECT 1
+          FROM public.settings AS ai_setting
+          WHERE ai_setting."group" = 'ai'
+            AND ai_setting.key = 'openrouter_api_key'
+            AND btrim(ai_setting.value) <> ''
+        )
+        AND (
+          (job.status = 'pending' AND job.available_at <= NOW())
+          OR (
+            job.status = 'processing'
+            AND (job.reserved_at IS NULL OR job.reserved_at <= NOW() - interval '10 minutes')
+          )
+        )
+        AND EXISTS (
+          SELECT 1
+          FROM public.settings AS locale_setting
+          WHERE locale_setting."group" = 'i18n'
+            AND locale_setting.key = 'enabled_locales'
+            AND strpos(
+              locale_setting.value,
+              '"' || split_part(job.dedupe_key, ':', 2) || '"'
+            ) > 0
+        )
+        AND (
+          (
+            job.job_type IN ('translate_event_title', 'translate_tag_name')
+            AND COALESCE((
+              SELECT lower(btrim(setting.value))
+              FROM public.settings AS setting
+              WHERE setting."group" = 'i18n'
+                AND setting.key = 'automatic_translations_enabled'
+              LIMIT 1
+            ), 'true') NOT IN ('false', '0', 'no', 'off', 'disabled')
+          )
+          OR (
+            job.job_type = 'translate_event_rules'
+            AND COALESCE((
+              SELECT lower(btrim(setting.value))
+              FROM public.settings AS setting
+              WHERE setting."group" = 'i18n'
+                AND setting.key = 'rules_translations_enabled'
+              LIMIT 1
+            ), 'false') IN ('true', '1', 'yes', 'on', 'enabled')
+          )
+        )
+    )`,
   })
 }
 
@@ -374,6 +456,14 @@ async function createSyncResolutionCron(sql: ReservedSql, siteUrl: string, cronS
     endpointPath: '/api/sync/resolution',
     siteUrl,
     cronSecret,
+    runCondition: `EXISTS (SELECT 1 FROM public.markets)
+      OR EXISTS (
+        SELECT 1
+        FROM public.outcomes AS outcome
+        JOIN public.conditions AS resolution_condition ON resolution_condition.id = outcome.condition_id
+        WHERE outcome.payout_value IS NULL
+          AND resolution_condition.resolution_price IS NOT NULL
+      )`,
   })
 }
 
@@ -385,6 +475,20 @@ async function createSyncSportsScoresCron(sql: ReservedSql, siteUrl: string, cro
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 30000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.event_sports AS sport
+      WHERE sport.sports_source_provider IS NOT NULL
+        AND (sport.sports_source_event_id IS NOT NULL OR sport.sports_source_game_id IS NOT NULL)
+        AND (sport.sports_ended IS FALSE OR sport.sports_ended IS NULL)
+        AND (
+          sport.sports_live IS TRUE
+          OR (
+            sport.sports_start_time >= NOW() - interval '12 hours'
+            AND sport.sports_start_time <= NOW() + interval '15 minutes'
+          )
+        )
+    )`,
   })
 }
 
