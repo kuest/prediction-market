@@ -1,17 +1,11 @@
 'use client'
 
+import { CircleCheck, LoaderCircle } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
+import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useRouter } from '@/i18n/navigation'
 import {
   isMeldCheckoutId,
@@ -22,6 +16,7 @@ import {
 export function MeldReturnRelay({ checkoutId }: { checkoutId: string | null }) {
   const t = useExtracted()
   const router = useRouter()
+  const site = useSiteIdentity()
   const [showCloseFallback, setShowCloseFallback] = useState(false)
   const isValidCheckoutId = isMeldCheckoutId(checkoutId)
 
@@ -77,27 +72,37 @@ export function MeldReturnRelay({ checkoutId }: { checkoutId: string | null }) {
     }
   }, [checkoutId, isValidCheckoutId, router])
 
-  if (!showCloseFallback) {
-    return null
+  if (showCloseFallback) {
+    return (
+      <main className="fixed inset-0 flex items-center justify-center bg-background px-6 py-10">
+        <div className="flex w-full max-w-sm flex-col items-center gap-5 text-center">
+          <div className="flex size-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <CircleCheck aria-hidden="true" className="size-8" />
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <p className="text-xs font-medium tracking-wide text-muted-foreground">Meld</p>
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {t(
+                'Your payment status is open in the original tab. Close this tab manually if it stays open, or go to the home page.',
+              )}
+            </p>
+          </div>
+          <Button className="w-full" onClick={() => router.replace('/')}>
+            {t('Go to home')}
+          </Button>
+        </div>
+      </main>
+    )
   }
 
   return (
-    <Dialog open onOpenChange={(open) => !open && router.replace('/')}>
-      <DialogContent className="max-w-md" closeLabel={t('Close')}>
-        <DialogHeader className="text-center sm:text-center">
-          <DialogTitle>Meld</DialogTitle>
-          <DialogDescription>
-            {t(
-              'Your payment status is open in the original tab. Close this tab manually if it stays open, or go to the home page.',
-            )}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="sm:justify-center">
-          <Button onClick={() => router.replace('/')} variant="outline">
-            {t('Go to home')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <main className="fixed inset-0 flex items-center justify-center bg-background px-6 py-10">
+      <div className="flex flex-col items-center gap-4 text-center" role="status" aria-live="polite">
+        <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <LoaderCircle aria-hidden="true" className="size-8 animate-spin" />
+        </div>
+        <p className="text-sm text-muted-foreground">{t('Returning to {siteName}…', { siteName: site.name })}</p>
+      </div>
+    </main>
   )
 }

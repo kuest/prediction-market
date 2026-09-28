@@ -10,6 +10,7 @@ import type { DepositWalletStatus } from '@/types'
 
 import { WalletDepositModal, WalletWithdrawModal } from '@/app/[locale]/(platform)/_components/WalletModal'
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
+import { MeldReturnStatus } from '@/app/[locale]/payments/meld/return/MeldReturnStatus'
 import { toast } from '@/components/ui/toast'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
@@ -17,7 +18,6 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { useLiFiWalletUsdBalance } from '@/hooks/useLiFiWalletUsdBalance'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
-import { useRouter } from '@/i18n/navigation'
 import { MAX_AMOUNT_INPUT } from '@/lib/amount-input'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
 import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
@@ -264,12 +264,13 @@ export function WalletFlow({
 }: WalletFlowProps) {
   const isMobile = useIsMobile()
   const t = useExtracted()
-  const router = useRouter()
   const { signTypedDataAsync } = useSignTypedData()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
   const { open: openAppKit } = useAppKit()
   const { depositView, setDepositView, handleDepositModalChange } = useDepositViewState(onDepositOpenChange)
   const [isLiFiBridgeOpen, setIsLiFiBridgeOpen] = useState(false)
+  const [returnedMeldCheckoutId, setReturnedMeldCheckoutId] = useState<string | null>(null)
+  const [isMeldReturnStatusOpen, setIsMeldReturnStatusOpen] = useState(false)
   const meldCheckoutPopupsRef = useRef(new Map<string, MeldCheckoutPopupReference>())
   const meldCheckoutPollStopsRef = useRef(new Map<string, () => void>())
   const {
@@ -302,6 +303,20 @@ export function WalletFlow({
     setIsLiFiBridgeOpen(false)
     handleDepositModalChange(true)
   }, [handleDepositModalChange, setDepositView])
+
+  const handleCloseMeldReturnStatus = useCallback(() => {
+    setIsMeldReturnStatusOpen(false)
+    if (!returnedMeldCheckoutId) {
+      return
+    }
+    try {
+      if (window.localStorage.getItem('kuest:pending-meld-checkout') !== returnedMeldCheckoutId) {
+        setReturnedMeldCheckoutId((current) => (current === returnedMeldCheckoutId ? null : current))
+      }
+    } catch {
+      // Keep the local checkout ID so background polling can continue without storage.
+    }
+  }, [returnedMeldCheckoutId])
 
   const walletSendMessages = useMemo<WalletSendMessages>(
     () => ({
@@ -383,7 +398,6 @@ export function WalletFlow({
       }
 
       meldCheckoutPopupsRef.current.delete(checkoutId)
-      meldCheckoutPollStopsRef.current.get(checkoutId)?.()
       channel.postMessage({ type: 'ack', checkoutId })
       const popup = popupReference.popup
       if (!popup.closed) {
@@ -393,7 +407,8 @@ export function WalletFlow({
           // The return window has its own close attempt and a fallback screen.
         }
       }
-      router.replace({ pathname: '/', query: { meldCheckoutId: checkoutId } })
+      setReturnedMeldCheckoutId(checkoutId)
+      setIsMeldReturnStatusOpen(true)
     }
 
     channel.addEventListener('message', handleReturn)
@@ -402,7 +417,7 @@ export function WalletFlow({
       channel.removeEventListener('message', handleReturn)
       channel.close()
     }
-  }, [router])
+  }, [])
 
   const handleUseConnectedWallet = useUseConnectedWalletHandler({ connectedWalletAddress, setWalletSendTo })
   const handleSetMaxAmount = useSetMaxAmountHandler({ balanceRaw: balance.raw, setWalletSendAmount })
@@ -451,6 +466,7 @@ export function WalletFlow({
             }
             if (response.status === 404) {
               clearPendingCheckout(checkoutId)
+              setReturnedMeldCheckoutId((current) => (current === checkoutId ? null : current))
               break
             }
             if (response.ok) {
@@ -464,11 +480,13 @@ export function WalletFlow({
                   : null
               if (status === 'SETTLED') {
                 clearPendingCheckout(checkoutId)
-                await refetchBalance()
+                void refetchBalance()
+                setReturnedMeldCheckoutId((current) => (current === checkoutId ? null : current))
                 break
               }
               if (status && ['FAILED', 'DECLINED', 'CANCELLED', 'REFUNDED', 'AUTHORIZATION_EXPIRED'].includes(status)) {
                 clearPendingCheckout(checkoutId)
+                setReturnedMeldCheckoutId((current) => (current === checkoutId ? null : current))
                 break
               }
             }
@@ -506,6 +524,9 @@ export function WalletFlow({
     }
 
     function readPendingCheckout() {
+      if (isMeldReturnStatusOpen) {
+        return
+      }
       try {
         const checkoutId = window.localStorage.getItem('kuest:pending-meld-checkout')
         if (checkoutId) {
@@ -517,12 +538,17 @@ export function WalletFlow({
     }
     function onCreated(event: Event) {
       const checkoutId = (event as CustomEvent<unknown>).detail
-      if (typeof checkoutId === 'string') {
+      if (!isMeldReturnStatusOpen && typeof checkoutId === 'string') {
         void pollCheckout(checkoutId)
       }
     }
 
-    readPendingCheckout()
+    if (!isMeldReturnStatusOpen) {
+      readPendingCheckout()
+      if (returnedMeldCheckoutId) {
+        void pollCheckout(returnedMeldCheckoutId)
+      }
+    }
     window.addEventListener('storage', readPendingCheckout)
     window.addEventListener('kuest:meld-checkout-created', onCreated)
     return () => {
@@ -539,7 +565,7 @@ export function WalletFlow({
       }
       pollStops.clear()
     }
-  }, [refetchBalance])
+  }, [isMeldReturnStatusOpen, refetchBalance, returnedMeldCheckoutId])
 
   return (
     <>
@@ -567,6 +593,13 @@ export function WalletFlow({
           onClose={handleReturnToDeposit}
           destinationAddress={depositWalletAddress}
           siteName={site.name}
+        />
+      )}
+      {returnedMeldCheckoutId && isMeldReturnStatusOpen && isMeldCheckoutId(returnedMeldCheckoutId) && (
+        <MeldReturnStatus
+          checkoutId={returnedMeldCheckoutId}
+          open={isMeldReturnStatusOpen}
+          onClose={handleCloseMeldReturnStatus}
         />
       )}
       <WalletWithdrawModal

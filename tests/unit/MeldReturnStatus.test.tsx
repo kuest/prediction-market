@@ -7,7 +7,6 @@ import { advanceTimersByTimeAsync, useFakeTimers, useRealTimers } from '../bun-t
 
 const mocks = {
   refetchBalance: mock(),
-  replace: mock(),
 }
 const checkoutId = '123e4567-e89b-12d3-a456-426614174000'
 const pendingCheckoutKey = 'kuest:pending-meld-checkout'
@@ -23,16 +22,11 @@ void mock.module('@/hooks/useBalance', () => ({
   useBalance: () => ({ refetchBalance: mocks.refetchBalance }),
 }))
 
-void mock.module('@/i18n/navigation', () => ({
-  useRouter: () => ({ replace: mocks.replace }),
-}))
-
 afterEach(() => {
   useRealTimers()
   jest.restoreAllMocks()
   window.localStorage.removeItem(pendingCheckoutKey)
   mocks.refetchBalance.mockReset()
-  mocks.replace.mockReset()
 })
 
 describe('Meld return status polling', () => {
@@ -40,7 +34,7 @@ describe('Meld return status polling', () => {
     window.localStorage.setItem(pendingCheckoutKey, checkoutId)
     const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))
 
-    render(<MeldReturnStatus checkoutId={checkoutId} />)
+    render(<MeldReturnStatus checkoutId={checkoutId} open onClose={() => undefined} />)
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
     expect(window.localStorage.getItem(pendingCheckoutKey)).toBeNull()
@@ -51,7 +45,7 @@ describe('Meld return status polling', () => {
     const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 401 }))
     useFakeTimers()
 
-    render(<MeldReturnStatus checkoutId={checkoutId} />)
+    render(<MeldReturnStatus checkoutId={checkoutId} open onClose={() => undefined} />)
 
     await act(async () => {
       await Promise.resolve()
