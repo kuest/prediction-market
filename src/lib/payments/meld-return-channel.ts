@@ -71,6 +71,37 @@ function writeStoredPendingCheckouts(records: MeldPendingCheckout[]): boolean {
   }
 }
 
+function recoverPendingCheckoutsFromMemory(now: number): StoredPendingCheckouts {
+  const recordsById = new Map<string, MeldPendingCheckout>()
+  const expiredCheckoutIds = new Set<string>()
+
+  for (const [checkoutId, record] of pendingCheckouts) {
+    if (!isPendingCheckout(record) || record.expiresAt <= now) {
+      pendingCheckouts.delete(checkoutId)
+      memoryOnlyCheckouts.delete(checkoutId)
+      unauthorizedCheckouts.delete(checkoutId)
+      if (isPendingCheckout(record)) {
+        expiredCheckoutIds.add(checkoutId)
+      }
+      continue
+    }
+    recordsById.set(record.checkoutId, record)
+  }
+
+  const records = [...recordsById.values()]
+  if (writeStoredPendingCheckouts(records)) {
+    for (const record of records) {
+      memoryOnlyCheckouts.delete(record.checkoutId)
+    }
+  } else {
+    for (const record of records) {
+      memoryOnlyCheckouts.add(record.checkoutId)
+    }
+  }
+
+  return { available: true, records, expiredCheckoutIds }
+}
+
 function readStoredPendingCheckouts(now: number): StoredPendingCheckouts {
   if (typeof window === 'undefined') {
     return { available: false, records: [], expiredCheckoutIds: new Set() }
@@ -102,12 +133,10 @@ function readStoredPendingCheckouts(now: number): StoredPendingCheckouts {
         storedValues = [parsed]
         needsRewrite = true
       } else {
-        writeStoredPendingCheckouts([])
-        return { available: true, records: [], expiredCheckoutIds: new Set() }
+        return recoverPendingCheckoutsFromMemory(now)
       }
     } catch {
-      writeStoredPendingCheckouts([])
-      return { available: true, records: [], expiredCheckoutIds: new Set() }
+      return recoverPendingCheckoutsFromMemory(now)
     }
   }
 

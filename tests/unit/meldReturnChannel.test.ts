@@ -122,4 +122,16 @@ describe('Meld pending checkout storage', () => {
       setItemSpy.mockRestore()
     }
   })
+
+  it('repairs malformed storage from valid pending checkouts in memory', () => {
+    persistMeldPendingCheckout(checkoutIdA)
+    const validRecords = JSON.parse(window.localStorage.getItem(storageKey) ?? 'null') as {
+      checkoutId: string
+      expiresAt: number
+    }[]
+    window.localStorage.setItem(storageKey, '{malformed-json')
+
+    expect(listMeldPendingCheckouts().map(({ checkoutId }) => checkoutId)).toEqual([checkoutIdA])
+    expect(JSON.parse(window.localStorage.getItem(storageKey) ?? 'null')).toEqual(validRecords)
+  })
 })
