@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
+import { clearMeldPendingCheckout, MELD_CHECKOUT_PENDING_TTL_MS } from '@/lib/payments/meld-return-channel'
 import { startMeldCheckout } from '@/lib/payments/start-meld-checkout'
 
 const checkoutId = '123e4567-e89b-12d3-a456-426614174000'
 const launchUrl = `https://payments.kuest.com/launch/${'L'.repeat(43)}`
 
 afterEach(() => {
+  clearMeldPendingCheckout(checkoutId)
   try {
     window.localStorage.removeItem('kuest:pending-meld-checkout')
   } catch {
@@ -38,7 +40,13 @@ describe('startMeldCheckout', () => {
     expect(replace).toHaveBeenCalledWith(launchUrl)
     expect(navigate).not.toHaveBeenCalled()
     expect(close).not.toHaveBeenCalled()
-    expect(window.localStorage.getItem('kuest:pending-meld-checkout')).toBe(checkoutId)
+    const pendingCheckout = JSON.parse(window.localStorage.getItem('kuest:pending-meld-checkout') ?? 'null') as {
+      checkoutId: string
+      expiresAt: number
+    }
+    expect(pendingCheckout.checkoutId).toBe(checkoutId)
+    expect(pendingCheckout.expiresAt).toBeGreaterThan(Date.now())
+    expect(pendingCheckout.expiresAt).toBeLessThanOrEqual(Date.now() + MELD_CHECKOUT_PENDING_TTL_MS)
     expect(onCheckoutCreated).toHaveBeenCalledWith(checkoutId)
     expect(onCheckoutCreated.mock.invocationCallOrder[0]).toBeLessThan(replace.mock.invocationCallOrder[0])
   })

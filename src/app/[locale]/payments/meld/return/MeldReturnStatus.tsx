@@ -14,7 +14,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useBalance } from '@/hooks/useBalance'
-import { isMeldCheckoutId } from '@/lib/payments/meld-return-channel'
+import {
+  clearMeldPendingCheckout,
+  ensureMeldPendingCheckout,
+  getMeldCheckoutPollDelay,
+  isMeldCheckoutId,
+  isMeldCheckoutUnauthorized,
+  markMeldCheckoutUnauthorized,
+} from '@/lib/payments/meld-return-channel'
 
 const TERMINAL_STATUSES = new Set(['SETTLED', 'FAILED', 'DECLINED', 'CANCELLED', 'REFUNDED', 'AUTHORIZATION_EXPIRED'])
 
@@ -31,10 +38,12 @@ export function MeldReturnStatus({
   checkoutId,
   open,
   onClose,
+  onExpired,
 }: {
   checkoutId: string
   open: boolean
   onClose: () => void
+  onExpired?: (checkoutId: string) => void
 }) {
   const t = useExtracted()
   const { refetchBalance } = useBalance()
@@ -44,34 +53,57 @@ export function MeldReturnStatus({
 
   const handleClose = useCallback(() => {
     onClose()
-    void refetchBalance()
-  }, [onClose, refetchBalance])
+  }, [onClose])
 
   useEffect(() => {
     if (!open || !hasValidCheckoutId) {
       return
     }
 
+    if (isMeldCheckoutUnauthorized(checkoutId)) {
+      /* oxlint-disable react/set-state-in-effect */
+      setHasError(true)
+      /* oxlint-enable react/set-state-in-effect */
+      return
+    }
+
+    const pendingCheckout = ensureMeldPendingCheckout(checkoutId)
+    if (!pendingCheckout) {
+      /* oxlint-disable react/set-state-in-effect */
+      setHasError(true)
+      /* oxlint-enable react/set-state-in-effect */
+      onExpired?.(checkoutId)
+      return
+    }
+
+    const expiresAt = pendingCheckout.expiresAt
     const controller = new AbortController()
     let attempts = 0
     let timeout: ReturnType<typeof setTimeout> | undefined
 
-    function clearPendingCheckout() {
-      try {
-        if (window.localStorage.getItem('kuest:pending-meld-checkout') === checkoutId) {
-          window.localStorage.removeItem('kuest:pending-meld-checkout')
-        }
-      } catch {
-        // Storage is optional; status remains available from the current page.
-      }
+    function finishExpiredCheckout() {
+      clearMeldPendingCheckout(checkoutId)
+      setHasError(true)
+      onExpired?.(checkoutId)
     }
 
     function schedulePoll() {
+      const remainingMs = expiresAt - Date.now()
+      if (remainingMs <= 0) {
+        finishExpiredCheckout()
+        return
+      }
+      const delay = Math.min(getMeldCheckoutPollDelay(attempts), remainingMs)
       attempts += 1
-      timeout = setTimeout(() => void poll(), attempts <= 12 ? 10_000 : 30_000)
+      timeout = setTimeout(() => void poll(), delay)
     }
 
     async function poll() {
+      if (Date.now() >= expiresAt) {
+        finishExpiredCheckout()
+        return
+      }
+
       try {
         const response = await fetch(`/api/payments/meld/checkouts/${encodeURIComponent(checkoutId)}/status`, {
           cache: 'no-store',
@@ -81,11 +113,12 @@ export function MeldReturnStatus({
           return
         }
         if (response.status === 401) {
+          markMeldCheckoutUnauthorized(checkoutId)
           setHasError(true)
           return
         }
         if (response.status === 404) {
-          clearPendingCheckout()
+          clearMeldPendingCheckout(checkoutId)
           setHasError(true)
           return
         }
@@ -109,7 +142,7 @@ export function MeldReturnStatus({
         setStatus(result.status)
         setHasError(false)
         if (TERMINAL_STATUSES.has(result.status)) {
-          clearPendingCheckout()
+          clearMeldPendingCheckout(checkoutId)
         }
         if (result.status === 'SETTLED') {
           void refetchBalance()
@@ -132,7 +165,7 @@ export function MeldReturnStatus({
         clearTimeout(timeout)
       }
     }
-  }, [checkoutId, hasValidCheckoutId, open, refetchBalance])
+  }, [checkoutId, hasValidCheckoutId, onExpired, open, refetchBalance])
 
   if (!hasValidCheckoutId) {
     return null

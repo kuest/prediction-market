@@ -2,6 +2,7 @@ import { act, render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, jest, mock, spyOn } from 'bun:test'
 
 import { MeldReturnStatus } from '@/app/[locale]/payments/meld/return/MeldReturnStatus'
+import { clearMeldPendingCheckout } from '@/lib/payments/meld-return-channel'
 
 import { advanceTimersByTimeAsync, useFakeTimers, useRealTimers } from '../bun-test-helpers'
 
@@ -25,6 +26,7 @@ void mock.module('@/hooks/useBalance', () => ({
 afterEach(() => {
   useRealTimers()
   jest.restoreAllMocks()
+  clearMeldPendingCheckout(checkoutId)
   window.localStorage.removeItem(pendingCheckoutKey)
   mocks.refetchBalance.mockReset()
 })
@@ -58,6 +60,11 @@ describe('Meld return status polling', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(window.localStorage.getItem(pendingCheckoutKey)).toBe(checkoutId)
+    const pendingCheckout = JSON.parse(window.localStorage.getItem(pendingCheckoutKey) ?? 'null') as {
+      checkoutId: string
+      expiresAt: number
+    }
+    expect(pendingCheckout.checkoutId).toBe(checkoutId)
+    expect(pendingCheckout.expiresAt).toBeGreaterThan(Date.now())
   })
 })

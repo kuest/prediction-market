@@ -1,4 +1,9 @@
 import { isPaymentsLaunchUrl } from '@/lib/payments/launch-url'
+import {
+  isMeldCheckoutId,
+  persistMeldPendingCheckout,
+  resumeMeldCheckoutPolling,
+} from '@/lib/payments/meld-return-channel'
 
 interface MeldCheckoutPopup {
   closed: boolean
@@ -39,21 +44,15 @@ export async function startMeldCheckout(
     if (
       !response.ok ||
       !isRecord(result) ||
-      typeof result.checkoutId !== 'string' ||
-      !/^[0-9a-f-]{36}$/iu.test(result.checkoutId) ||
+      !isMeldCheckoutId(result.checkoutId) ||
       !isPaymentsLaunchUrl(result.launchUrl)
     ) {
       throw new Error('checkout_creation_failed')
     }
 
     onCheckoutCreated?.(result.checkoutId)
-
-    try {
-      window.localStorage.setItem('kuest:pending-meld-checkout', result.checkoutId)
-    } catch {
-      // The return page continues status polling if storage is unavailable.
-    }
-    window.dispatchEvent(new CustomEvent('kuest:meld-checkout-created', { detail: result.checkoutId }))
+    persistMeldPendingCheckout(result.checkoutId)
+    resumeMeldCheckoutPolling(result.checkoutId)
 
     if (popup && !popup.closed) {
       popup.location.replace(result.launchUrl)
