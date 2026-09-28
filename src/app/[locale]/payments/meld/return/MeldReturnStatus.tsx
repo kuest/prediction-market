@@ -120,6 +120,7 @@ export function MeldReturnStatus({
         if (response.status === 404) {
           clearMeldPendingCheckout(checkoutId)
           setHasError(true)
+          onExpired?.(checkoutId)
           return
         }
         if (!response.ok) {

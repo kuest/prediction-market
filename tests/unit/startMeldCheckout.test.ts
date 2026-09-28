@@ -40,13 +40,14 @@ describe('startMeldCheckout', () => {
     expect(replace).toHaveBeenCalledWith(launchUrl)
     expect(navigate).not.toHaveBeenCalled()
     expect(close).not.toHaveBeenCalled()
-    const pendingCheckout = JSON.parse(window.localStorage.getItem('kuest:pending-meld-checkout') ?? 'null') as {
+    const pendingCheckouts = JSON.parse(window.localStorage.getItem('kuest:pending-meld-checkout') ?? 'null') as {
       checkoutId: string
       expiresAt: number
-    }
-    expect(pendingCheckout.checkoutId).toBe(checkoutId)
-    expect(pendingCheckout.expiresAt).toBeGreaterThan(Date.now())
-    expect(pendingCheckout.expiresAt).toBeLessThanOrEqual(Date.now() + MELD_CHECKOUT_PENDING_TTL_MS)
+    }[]
+    const pendingCheckout = pendingCheckouts.find((checkout) => checkout.checkoutId === checkoutId)
+    expect(pendingCheckout).toMatchObject({ checkoutId })
+    expect(pendingCheckout?.expiresAt).toBeGreaterThan(Date.now())
+    expect(pendingCheckout?.expiresAt).toBeLessThanOrEqual(Date.now() + MELD_CHECKOUT_PENDING_TTL_MS)
     expect(onCheckoutCreated).toHaveBeenCalledWith(checkoutId)
     expect(onCheckoutCreated.mock.invocationCallOrder[0]).toBeLessThan(replace.mock.invocationCallOrder[0])
   })

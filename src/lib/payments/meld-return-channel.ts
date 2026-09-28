@@ -16,6 +16,7 @@ export interface MeldPendingCheckout {
 }
 
 const pendingCheckouts = new Map<string, MeldPendingCheckout>()
+const memoryOnlyCheckouts = new Set<string>()
 const unauthorizedCheckouts = new Set<string>()
 
 export function isMeldCheckoutId(value: unknown): value is string {
@@ -47,93 +48,161 @@ function isPendingCheckout(value: unknown): value is MeldPendingCheckout {
   )
 }
 
-function readStoredPendingCheckout(now: number): MeldPendingCheckout | null {
+interface StoredPendingCheckouts {
+  available: boolean
+  records: MeldPendingCheckout[]
+  expiredCheckoutIds: Set<string>
+}
+
+function writeStoredPendingCheckouts(records: MeldPendingCheckout[]): boolean {
   if (typeof window === 'undefined') {
-    return null
+    return false
+  }
+
+  try {
+    if (records.length === 0) {
+      window.localStorage.removeItem(MELD_PENDING_CHECKOUT_STORAGE_KEY)
+    } else {
+      window.localStorage.setItem(MELD_PENDING_CHECKOUT_STORAGE_KEY, JSON.stringify(records))
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function readStoredPendingCheckouts(now: number): StoredPendingCheckouts {
+  if (typeof window === 'undefined') {
+    return { available: false, records: [], expiredCheckoutIds: new Set() }
   }
 
   let raw: string | null
   try {
     raw = window.localStorage.getItem(MELD_PENDING_CHECKOUT_STORAGE_KEY)
   } catch {
-    return null
+    return { available: false, records: [], expiredCheckoutIds: new Set() }
   }
 
   if (!raw) {
-    return null
+    return { available: true, records: [], expiredCheckoutIds: new Set() }
   }
 
-  let record: MeldPendingCheckout | null = null
-  let needsMigration = false
-
+  let storedValues: unknown[]
+  let needsRewrite = false
   if (isMeldCheckoutId(raw)) {
-    record = { checkoutId: raw, expiresAt: now + MELD_CHECKOUT_PENDING_TTL_MS }
-    needsMigration = true
+    const legacyMemoryRecord = memoryOnlyCheckouts.has(raw) ? pendingCheckouts.get(raw) : undefined
+    storedValues = [legacyMemoryRecord ?? { checkoutId: raw, expiresAt: now + MELD_CHECKOUT_PENDING_TTL_MS }]
+    needsRewrite = true
   } else {
     try {
       const parsed: unknown = JSON.parse(raw)
-      if (isPendingCheckout(parsed)) {
-        record = parsed
+      if (Array.isArray(parsed)) {
+        storedValues = parsed
+      } else if (isPendingCheckout(parsed)) {
+        storedValues = [parsed]
+        needsRewrite = true
+      } else {
+        writeStoredPendingCheckouts([])
+        return { available: true, records: [], expiredCheckoutIds: new Set() }
       }
     } catch {
-      // Invalid storage data is removed below.
+      writeStoredPendingCheckouts([])
+      return { available: true, records: [], expiredCheckoutIds: new Set() }
     }
   }
 
-  if (!record) {
-    try {
-      window.localStorage.removeItem(MELD_PENDING_CHECKOUT_STORAGE_KEY)
-    } catch {
-      // Storage is optional.
+  const recordsById = new Map<string, MeldPendingCheckout>()
+  const expiredCheckoutIds = new Set<string>()
+  for (const value of storedValues) {
+    if (!isPendingCheckout(value)) {
+      needsRewrite = true
+      continue
     }
-    return null
+    if (value.expiresAt <= now) {
+      expiredCheckoutIds.add(value.checkoutId)
+      unauthorizedCheckouts.delete(value.checkoutId)
+      needsRewrite = true
+      continue
+    }
+    if (recordsById.has(value.checkoutId)) {
+      needsRewrite = true
+    }
+    recordsById.set(value.checkoutId, value)
   }
 
-  if (record.expiresAt <= now) {
-    pendingCheckouts.delete(record.checkoutId)
-    unauthorizedCheckouts.delete(record.checkoutId)
-    try {
-      window.localStorage.removeItem(MELD_PENDING_CHECKOUT_STORAGE_KEY)
-    } catch {
-      // Storage is optional.
-    }
-    return null
-  }
-
-  pendingCheckouts.set(record.checkoutId, record)
-  if (needsMigration) {
-    try {
-      window.localStorage.setItem(MELD_PENDING_CHECKOUT_STORAGE_KEY, JSON.stringify(record))
-    } catch {
-      // The migrated value remains available in memory for this page session.
+  const records = [...recordsById.values()]
+  if (needsRewrite) {
+    if (writeStoredPendingCheckouts(records)) {
+      for (const record of records) {
+        memoryOnlyCheckouts.delete(record.checkoutId)
+      }
+    } else {
+      for (const record of records) {
+        memoryOnlyCheckouts.add(record.checkoutId)
+      }
     }
   }
 
-  return record
+  return { available: true, records, expiredCheckoutIds }
 }
 
-function pruneExpiredMemoryRecords(now: number) {
+function loadPendingCheckouts(now: number): { records: MeldPendingCheckout[]; expiredCheckoutIds: Set<string> } {
+  const stored = readStoredPendingCheckouts(now)
+  const expiredCheckoutIds = stored.expiredCheckoutIds
+
   for (const [checkoutId, record] of pendingCheckouts) {
     if (record.expiresAt <= now) {
+      expiredCheckoutIds.add(checkoutId)
       pendingCheckouts.delete(checkoutId)
+      memoryOnlyCheckouts.delete(checkoutId)
       unauthorizedCheckouts.delete(checkoutId)
     }
   }
+
+  if (stored.available) {
+    const memoryOnlyRecords = [...pendingCheckouts.values()].filter((record) =>
+      memoryOnlyCheckouts.has(record.checkoutId),
+    )
+    pendingCheckouts.clear()
+    for (const record of stored.records) {
+      pendingCheckouts.set(record.checkoutId, record)
+    }
+    for (const record of memoryOnlyRecords) {
+      pendingCheckouts.delete(record.checkoutId)
+      pendingCheckouts.set(record.checkoutId, record)
+    }
+    for (const checkoutId of unauthorizedCheckouts) {
+      if (!pendingCheckouts.has(checkoutId)) {
+        unauthorizedCheckouts.delete(checkoutId)
+      }
+    }
+  }
+
+  const records = [...pendingCheckouts.values()]
+  for (const record of records) {
+    expiredCheckoutIds.delete(record.checkoutId)
+  }
+
+  return { records, expiredCheckoutIds }
 }
 
-function writePendingCheckout(record: MeldPendingCheckout) {
-  pendingCheckouts.set(record.checkoutId, record)
-  unauthorizedCheckouts.delete(record.checkoutId)
-
-  if (typeof window === 'undefined') {
+function persistPendingCheckoutSnapshot(): void {
+  const records = [...pendingCheckouts.values()]
+  if (writeStoredPendingCheckouts(records)) {
+    memoryOnlyCheckouts.clear()
     return
   }
 
-  try {
-    window.localStorage.setItem(MELD_PENDING_CHECKOUT_STORAGE_KEY, JSON.stringify(record))
-  } catch {
-    // Keep the deadline in memory when browser storage is unavailable.
+  memoryOnlyCheckouts.clear()
+  for (const record of records) {
+    memoryOnlyCheckouts.add(record.checkoutId)
   }
+}
+
+function updatePendingCheckout(record: MeldPendingCheckout): void {
+  pendingCheckouts.delete(record.checkoutId)
+  pendingCheckouts.set(record.checkoutId, record)
+  unauthorizedCheckouts.delete(record.checkoutId)
 }
 
 export function persistMeldPendingCheckout(checkoutId: string, now = Date.now()): MeldPendingCheckout | null {
@@ -141,32 +210,24 @@ export function persistMeldPendingCheckout(checkoutId: string, now = Date.now())
     return null
   }
 
+  loadPendingCheckouts(now)
   const record = { checkoutId, expiresAt: now + MELD_CHECKOUT_PENDING_TTL_MS }
-  writePendingCheckout(record)
+  updatePendingCheckout(record)
+  persistPendingCheckoutSnapshot()
   return record
 }
 
 export function getMeldPendingCheckout(checkoutId?: string, now = Date.now()): MeldPendingCheckout | null {
-  pruneExpiredMemoryRecords(now)
-  const storedRecord = readStoredPendingCheckout(now)
+  const { records } = loadPendingCheckouts(now)
 
   if (checkoutId !== undefined) {
     if (!isMeldCheckoutId(checkoutId)) {
       return null
     }
-    const inMemoryRecord = pendingCheckouts.get(checkoutId)
-    if (inMemoryRecord && inMemoryRecord.expiresAt > now) {
-      return inMemoryRecord
-    }
-    return storedRecord?.checkoutId === checkoutId ? storedRecord : null
+    return records.find((record) => record.checkoutId === checkoutId) ?? null
   }
 
-  if (storedRecord) {
-    return storedRecord
-  }
-
-  const memoryRecords = [...pendingCheckouts.values()]
-  return memoryRecords.at(-1) ?? null
+  return records.at(-1) ?? null
 }
 
 export function ensureMeldPendingCheckout(checkoutId: string, now = Date.now()): MeldPendingCheckout | null {
@@ -174,73 +235,28 @@ export function ensureMeldPendingCheckout(checkoutId: string, now = Date.now()):
     return null
   }
 
-  const inMemoryRecord = pendingCheckouts.get(checkoutId)
-  if (inMemoryRecord) {
-    if (inMemoryRecord.expiresAt <= now) {
-      pendingCheckouts.delete(checkoutId)
-      unauthorizedCheckouts.delete(checkoutId)
-      removeExpiredStoredPendingCheckout(checkoutId, now)
-      return null
-    }
-    return inMemoryRecord
-  }
-  if (removeExpiredStoredPendingCheckout(checkoutId, now)) {
+  const { records, expiredCheckoutIds } = loadPendingCheckouts(now)
+  if (expiredCheckoutIds.has(checkoutId)) {
+    persistPendingCheckoutSnapshot()
     return null
   }
-
-  const existing = getMeldPendingCheckout(checkoutId, now)
+  const existing = records.find((record) => record.checkoutId === checkoutId)
   if (existing) {
     return existing
   }
 
-  const storedRecord = readStoredPendingCheckout(now)
   const record = { checkoutId, expiresAt: now + MELD_CHECKOUT_PENDING_TTL_MS }
-  pendingCheckouts.set(checkoutId, record)
-
-  // There is one legacy storage slot. Keep its active checkout when another ID is already stored.
-  if (!storedRecord || storedRecord.checkoutId === checkoutId) {
-    try {
-      window.localStorage.setItem(MELD_PENDING_CHECKOUT_STORAGE_KEY, JSON.stringify(record))
-    } catch {
-      // The checkout and its expiry remain available in memory.
-    }
-  }
-
+  updatePendingCheckout(record)
+  persistPendingCheckoutSnapshot()
   return record
 }
 
-function removeExpiredStoredPendingCheckout(checkoutId: string, now: number): boolean {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  try {
-    const raw = window.localStorage.getItem(MELD_PENDING_CHECKOUT_STORAGE_KEY)
-    if (!raw || isMeldCheckoutId(raw)) {
-      return false
-    }
-
-    const parsed: unknown = JSON.parse(raw)
-    if (!isPendingCheckout(parsed) || parsed.checkoutId !== checkoutId || parsed.expiresAt > now) {
-      return false
-    }
-
-    window.localStorage.removeItem(MELD_PENDING_CHECKOUT_STORAGE_KEY)
-    pendingCheckouts.delete(checkoutId)
-    unauthorizedCheckouts.delete(checkoutId)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export function listMeldPendingCheckouts(now = Date.now()): MeldPendingCheckout[] {
-  pruneExpiredMemoryRecords(now)
-  const storedRecord = readStoredPendingCheckout(now)
-  if (storedRecord) {
-    pendingCheckouts.set(storedRecord.checkoutId, storedRecord)
+  const { records, expiredCheckoutIds } = loadPendingCheckouts(now)
+  if (expiredCheckoutIds.size > 0) {
+    persistPendingCheckoutSnapshot()
   }
-  return [...pendingCheckouts.values()].filter((record) => record.expiresAt > now)
+  return records
 }
 
 export function clearMeldPendingCheckout(checkoutId: string): void {
@@ -248,17 +264,11 @@ export function clearMeldPendingCheckout(checkoutId: string): void {
     return
   }
 
-  const storedRecord = readStoredPendingCheckout(Date.now())
+  loadPendingCheckouts(Date.now())
   pendingCheckouts.delete(checkoutId)
+  memoryOnlyCheckouts.delete(checkoutId)
   unauthorizedCheckouts.delete(checkoutId)
-
-  if (typeof window !== 'undefined' && storedRecord?.checkoutId === checkoutId) {
-    try {
-      window.localStorage.removeItem(MELD_PENDING_CHECKOUT_STORAGE_KEY)
-    } catch {
-      // Storage is optional.
-    }
-  }
+  persistPendingCheckoutSnapshot()
 
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(MELD_CHECKOUT_CLEARED_EVENT, { detail: checkoutId }))
