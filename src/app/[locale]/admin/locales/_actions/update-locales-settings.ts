@@ -108,7 +108,9 @@ export async function updateLocalesSettingsAction(
   const openRouterSettings = await loadOpenRouterProviderSettings()
   const previousSettings = openRouterSettings.allSettings
   const previouslyEnabledLocales = getEnabledLocalesFromSettings(previousSettings)
-  const previouslyAutomaticTranslationsEnabled = getAutomaticTranslationsEnabledFromSettings(previousSettings)
+  const previouslyAutomaticTranslationsEnabled =
+    Boolean(previousSettings?.i18n?.automatic_translations_enabled?.value?.trim()) &&
+    getAutomaticTranslationsEnabledFromSettings(previousSettings)
   const previouslyRulesTranslationsEnabled = getRulesTranslationsEnabledFromSettings(previousSettings)
   const canEnableAutomaticTranslations = openRouterSettings.configured
   const normalizedAutomaticTranslationsEnabled =
