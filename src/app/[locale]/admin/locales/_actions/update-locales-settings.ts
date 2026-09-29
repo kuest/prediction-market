@@ -2,11 +2,15 @@
 
 import { getExtracted } from 'next-intl/server'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { z } from 'zod'
 
 import {
   ensureEnabledLocales,
   ensureLocaleOrder,
+  getAutomaticTranslationsEnabledFromSettings,
+  getEnabledLocalesFromSettings,
+  getRulesTranslationsEnabledFromSettings,
   serializeEnabledLocales,
   serializeLocaleOrder,
 } from '@/i18n/locale-settings'
@@ -102,6 +106,10 @@ export async function updateLocalesSettingsAction(
 
   const value = serializeEnabledLocales(parsed.data.enabledLocales)
   const openRouterSettings = await loadOpenRouterProviderSettings()
+  const previousSettings = openRouterSettings.allSettings
+  const previouslyEnabledLocales = getEnabledLocalesFromSettings(previousSettings)
+  const previouslyAutomaticTranslationsEnabled = getAutomaticTranslationsEnabledFromSettings(previousSettings)
+  const previouslyRulesTranslationsEnabled = getRulesTranslationsEnabledFromSettings(previousSettings)
   const canEnableAutomaticTranslations = openRouterSettings.configured
   const normalizedAutomaticTranslationsEnabled =
     canEnableAutomaticTranslations && parsed.data.automaticTranslationsEnabled
@@ -137,9 +145,12 @@ export async function updateLocalesSettingsAction(
 
   if (
     parsed.data.enabledLocales.some((enabledLocale) => enabledLocale !== DEFAULT_LOCALE) &&
-    (normalizedAutomaticTranslationsEnabled || normalizedRulesTranslationsEnabled)
+    (normalizedAutomaticTranslationsEnabled || normalizedRulesTranslationsEnabled) &&
+    (parsed.data.enabledLocales.some((enabledLocale) => !previouslyEnabledLocales.includes(enabledLocale)) ||
+      (normalizedAutomaticTranslationsEnabled && !previouslyAutomaticTranslationsEnabled) ||
+      (normalizedRulesTranslationsEnabled && !previouslyRulesTranslationsEnabled))
   ) {
-    await triggerTranslationEnqueue()
+    after(() => triggerTranslationEnqueue())
   }
 
   revalidatePath('/admin/locales')

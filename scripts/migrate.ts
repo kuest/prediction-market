@@ -456,7 +456,10 @@ async function createSyncResolutionCron(sql: ReservedSql, siteUrl: string, cronS
     endpointPath: '/api/sync/resolution',
     siteUrl,
     cronSecret,
-    runCondition: `EXISTS (SELECT 1 FROM public.markets)
+    runCondition: `EXISTS (
+        SELECT 1 FROM public.markets AS market
+        WHERE market.is_resolved IS NOT TRUE
+      )
       OR EXISTS (
         SELECT 1
         FROM public.outcomes AS outcome
