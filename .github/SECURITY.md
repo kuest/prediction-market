@@ -4,7 +4,7 @@ Please **do not open public GitHub issues** for security vulnerabilities.
 
 Instead, report security issues by either:
 
-- [Opening a private GitHub Security Advisory](https://github.com/kuestcom/prediction-market/security/advisories/new)
+- [Opening a private GitHub Security Advisory](https://github.com/kuest/prediction-market/security/advisories/new)
 - [Emailing security@kuest.com](mailto:security@kuest.com)
 
 Please include:

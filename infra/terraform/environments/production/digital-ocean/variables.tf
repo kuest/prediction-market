@@ -19,7 +19,7 @@ variable "region" {
 variable "github_repo" {
   type        = string
   description = "GitHub repo in owner/repo format"
-  default     = "kuestcom/prediction-market"
+  default     = "kuest/prediction-market"
 }
 
 variable "github_branch" {

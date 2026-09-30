@@ -11,7 +11,7 @@ import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigg
 import { toast } from '@/components/ui/toast'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 
-const UPSTREAM_COMMITS_URL = 'https://api.github.com/repos/kuestcom/prediction-market/commits?per_page=1'
+const UPSTREAM_COMMITS_URL = 'https://api.github.com/repos/kuest/prediction-market/commits?per_page=1'
 const GITHUB_SYNC_IMAGE_SRC = '/images/sync/github-sync.jpg'
 const UPSTREAM_COMMIT_QUERY_STALE_TIME_MS = 60 * 60 * 1000
 const UPSTREAM_COMMIT_WARNING_MIN_AGE_MS = 8 * 60 * 60 * 1000

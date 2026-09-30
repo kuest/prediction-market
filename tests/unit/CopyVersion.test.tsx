@@ -146,7 +146,7 @@ describe('copyVersion', () => {
 
     await expect(queryOptions.queryFn({})).resolves.toBeNull()
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.github.com/repos/kuestcom/prediction-market/commits?per_page=1',
+      'https://api.github.com/repos/kuest/prediction-market/commits?per_page=1',
       expect.objectContaining({
         headers: {
           Accept: 'application/vnd.github+json',

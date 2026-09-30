@@ -13,7 +13,7 @@ spec:
       containerConcurrency: 80
       timeoutSeconds: 300
       containers:
-        - image: ghcr.io/kuestcom/prediction-market@sha256:REPLACE_WITH_IMAGE_DIGEST
+        - image: ghcr.io/kuest/prediction-market@sha256:REPLACE_WITH_IMAGE_DIGEST
           ports:
             - name: http1
               containerPort: 3000

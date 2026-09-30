@@ -1,7 +1,7 @@
 project_id                           = ""
 app_name                             = "kuest-web"
 region                               = "nyc"
-github_repo                          = "kuestcom/prediction-market"
+github_repo                          = "kuest/prediction-market"
 github_branch                        = "main"
 deploy_on_push                       = true
 source_dir                           = "/"

@@ -4,11 +4,11 @@ Thank you for your interest in contributing! We welcome all forms of contributio
 
 ## Reporting Issues
 
-Before creating a new issue, please check if it already exists. When reporting bugs, please use the [Bug report option](https://github.com/kuestcom/prediction-market/issues/new?template=bug_report.yml).
+Before creating a new issue, please check if it already exists. When reporting bugs, please use the [Bug report option](https://github.com/kuest/prediction-market/issues/new?template=bug_report.yml).
 
 ## Feature Requests
 
-For new features, [open a discussion](https://github.com/orgs/kuestcom/discussions) describing:
+For new features, [open a discussion](https://github.com/orgs/kuest/discussions) describing:
 
 - What problem the feature solves
 - How it should work

@@ -17,10 +17,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/kuestcom/prediction-market">
+  <a href="https://github.com/kuest/prediction-market">
     <a href="https://discord.gg/kuest"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&style=social" /></a>
     &nbsp;
-    <img src="https://img.shields.io/github/stars/kuestcom/prediction-market?style=social" alt="GitHub Stars" />
+    <img src="https://img.shields.io/github/stars/kuest/prediction-market?style=social" alt="GitHub Stars" />
   </a>
 </p>
 

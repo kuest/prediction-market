@@ -1,7 +1,7 @@
 blank_issues_enabled: false
 contact_links:
   - name: Feature request
-    url: https://github.com/orgs/kuestcom/discussions
+    url: https://github.com/orgs/kuest/discussions
     about: Share ideas and feature requests in Kuest Discussions.
   - name: Support questions & other
     url: https://discord.gg/kuest

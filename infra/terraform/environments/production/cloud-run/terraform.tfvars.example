@@ -1,7 +1,7 @@
 project_id                           = "my-gcp-project"
 region                               = "us-central1"
 service_name                         = "kuest-web"
-app_image                            = "ghcr.io/kuestcom/prediction-market@sha256:replace-with-digest"
+app_image                            = "ghcr.io/kuest/prediction-market@sha256:replace-with-digest"
 site_url                             = "https://markets.example.com"
 secret_version                       = "latest"
 allow_unauthenticated                = true

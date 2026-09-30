@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-image:
     name: Build ${{ matrix.platform }} image
-    if: github.repository == 'kuestcom/prediction-market'
+    if: github.repository == 'kuest/prediction-market'
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -48,7 +48,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ghcr.io/kuestcom/prediction-market
+          images: ghcr.io/kuest/prediction-market
           flavor: |
             latest=auto
           tags: |
@@ -63,11 +63,11 @@ jobs:
           file: infra/docker/Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
-          tags: ghcr.io/kuestcom/prediction-market
+          tags: ghcr.io/kuest/prediction-market
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             COMMIT_SHA=${{ github.sha }}
-          cache-from: type=registry,ref=ghcr.io/kuestcom/prediction-market:main
+          cache-from: type=registry,ref=ghcr.io/kuest/prediction-market:main
           cache-to: type=inline
 
       - name: Export image digest
@@ -93,7 +93,7 @@ jobs:
   publish-image:
     name: Publish image manifest
     needs: build-image
-    if: github.repository == 'kuestcom/prediction-market'
+    if: github.repository == 'kuest/prediction-market'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -116,7 +116,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ghcr.io/kuestcom/prediction-market
+          images: ghcr.io/kuest/prediction-market
           flavor: |
             latest=auto
           tags: |
@@ -127,7 +127,7 @@ jobs:
       - name: Publish multi-platform manifest
         shell: bash
         env:
-          IMAGE_NAME: ghcr.io/kuestcom/prediction-market
+          IMAGE_NAME: ghcr.io/kuest/prediction-market
           TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           tag_args=()
