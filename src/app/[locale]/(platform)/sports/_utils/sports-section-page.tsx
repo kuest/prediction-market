@@ -7,6 +7,7 @@ import type { SportsVertical } from '@/lib/sports-vertical'
 import type { Event } from '@/types'
 
 import SportsClient from '@/app/[locale]/(platform)/sports/_components/SportsClient'
+import { loadSportsContentData } from '@/app/[locale]/(platform)/sports/_components/SportsContent'
 import SportsGamesCenter from '@/app/[locale]/(platform)/sports/_components/SportsGamesCenter'
 import { buildSportsGamesCards } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import { findSportsHrefBySlug } from '@/app/[locale]/(platform)/sports/_utils/sports-menu-routing'
@@ -161,27 +162,12 @@ export async function renderSportsVerticalSectionPageWithState({
 
   const { canonicalSportSlug, sportTitle } = sportContext
   if (section === 'props') {
-    let initialEvents: Event[] = []
-    let hasQueryError = false
-    try {
-      const { data: events, error } = await EventRepository.listEvents({
-        tag: vertical,
-        search: '',
-        userId: '',
-        bookmarked: false,
-        locale,
-        sportsVertical: vertical,
-        sportsSportSlug: canonicalSportSlug,
-        sportsSection: 'props',
-      })
-
-      hasQueryError = Boolean(error)
-      if (!hasQueryError) {
-        initialEvents = events ?? []
-      }
-    } catch {
-      hasQueryError = true
-    }
+    const { initialEvents, hasQueryError } = await loadSportsContentData({
+      initialTag: vertical,
+      locale,
+      sportsSportSlug: canonicalSportSlug,
+      sportsSection: 'props',
+    })
 
     return {
       content: (
@@ -247,8 +233,4 @@ export async function renderSportsVerticalSectionPageWithState({
     ),
     hasEvents: hasQueryError ? null : visibleCards.length > 0,
   }
-}
-
-export async function renderSportsVerticalSectionPage(params: SportsVerticalSectionPageParams) {
-  return (await renderSportsVerticalSectionPageWithState(params)).content
 }

@@ -1,9 +1,12 @@
 import type { Metadata } from 'next'
 
+import { cacheLife, cacheTag } from 'next/cache'
+
 import {
   generateSportsVerticalSectionMetadata,
-  renderSportsVerticalSectionPage,
+  renderSportsVerticalSectionPageWithState,
 } from '@/app/[locale]/(platform)/sports/_utils/sports-section-page'
+import { cacheTags } from '@/lib/cache-tags'
 import { getPublicShellStaticParams, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
 export const instant = false
@@ -14,6 +17,8 @@ export async function generateStaticParams() {
 
 async function generateCachedMetadata(sport: string) {
   'use cache'
+  cacheLife('max')
+  cacheTag(cacheTags.settings, cacheTags.sportsMenu)
 
   return await generateSportsVerticalSectionMetadata({
     sport,
@@ -30,12 +35,20 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/esports/
 
 async function renderCachedPage(sport: string) {
   'use cache'
+  cacheTag(cacheTags.eventsList, cacheTags.sportsMenu)
 
-  return await renderSportsVerticalSectionPage({
+  const result = await renderSportsVerticalSectionPageWithState({
     sport,
     vertical: 'esports',
     section: 'games',
   })
+  if (result.hasEvents === false) {
+    cacheLife('days')
+  } else {
+    cacheLife('hours')
+  }
+
+  return result.content
 }
 
 export default async function EsportsGamesBySportPage({ params }: PageProps<'/[locale]/esports/[sport]/games'>) {

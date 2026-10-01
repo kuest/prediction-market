@@ -4,6 +4,7 @@ import { hoisted } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
   buildSportsGamesCards: mock(),
+  cacheLife: mock(),
   cacheTag: mock(),
   getLayoutData: mock(),
   hasDatabaseEnv: mock(),
@@ -12,6 +13,7 @@ const mocks = hoisted(() => ({
 }))
 
 void mock.module('next/cache', () => ({
+  cacheLife: (...args: any[]) => mocks.cacheLife(...args),
   cacheTag: (...args: any[]) => mocks.cacheTag(...args),
 }))
 
@@ -48,6 +50,7 @@ const { default: SportsFeedPageContent } =
 describe('sportsFeedPageContent', () => {
   beforeEach(() => {
     mocks.buildSportsGamesCards.mockReset()
+    mocks.cacheLife.mockReset()
     mocks.cacheTag.mockReset()
     mocks.getLayoutData.mockReset()
     mocks.hasDatabaseEnv.mockReset()
