@@ -4,8 +4,9 @@ import { getExtracted } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 
 import type { SportsVertical } from '@/lib/sports-vertical'
+import type { Event } from '@/types'
 
-import SportsContent from '@/app/[locale]/(platform)/sports/_components/SportsContent'
+import SportsClient from '@/app/[locale]/(platform)/sports/_components/SportsClient'
 import SportsGamesCenter from '@/app/[locale]/(platform)/sports/_components/SportsGamesCenter'
 import { buildSportsGamesCards } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import { findSportsHrefBySlug } from '@/app/[locale]/(platform)/sports/_utils/sports-menu-routing'
@@ -136,7 +137,7 @@ export async function generateSportsVerticalSectionMetadata({
   }
 }
 
-export async function renderSportsVerticalSectionPage({
+export async function renderSportsVerticalSectionPageWithState({
   sport,
   vertical,
   section,
@@ -145,7 +146,7 @@ export async function renderSportsVerticalSectionPage({
   const locale = await getRootLocale()
 
   if (!assertValidSportsSectionParams({ sport, week })) {
-    return null
+    return { content: null, hasEvents: null }
   }
 
   const parsedWeek = week ? parseWeekParam(week) : null
@@ -160,47 +161,94 @@ export async function renderSportsVerticalSectionPage({
 
   const { canonicalSportSlug, sportTitle } = sportContext
   if (section === 'props') {
-    return (
-      <div className="grid gap-4">
-        <SportsContent
-          initialTag={vertical}
-          mainTag={vertical}
-          initialMode="all"
-          sportsSportSlug={canonicalSportSlug}
-          sportsSection="props"
-        />
-      </div>
-    )
+    let initialEvents: Event[] = []
+    let hasQueryError = false
+    try {
+      const { data: events, error } = await EventRepository.listEvents({
+        tag: vertical,
+        search: '',
+        userId: '',
+        bookmarked: false,
+        locale,
+        sportsVertical: vertical,
+        sportsSportSlug: canonicalSportSlug,
+        sportsSection: 'props',
+      })
+
+      hasQueryError = Boolean(error)
+      if (!hasQueryError) {
+        initialEvents = events ?? []
+      }
+    } catch {
+      hasQueryError = true
+    }
+
+    return {
+      content: (
+        <div className="grid gap-4">
+          <SportsClient
+            initialEvents={initialEvents}
+            initialTag={vertical}
+            mainTag={vertical}
+            initialMode="all"
+            sportsVertical={vertical}
+            sportsSportSlug={canonicalSportSlug}
+            sportsSection="props"
+          />
+        </div>
+      ),
+      hasEvents: hasQueryError ? null : initialEvents.length > 0,
+    }
   }
 
-  const { data: activeEvents } = await EventRepository.listEvents({
-    tag: vertical,
-    sportsVertical: vertical,
-    search: '',
-    userId: '',
-    bookmarked: false,
-    locale,
-    sportsSportSlug: canonicalSportSlug,
-    sportsSection: 'games',
-    excludeSportsAuxiliary: true,
-    status: 'active',
-  })
+  let activeEvents: Event[] = []
+  let hasQueryError = false
+  try {
+    const { data: events, error } = await EventRepository.listEvents({
+      tag: vertical,
+      sportsVertical: vertical,
+      search: '',
+      userId: '',
+      bookmarked: false,
+      locale,
+      sportsSportSlug: canonicalSportSlug,
+      sportsSection: 'games',
+      excludeSportsAuxiliary: true,
+      status: 'active',
+    })
+
+    hasQueryError = Boolean(error)
+    if (!hasQueryError) {
+      activeEvents = events ?? []
+    }
+  } catch {
+    hasQueryError = true
+  }
 
   const cards = buildSportsGamesCards(activeEvents ?? [])
+  const hasWeekOptions = cards.some((card) => Number.isFinite(card.week))
+  const visibleCards = parsedWeek != null && hasWeekOptions ? cards.filter((card) => card.week === parsedWeek) : cards
   const pageKey =
     parsedWeek == null
       ? `${vertical}-games-page-${canonicalSportSlug}`
       : `${vertical}-games-week-page-${canonicalSportSlug}-${parsedWeek}`
 
-  return (
-    <div key={pageKey} className="contents">
-      <SportsGamesCenter
-        cards={cards}
-        sportSlug={canonicalSportSlug}
-        sportTitle={sportTitle}
-        initialWeek={parsedWeek}
-        vertical={vertical}
-      />
-    </div>
-  )
+  return {
+    content: (
+      <div key={pageKey} className="contents">
+        <SportsGamesCenter
+          cards={cards}
+          sportSlug={canonicalSportSlug}
+          sportTitle={sportTitle}
+          initialWeek={parsedWeek}
+          vertical={vertical}
+        />
+      </div>
+    ),
+    hasEvents: hasQueryError ? null : visibleCards.length > 0,
+  }
+}
+
+export async function renderSportsVerticalSectionPage(params: SportsVerticalSectionPageParams) {
+  return (await renderSportsVerticalSectionPageWithState(params)).content
 }

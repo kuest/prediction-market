@@ -4,6 +4,7 @@ import type { Metadata } from 'next'
 import { DocsBody, DocsDescription, DocsPage, DocsTitle } from 'fumadocs-ui/layouts/docs/page'
 import defaultMdxComponents from 'fumadocs-ui/mdx'
 import { getExtracted } from 'next-intl/server'
+import { cacheLife, cacheTag } from 'next/cache'
 import { notFound, redirect } from 'next/navigation'
 
 import type { SupportedLocale } from '@/i18n/locales'
@@ -21,6 +22,7 @@ import { SecurityReserveBalance } from '@/app/[locale]/docs/_components/Security
 import { SiteName } from '@/app/[locale]/docs/_components/SiteName'
 import { TradingFeeChart } from '@/app/[locale]/docs/_components/TradingFeeChart'
 import { WebSocketPlayground } from '@/app/[locale]/docs/_components/WebSocketPlayground'
+import { cacheTags } from '@/lib/cache-tags'
 import { getEnglishDocsStaticParams } from '@/lib/docs-static-params'
 import { withLocalePrefix } from '@/lib/locale-path'
 import { source } from '@/lib/source'
@@ -52,6 +54,8 @@ export async function generateStaticParams() {
 
 async function generateCachedDocsMetadata({ slug }: { slug?: string[] }): Promise<Metadata> {
   'use cache'
+  cacheLife('max')
+  cacheTag(cacheTags.settings)
 
   const runtimeTheme = await loadRuntimeThemeState()
   const siteDocumentationTitle = `${runtimeTheme.site.name} Documentation`
@@ -77,6 +81,8 @@ export async function generateMetadata(props: PageProps<'/[locale]/docs/[[...slu
 
 async function renderCachedDocsPage({ locale, slug }: { locale: string; slug?: string[] }) {
   'use cache'
+  cacheLife('max')
+  cacheTag(cacheTags.settings)
 
   const t = await getExtracted()
 

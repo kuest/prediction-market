@@ -1,4 +1,4 @@
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 
 import type { SportsVertical } from '@/lib/sports-vertical'
 
@@ -36,25 +36,28 @@ async function loadSportsFeedPageData({
   const locale = await getRootLocale()
 
   if (!databaseEnvAvailable) {
+    cacheLife('hours')
     return {
       cards: [],
       categoryTitleBySlug: {},
     }
   }
 
-  const [{ data: feedEvents }, { data: layoutData }] = await Promise.all([
-    EventRepository.listSportsFeedEvents({
-      cacheVersion,
-      locale,
-      mode: pageMode,
-      sportsVertical: vertical,
-    }),
-    SportsMenuRepository.getLayoutData(vertical),
-  ])
-  const events = feedEvents?.length
-    ? feedEvents
-    : (
-        await EventRepository.listEvents({
+  const { cards, categoryTitleBySlug, hasQueryError } = await (async () => {
+    try {
+      const [{ data: feedEvents, error: feedError }, { data: layoutData, error: layoutError }] = await Promise.all([
+        EventRepository.listSportsFeedEvents({
+          cacheVersion,
+          locale,
+          mode: pageMode,
+          sportsVertical: vertical,
+        }),
+        SportsMenuRepository.getLayoutData(vertical),
+      ])
+      let events = feedEvents ?? []
+      let hasQueryError = Boolean(feedError || layoutError)
+      if (!feedEvents?.length) {
+        const fallback = await EventRepository.listEvents({
           tag: vertical,
           sportsVertical: vertical,
           search: '',
@@ -66,11 +69,28 @@ async function loadSportsFeedPageData({
           sportsSection: 'games',
           excludeSportsAuxiliary: true,
         })
-      ).data
+        events = fallback.data ?? []
+        hasQueryError = hasQueryError || Boolean(fallback.error)
+      }
+
+      return {
+        cards: buildSportsGamesCards(events),
+        categoryTitleBySlug: layoutData?.h1TitleBySlug ?? {},
+        hasQueryError,
+      }
+    } catch {
+      return { cards: [], categoryTitleBySlug: {}, hasQueryError: true }
+    }
+  })()
+  if (hasQueryError || cards.length > 0) {
+    cacheLife('hours')
+  } else {
+    cacheLife('days')
+  }
 
   return {
-    cards: buildSportsGamesCards(events ?? []),
-    categoryTitleBySlug: layoutData?.h1TitleBySlug ?? {},
+    cards,
+    categoryTitleBySlug,
   }
 }
 
