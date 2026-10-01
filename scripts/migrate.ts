@@ -382,6 +382,40 @@ async function createSyncTranslationsCron(sql: ReservedSql, siteUrl: string, cro
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 20000,
+    // Missing or malformed locale settings default to all supported locales in parseEnabledLocales.
+    runCondition: `(
+      EXISTS (
+        SELECT 1
+        FROM public.settings AS locale_setting
+        WHERE locale_setting."group" = 'i18n'
+          AND locale_setting.key = 'enabled_locales'
+          AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+          AND locale_setting.value ~ '"(de|es|pt|fr|zh|ja|ar|ru|it|pl|ko)"'
+      )
+      OR NOT EXISTS (
+        SELECT 1
+        FROM public.settings AS locale_setting
+        WHERE locale_setting."group" = 'i18n'
+          AND locale_setting.key = 'enabled_locales'
+          AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+      )
+    )
+    AND (
+      COALESCE((
+        SELECT lower(btrim(setting.value))
+        FROM public.settings AS setting
+        WHERE setting."group" = 'i18n'
+          AND setting.key = 'automatic_translations_enabled'
+        LIMIT 1
+      ), 'true') NOT IN ('false', '0', 'no', 'off', 'disabled')
+      OR COALESCE((
+        SELECT lower(btrim(setting.value))
+        FROM public.settings AS setting
+        WHERE setting."group" = 'i18n'
+          AND setting.key = 'rules_translations_enabled'
+        LIMIT 1
+      ), 'false') IN ('true', '1', 'yes', 'on', 'enabled')
+    )`,
   })
 
   await createSyncCron(sql, {
@@ -503,6 +537,12 @@ async function createSyncEventCreationsCron(sql: ReservedSql, siteUrl: string, c
     siteUrl,
     cronSecret,
     timeoutMilliseconds: 10000,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.event_creations AS draft
+      WHERE draft.status = 'scheduled'
+        AND draft.deploy_at <= NOW()
+    )`,
   })
 
   await createSyncCron(sql, {
@@ -511,6 +551,13 @@ async function createSyncEventCreationsCron(sql: ReservedSql, siteUrl: string, c
     endpointPath: '/api/sync/event-creations',
     siteUrl,
     cronSecret,
+    runCondition: `EXISTS (
+      SELECT 1
+      FROM public.jobs AS job
+      WHERE job.job_type = 'deploy_event_creation'
+        AND job.status = 'pending'
+        AND job.available_at <= NOW()
+    )`,
   })
 }
 

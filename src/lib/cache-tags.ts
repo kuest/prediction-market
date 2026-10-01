@@ -31,8 +31,10 @@ export const cacheTags = {
   settings: 'settings',
   /** Localized Terms of Use content. */
   termsOfService: 'terms-of-service',
-  /** Sports sidebar menu structure and counts (independent of homepage list). */
+  /** Sports pages whose output includes menu and event-derived data. */
   sportsMenu: 'sports:menu',
+  /** Stable sports menu structure: labels, aliases, titles and routing. */
+  sportsMenuStructure: 'sports:menu:structure',
   /** Public sitemap entries (event/market URL lists). */
   sitemap: 'sitemap',
 }

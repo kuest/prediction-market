@@ -15,10 +15,9 @@ type SettingsMap = Record<string, Record<string, { value: string; updated_at: st
 
 async function getCachedSettings(): Promise<QueryResult<SettingsMap>> {
   'use cache'
-  cacheLife('default')
   cacheTag(cacheTags.settings)
 
-  return runQuery(async () => {
+  const result = await runQuery(async () => {
     try {
       const data = await db
         .select({
@@ -44,6 +43,13 @@ async function getCachedSettings(): Promise<QueryResult<SettingsMap>> {
       return { data: null, error: 'Failed to fetch settings.' }
     }
   })
+
+  if (result.error) {
+    cacheLife('default')
+  } else {
+    cacheLife('max')
+  }
+  return result
 }
 
 export const SettingsRepository = {

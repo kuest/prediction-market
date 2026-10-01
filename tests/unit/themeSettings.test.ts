@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import { hoisted } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
+  cacheLife: mock(),
   cacheTag: mock(),
   getSettings: mock(),
 }))
 
 void mock.module('next/cache', () => ({
+  cacheLife: (...args: any[]) => mocks.cacheLife(...args),
   cacheTag: (...args: any[]) => mocks.cacheTag(...args),
 }))
 
@@ -19,6 +21,7 @@ const originalPostgresUrl = process.env.POSTGRES_URL
 
 describe('theme settings runtime resolver', () => {
   beforeEach(() => {
+    mocks.cacheLife.mockReset()
     mocks.cacheTag.mockReset()
     mocks.getSettings.mockReset()
     process.env.POSTGRES_URL = 'postgres://theme-settings-test'

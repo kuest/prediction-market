@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import type { ReactNode } from 'react'
 
 import { NextIntlClientProvider } from 'next-intl'
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
 
 import type { SupportedLocale } from '@/i18n/locales'
@@ -39,6 +39,11 @@ export async function generateViewport(): Promise<Viewport> {
   cacheTag(cacheTags.settings)
 
   const runtimeTheme = await loadRuntimeThemeState()
+  if (runtimeTheme.cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
   const { lightSurface, darkSurface } = resolvePwaThemeColors(runtimeTheme.theme)
 
   return {
@@ -54,6 +59,11 @@ export async function generateMetadata(): Promise<Metadata> {
   cacheTag(cacheTags.settings)
 
   const runtimeTheme = await loadRuntimeThemeState()
+  if (runtimeTheme.cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
   const site = runtimeTheme.site
   const siteUrl = resolveSiteUrl(process.env)
   const defaultTitle = `${site.name} | ${site.description}`

@@ -328,6 +328,7 @@ function revalidateSidebar(vertical: SportsVertical) {
   revalidatePath('/[locale]/admin/categories', 'page')
   revalidatePath(`/[locale]/${vertical}`, 'layout')
   updateTag(cacheTags.sportsMenu)
+  updateTag(cacheTags.sportsMenuStructure)
 }
 
 async function requireAdmin() {

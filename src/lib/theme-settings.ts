@@ -1,4 +1,4 @@
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 
 import type { CustomJavascriptCodeConfig } from '@/lib/custom-javascript-code'
 import type { ResolvedThemeConfig, ThemeOverrides, ThemePresetId, ThemeRadius } from '@/lib/theme'
@@ -125,6 +125,8 @@ export interface RuntimeThemeState {
   theme: ResolvedThemeConfig
   site: ThemeSiteIdentity
   source: RuntimeThemeSource
+  /** False when the theme/site values are fallback output from an error or missing DB. */
+  cacheable: boolean
 }
 
 export interface ThemeSettingsFormState {
@@ -542,6 +544,7 @@ function buildDefaultThemeState(): RuntimeThemeState {
     theme: buildResolvedThemeConfig(DEFAULT_THEME_PRESET_ID),
     site: createDefaultThemeSiteIdentity(),
     source: 'default',
+    cacheable: false,
   }
 }
 
@@ -823,6 +826,7 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
   const { data: allSettings, error } = await SettingsRepository.getSettings()
 
   if (error) {
+    cacheLife('default')
     return defaults
   }
 
@@ -896,11 +900,19 @@ async function loadCachedRuntimeThemeState(): Promise<RuntimeThemeState> {
     : defaults.theme
 
   const site = normalizedSite?.data ? buildThemeSiteIdentity(normalizedSite.data) : defaults.site
+  const cacheable = !normalizedTheme?.error && !normalizedSite?.error
+
+  if (cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
 
   return {
     theme,
     site,
     source: normalizedTheme?.data || normalizedSite?.data ? 'settings' : 'default',
+    cacheable,
   }
 }
 

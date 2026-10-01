@@ -19,6 +19,7 @@ void mock.module('next-intl', () => ({
 }))
 
 void mock.module('next/cache', () => ({
+  cacheLife: mock(),
   cacheTag: mock(),
 }))
 
