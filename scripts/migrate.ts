@@ -447,15 +447,28 @@ async function createSyncTranslationsCron(sql: ReservedSql, siteUrl: string, cro
             AND (job.reserved_at IS NULL OR job.reserved_at <= NOW() - interval '10 minutes')
           )
         )
-        AND EXISTS (
-          SELECT 1
-          FROM public.settings AS locale_setting
-          WHERE locale_setting."group" = 'i18n'
-            AND locale_setting.key = 'enabled_locales'
-            AND strpos(
-              locale_setting.value,
-              '"' || split_part(job.dedupe_key, ':', 2) || '"'
-            ) > 0
+        AND split_part(job.dedupe_key, ':', 2) IN (
+          'de', 'es', 'pt', 'fr', 'zh', 'ja', 'ar', 'ru', 'it', 'pl', 'ko'
+        )
+        AND (
+          EXISTS (
+            SELECT 1
+            FROM public.settings AS locale_setting
+            WHERE locale_setting."group" = 'i18n'
+              AND locale_setting.key = 'enabled_locales'
+              AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+              AND strpos(
+                locale_setting.value,
+                '"' || split_part(job.dedupe_key, ':', 2) || '"'
+              ) > 0
+          )
+          OR NOT EXISTS (
+            SELECT 1
+            FROM public.settings AS locale_setting
+            WHERE locale_setting."group" = 'i18n'
+              AND locale_setting.key = 'enabled_locales'
+              AND locale_setting.value ~ '^\\s*\\[\\s*("[^"\\\\]*"(\\s*,\\s*"[^"\\\\]*")*)?\\s*\\]\\s*$'
+          )
         )
         AND (
           (
