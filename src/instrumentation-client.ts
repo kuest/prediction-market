@@ -24,7 +24,6 @@ function resolveSentryDsn() {
 Sentry.init({
   dsn: resolveSentryDsn(),
   tracesSampleRate: 0.1,
-  enableLogs: true,
   beforeSend(event, hint) {
     if (isNextNotFoundError(hint.originalException)) {
       return null
