@@ -2,7 +2,6 @@ import type { Metadata } from 'next'
 
 import { getExtracted } from 'next-intl/server'
 import { notFound } from 'next/navigation'
-import { connection } from 'next/server'
 
 import type { SupportedLocale } from '@/i18n/locales'
 import type { DataApiRewardAccount, DataApiRewardMarket } from '@/lib/data-api/resolution-rewards'
@@ -41,8 +40,7 @@ function parseRawAmount(value: string) {
   }
 }
 
-async function getRequestTime() {
-  await connection()
+function getRequestTime() {
   return new Date()
 }
 
@@ -167,7 +165,7 @@ export default async function RewardsSettingsPage({ params }: RewardsSettingsPag
       }),
     ),
   ).then((markets) => markets.filter((market): market is DataApiRewardMarket => market !== null))
-  const now = await getRequestTime()
+  const now = getRequestTime()
   let totalAffiliateFees = 0
   let referredVolume = 0
 
