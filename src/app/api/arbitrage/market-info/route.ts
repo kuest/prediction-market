@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { normalizePolymarketTickSize } from '@/lib/polymarket-market'
 
-const CONDITION_ID_PATTERN = /^0x[a-fA-F0-9]{64}$/
+const CONDITION_ID_PATTERN = /^(?:0x[a-fA-F0-9]{64}|0x(?:01|02)[a-fA-F0-9]{60})$/
 const POLYMARKET_REQUEST_TIMEOUT_MS = 8_000
 
 export async function GET(request: Request) {

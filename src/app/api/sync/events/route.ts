@@ -1168,7 +1168,9 @@ async function processEvent(
   const eventSeriesRecurrence =
     normalizeStringField(eventData.series_recurrence) ?? normalizeStringField(eventData.recurrence)
   const isPolymarketMirror = Boolean(
-    normalizeStringField(metadata?.mirror_condition_id) && Array.isArray(metadata?.mirror_outcome_token_ids),
+    normalizeStringField(metadata?.mirror_condition_id) &&
+    (Array.isArray(metadata?.mirror_outcome_token_ids) ||
+      normalizeStringField(metadata?.mirror_protocol)?.toLowerCase() === 'polyv2'),
   )
   const hasAdditionalContextField = Object.hasOwn(eventData, 'additional_context')
   const hasAdditionalContextTimeField =
@@ -1635,9 +1637,10 @@ async function processMarketData(
   }
 
   const hasPolymarketConditionIdField = Object.hasOwn(metadata, 'mirror_condition_id')
-  const hasPolymarketTokenIdsField = Object.hasOwn(metadata, 'mirror_outcome_token_ids')
+  const polymarketAssetIds = resolvePolymarketOutcomeAssetIds(metadata)
+  const hasPolymarketTokenIdsField = polymarketAssetIds.hasMapping
   const polymarketConditionId = normalizeHexField(metadata.mirror_condition_id)
-  const polymarketTokenIds = normalizePolymarketOutcomeTokenIds(metadata.mirror_outcome_token_ids)
+  const polymarketTokenIds = polymarketAssetIds.ids
   const shouldSyncPolymarketTokenIds =
     hasPolymarketTokenIdsField || (hasPolymarketConditionIdField && polymarketConditionId == null)
 
@@ -2707,6 +2710,46 @@ async function processOutcomes(
 
 export function normalizePolymarketOutcomeTokenIds(value: unknown) {
   return Array.isArray(value) ? value.map(normalizeStringIdField) : []
+}
+
+export function resolvePolymarketOutcomeAssetIds(metadata: Record<string, any>) {
+  if (normalizeStringField(metadata.mirror_protocol)?.toLowerCase() !== 'polyv2') {
+    return {
+      hasMapping: Object.hasOwn(metadata, 'mirror_outcome_token_ids'),
+      ids: normalizePolymarketOutcomeTokenIds(metadata.mirror_outcome_token_ids),
+    }
+  }
+
+  const arrayIds = normalizePolyV2PositionIds(metadata.mirror_position_ids)
+  const outcomes = Array.isArray(metadata.outcomes) ? metadata.outcomes : []
+  const outcomeIds = normalizePolyV2PositionIds(outcomes.map((outcome: any) => outcome?.mirror_position_id))
+  const idsAreConsistent =
+    arrayIds.length === 2 && outcomeIds.length === 2 && arrayIds.every((id, index) => id === outcomeIds[index])
+
+  return {
+    // The protocol marker is explicit. If position metadata is incomplete, clear any stale
+    // legacy token IDs instead of accidentally treating CTF IDs as PolyV2 position IDs.
+    hasMapping: true,
+    ids: idsAreConsistent ? arrayIds : [null, null],
+  }
+}
+
+function normalizePolyV2PositionIds(value: unknown): Array<string | null> {
+  if (!Array.isArray(value) || value.length !== 2) {
+    return []
+  }
+
+  return value.map((positionId) => {
+    if (typeof positionId !== 'string' || !/^(0|[1-9]\d*)$/.test(positionId)) {
+      return null
+    }
+    try {
+      const parsed = BigInt(positionId)
+      return parsed <= (1n << 256n) - 1n ? parsed.toString() : null
+    } catch {
+      return null
+    }
+  })
 }
 
 export function hasPolymarketOutcomeTokenMappingChanged(

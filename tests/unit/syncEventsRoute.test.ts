@@ -105,8 +105,11 @@ describe('sync events route', () => {
   })
 
   it('normalizes mirror token IDs and detects an explicit mapping removal', async () => {
-    const { hasPolymarketOutcomeTokenMappingChanged, normalizePolymarketOutcomeTokenIds } =
-      await import('@/app/api/sync/events/route')
+    const {
+      hasPolymarketOutcomeTokenMappingChanged,
+      normalizePolymarketOutcomeTokenIds,
+      resolvePolymarketOutcomeAssetIds,
+    } = await import('@/app/api/sync/events/route')
     const existing = [
       { outcomeIndex: 0, polymarketTokenId: '100' },
       { outcomeIndex: 1, polymarketTokenId: '200' },
@@ -119,6 +122,27 @@ describe('sync events route', () => {
     expect(hasPolymarketOutcomeTokenMappingChanged(normalizePolymarketOutcomeTokenIds(['100', '200']), existing)).toBe(
       false,
     )
+
+    expect(
+      resolvePolymarketOutcomeAssetIds({
+        mirror_protocol: 'polyv2',
+        mirror_outcome_token_ids: ['legacy-yes', 'legacy-no'],
+        mirror_position_ids: ['12345678901234567890', '98765432109876543210'],
+        outcomes: [{ mirror_position_id: '12345678901234567890' }, { mirror_position_id: '98765432109876543210' }],
+      }),
+    ).toEqual({ hasMapping: true, ids: ['12345678901234567890', '98765432109876543210'] })
+    expect(
+      resolvePolymarketOutcomeAssetIds({
+        mirror_protocol: 'polyv2',
+        mirror_outcome_token_ids: ['legacy-yes', 'legacy-no'],
+        mirror_position_ids: ['12345678901234567890', '98765432109876543210'],
+        outcomes: [{ mirror_position_id: '12345678901234567890' }, { mirror_position_id: 'stale-id' }],
+      }),
+    ).toEqual({ hasMapping: true, ids: [null, null] })
+    expect(resolvePolymarketOutcomeAssetIds({ mirror_outcome_token_ids: ['100', '200'] })).toEqual({
+      hasMapping: true,
+      ids: ['100', '200'],
+    })
   })
 
   it('only downloads an existing market icon when its source reference changes', async () => {
