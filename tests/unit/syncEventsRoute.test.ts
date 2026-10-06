@@ -139,6 +139,13 @@ describe('sync events route', () => {
         outcomes: [{ mirror_position_id: '12345678901234567890' }, { mirror_position_id: 'stale-id' }],
       }),
     ).toEqual({ hasMapping: true, ids: [null, null] })
+    expect(
+      resolvePolymarketOutcomeAssetIds({
+        mirror_protocol: 'polyv2',
+        mirror_position_ids: ['12345678901234567890', '12345678901234567890'],
+        outcomes: [{ mirror_position_id: '12345678901234567890' }, { mirror_position_id: '12345678901234567890' }],
+      }),
+    ).toEqual({ hasMapping: true, ids: [null, null] })
     expect(resolvePolymarketOutcomeAssetIds({ mirror_outcome_token_ids: ['100', '200'] })).toEqual({
       hasMapping: true,
       ids: ['100', '200'],

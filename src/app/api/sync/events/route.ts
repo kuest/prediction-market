@@ -2723,8 +2723,12 @@ export function resolvePolymarketOutcomeAssetIds(metadata: Record<string, any>) 
   const arrayIds = normalizePolyV2PositionIds(metadata.mirror_position_ids)
   const outcomes = Array.isArray(metadata.outcomes) ? metadata.outcomes : []
   const outcomeIds = normalizePolyV2PositionIds(outcomes.map((outcome: any) => outcome?.mirror_position_id))
+  const idsAreDistinct = arrayIds[0] === null || arrayIds[1] === null || arrayIds[0] !== arrayIds[1]
   const idsAreConsistent =
-    arrayIds.length === 2 && outcomeIds.length === 2 && arrayIds.every((id, index) => id === outcomeIds[index])
+    arrayIds.length === 2 &&
+    outcomeIds.length === 2 &&
+    arrayIds.every((id, index) => id === outcomeIds[index]) &&
+    idsAreDistinct
 
   return {
     // The protocol marker is explicit. If position metadata is incomplete, clear any stale
