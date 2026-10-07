@@ -60,7 +60,7 @@ async function PlatformLayoutContent({ children }: { children: ReactNode }) {
 
 export default function PlatformLayout({ children }: LayoutProps<'/[locale]'>) {
   return (
-    <AppKitProvider wagmiCookie={null}>
+    <AppKitProvider>
       <CommunityFollowsProvider>
         <TradeAlertsProvider>
           <PlatformLayoutContent>{children}</PlatformLayoutContent>

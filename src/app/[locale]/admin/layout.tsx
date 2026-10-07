@@ -43,7 +43,7 @@ export default async function AdminLayout({ children }: LayoutProps<'/[locale]/a
   const supportSettings = getKuestSupportSettings(settings)
 
   return (
-    <AppKitProvider wagmiCookie={null}>
+    <AppKitProvider>
       <CommunityFollowsProvider>
         <PlatformViewerState />
         <AdminHeader />

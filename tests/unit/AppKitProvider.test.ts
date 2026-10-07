@@ -15,7 +15,6 @@ function ReadyConsumer({ ctx, onValue }: { ctx: React.Context<any>; onValue?: (v
 
 const mocks = hoisted(() => ({
   chainControllerGetActiveCaipAddress: mock(),
-  cookieToInitialState: mock(),
   createAppKit: mock(),
   createSIWEConfig: mock(),
   setThemeMode: mock(),
@@ -75,7 +74,6 @@ void mock.module('@/hooks/usePublicRuntimeConfig', () => ({
 }))
 
 void mock.module('wagmi', () => ({
-  cookieToInitialState: mocks.cookieToInitialState,
   WagmiProvider: mocks.WagmiProvider,
   useConnections: () => [],
   useSignMessage: mocks.useSignMessage,
@@ -119,7 +117,6 @@ describe('appKitProvider SSR guard', () => {
     unstubAllGlobals()
     mocks.chainControllerGetActiveCaipAddress.mockReset()
     mocks.chainControllerGetActiveCaipAddress.mockReturnValue('eip155:1:0x123')
-    mocks.cookieToInitialState.mockReset()
     mocks.createAppKit.mockReset()
     mocks.createSIWEConfig.mockReset()
     mocks.createSIWEConfig.mockImplementation((config) => ({ ...config, signIn: mocks.siweClientSignIn }))
@@ -152,9 +149,6 @@ describe('appKitProvider SSR guard', () => {
 
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = await importAppKitProvider()
-    const TestAppKitProvider = AppKitProvider as React.ComponentType<
-      React.PropsWithChildren<{ wagmiCookie: string | null }>
-    >
 
     let latestValue: any = null
     function handleValue(value: any) {
@@ -163,8 +157,8 @@ describe('appKitProvider SSR guard', () => {
 
     const view = render(
       React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
+        AppKitProvider,
+        null,
         React.createElement(ReadyConsumer, { ctx: AppKitContext, onValue: handleValue }),
       ),
     )
@@ -184,11 +178,9 @@ describe('appKitProvider SSR guard', () => {
         }),
       )
       expect(mocks.setThemeMode).toHaveBeenCalledWith('dark')
-      expect(mocks.cookieToInitialState).toHaveBeenCalledWith({}, 'wagmi.store=test-state')
       expect(mocks.WagmiProvider.mock.calls[0]?.[0]).toEqual(
         expect.objectContaining({
           config: {},
-          initialState: undefined,
         }),
       )
       expect(screen.getByTestId('ready')).toHaveTextContent('yes')
@@ -210,8 +202,8 @@ describe('appKitProvider SSR guard', () => {
 
     view.rerender(
       React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
+        AppKitProvider,
+        null,
         React.createElement(ReadyConsumer, { ctx: AppKitContext, onValue: handleValue }),
       ),
     )
@@ -228,9 +220,6 @@ describe('appKitProvider SSR guard', () => {
 
       const { AppKitContext } = await import('@/hooks/useAppKit')
       const AppKitProvider = await importAppKitProvider()
-      const TestAppKitProvider = AppKitProvider as React.ComponentType<
-        React.PropsWithChildren<{ wagmiCookie: string | null }>
-      >
       let latestValue: any = null
       function handleValue(value: any) {
         latestValue = value
@@ -238,8 +227,8 @@ describe('appKitProvider SSR guard', () => {
 
       render(
         React.createElement(
-          TestAppKitProvider,
-          { wagmiCookie: 'test-state' },
+          AppKitProvider,
+          null,
           React.createElement(ReadyConsumer, { ctx: AppKitContext, onValue: handleValue }),
         ),
       )
@@ -271,17 +260,8 @@ describe('appKitProvider SSR guard', () => {
 
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = await importAppKitProvider()
-    const TestAppKitProvider = AppKitProvider as React.ComponentType<
-      React.PropsWithChildren<{ wagmiCookie: string | null }>
-    >
 
-    render(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
-    )
+    render(React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })))
 
     await waitFor(
       () => {
@@ -311,16 +291,9 @@ describe('appKitProvider SSR guard', () => {
 
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = await importAppKitProvider()
-    const TestAppKitProvider = AppKitProvider as React.ComponentType<
-      React.PropsWithChildren<{ wagmiCookie: string | null }>
-    >
 
     const view = render(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
+      React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })),
     )
 
     await waitFor(
@@ -361,16 +334,9 @@ describe('appKitProvider SSR guard', () => {
 
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = await importAppKitProvider()
-    const TestAppKitProvider = AppKitProvider as React.ComponentType<
-      React.PropsWithChildren<{ wagmiCookie: string | null }>
-    >
 
     const view = render(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
+      React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })),
     )
 
     await waitFor(
@@ -386,13 +352,7 @@ describe('appKitProvider SSR guard', () => {
       embeddedWalletInfo: undefined,
       isConnected: true,
     })
-    view.rerender(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
-    )
+    view.rerender(React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })))
 
     await waitFor(
       () => {
@@ -419,26 +379,13 @@ describe('appKitProvider SSR guard', () => {
 
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = await importAppKitProvider()
-    const TestAppKitProvider = AppKitProvider as React.ComponentType<
-      React.PropsWithChildren<{ wagmiCookie: string | null }>
-    >
 
     const view = render(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
+      React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })),
     )
 
     await new Promise((resolve) => setTimeout(resolve, 25))
-    view.rerender(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
-    )
+    view.rerender(React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })))
 
     await waitFor(
       () => {
@@ -467,17 +414,8 @@ describe('appKitProvider SSR guard', () => {
 
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = await importAppKitProvider()
-    const TestAppKitProvider = AppKitProvider as React.ComponentType<
-      React.PropsWithChildren<{ wagmiCookie: string | null }>
-    >
 
-    render(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
-    )
+    render(React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })))
 
     await waitFor(
       () => {
@@ -513,16 +451,9 @@ describe('appKitProvider SSR guard', () => {
 
     const { AppKitContext } = await import('@/hooks/useAppKit')
     const AppKitProvider = await importAppKitProvider()
-    const TestAppKitProvider = AppKitProvider as React.ComponentType<
-      React.PropsWithChildren<{ wagmiCookie: string | null }>
-    >
 
     const view = render(
-      React.createElement(
-        TestAppKitProvider,
-        { wagmiCookie: 'test-state' },
-        React.createElement(ReadyConsumer, { ctx: AppKitContext }),
-      ),
+      React.createElement(AppKitProvider, null, React.createElement(ReadyConsumer, { ctx: AppKitContext })),
     )
 
     await waitFor(

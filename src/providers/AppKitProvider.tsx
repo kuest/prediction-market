@@ -12,7 +12,7 @@ import { useExtracted } from 'next-intl'
 import { useTheme } from 'next-themes'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { getAddress, isAddress } from 'viem'
-import { cookieToInitialState, WagmiProvider } from 'wagmi'
+import { WagmiProvider } from 'wagmi'
 
 import type { User } from '@/types'
 
@@ -28,7 +28,6 @@ import { createAppKitWagmiAdapter, defaultNetwork, networks } from '@/lib/appkit
 import { authClient } from '@/lib/auth-client'
 import { IS_BROWSER } from '@/lib/constants'
 import { clearBrowserStorage, clearNonHttpOnlyCookies } from '@/lib/utils'
-import { WAGMI_STATE_COOKIE_NAME } from '@/lib/wagmi-storage'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
 
 let hasInitializedAppKit = false
@@ -714,7 +713,7 @@ function useAppKitContextValue({
   )
 }
 
-export default function AppKitProvider({ children, wagmiCookie }: { children: ReactNode; wagmiCookie: string | null }) {
+export default function AppKitProvider({ children }: { children: ReactNode }) {
   const t = useExtracted()
   const site = useSiteIdentity()
   const { reownAppKitProjectId, siteUrl } = usePublicRuntimeConfig()
@@ -724,10 +723,6 @@ export default function AppKitProvider({ children, wagmiCookie }: { children: Re
   const appKitThemeMode: 'light' | 'dark' = resolvedTheme === 'dark' ? 'dark' : 'light'
   const wagmiAdapter = useMemo(() => createAppKitWagmiAdapter(reownAppKitProjectId), [reownAppKitProjectId])
   const wagmiConfig = wagmiAdapter.wagmiConfig as Config
-  const initialState = useMemo(
-    () => cookieToInitialState(wagmiConfig, wagmiCookie ? `${WAGMI_STATE_COOKIE_NAME}=${wagmiCookie}` : null),
-    [wagmiConfig, wagmiCookie],
-  )
   const instance = useAppKitInstance({
     appKitThemeMode,
     projectId: reownAppKitProjectId,
@@ -746,7 +741,7 @@ export default function AppKitProvider({ children, wagmiCookie }: { children: Re
   const canSyncTheme = Boolean(instance)
 
   return (
-    <WagmiProvider config={wagmiConfig} initialState={initialState}>
+    <WagmiProvider config={wagmiConfig}>
       <AppKitContext value={appKitValue}>
         <PolymarketWalletConnectionRestorer />
         {instance && siweClient && <AutoSiweAuthentication siweClient={siweClient} />}

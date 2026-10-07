@@ -33,7 +33,6 @@ void mock.module('@/hooks/usePublicRuntimeConfig', () => ({
 }))
 
 void mock.module('wagmi', () => ({
-  cookieToInitialState: mock(),
   WagmiProvider: ({ children }: { children: unknown }) => children,
   useConnections: () => [],
   useSignMessage: mock(),
