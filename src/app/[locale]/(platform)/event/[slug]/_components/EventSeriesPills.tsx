@@ -33,6 +33,17 @@ import { cn } from '@/lib/utils'
 
 const MAX_PAST_RESULT_BADGES = 5
 const DEFAULT_LIVE_TRADING_WINDOW_MS = 24 * 60 * 60 * 1000
+const seriesDateFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function formatSeriesDate(date: Date, locale: string, options: Intl.DateTimeFormatOptions) {
+  const key = JSON.stringify([locale, options])
+  let formatter = seriesDateFormatters.get(key)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, options)
+    seriesDateFormatters.set(key, formatter)
+  }
+  return formatter.format(date)
+}
 
 function parseSeriesEventDate(value: string | null | undefined) {
   if (!value) {
@@ -77,7 +88,7 @@ function isSeriesEventResolved(event: EventSeriesEntry) {
 function getSeriesEventLabel(event: EventSeriesEntry, locale = 'en-US', fallback = 'Unknown date') {
   const date = getSeriesEventDate(event)
   return date
-    ? date.toLocaleDateString(locale, {
+    ? formatSeriesDate(date, locale, {
         month: 'short',
         day: 'numeric',
         timeZone: 'UTC',
@@ -93,7 +104,7 @@ function getSeriesEventLabelWithYear(
 ) {
   const date = getSeriesEventDate(event)
   return date
-    ? date.toLocaleDateString(locale, {
+    ? formatSeriesDate(date, locale, {
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -105,7 +116,7 @@ function getSeriesEventLabelWithYear(
 function getSeriesEventTimeLabel(event: EventSeriesEntry, timeZone: string, locale = 'en-US') {
   const date = getSeriesEventDate(event)
   return date
-    ? date.toLocaleTimeString(locale, {
+    ? formatSeriesDate(date, locale, {
         hour: 'numeric',
         minute: '2-digit',
         timeZone,
@@ -122,7 +133,7 @@ function getSeriesEventPillTimeLabel(
 ) {
   const date = getSeriesEventDate(event)
   return date
-    ? date.toLocaleTimeString(locale, {
+    ? formatSeriesDate(date, locale, {
         hour: padHour ? '2-digit' : 'numeric',
         ...(showMinutes ? { minute: '2-digit' as const } : {}),
         timeZone,
@@ -195,14 +206,17 @@ function useSeriesNavigation({
 }
 
 function isSameEtDay(leftTimestamp: number, rightTimestamp: number) {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
+  const options: Intl.DateTimeFormatOptions = {
     timeZone: 'America/New_York',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  })
+  }
 
-  return formatter.format(new Date(leftTimestamp)) === formatter.format(new Date(rightTimestamp))
+  return (
+    formatSeriesDate(new Date(leftTimestamp), 'en-CA', options) ===
+    formatSeriesDate(new Date(rightTimestamp), 'en-CA', options)
+  )
 }
 
 type EventSeriesPillsVariant = 'header' | 'live'

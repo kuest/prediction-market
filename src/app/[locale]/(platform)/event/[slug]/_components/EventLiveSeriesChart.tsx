@@ -289,6 +289,10 @@ function EventLiveSeriesChartContent({
   showLiveMarketLink,
   featuredChartLayout,
 }: EventLiveSeriesChartContentProps) {
+  // Safari's optimizing compiler stalls on the generated memo-cache function during live updates.
+  // Keep this hot render function's memoization explicit instead.
+  'use no memo'
+
   const t = useExtracted()
   const locale = useLocale()
   const site = useSiteIdentity()
@@ -866,6 +870,16 @@ function EventLiveSeriesChartContent({
   const utcDateLabel = useMemo(() => formatDateAtTimezone(endTimestamp, 'UTC', locale), [endTimestamp, locale])
   const utcTimeLabel = useMemo(() => formatTimeAtTimezone(endTimestamp, 'UTC', locale), [endTimestamp, locale])
 
+  const xAxisTickFormatter = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(!isEventClosed ? { second: '2-digit' as const } : {}),
+      hour12: false,
+    })
+    return (date: Date) => formatter.format(date)
+  }, [isEventClosed, locale])
+
   const watermark = useMemo(
     () => ({
       iconSvg: site.logoSvg,
@@ -873,6 +887,28 @@ function EventLiveSeriesChartContent({
       label: site.name,
     }),
     [site.logoImageUrl, site.logoSvg, site.name],
+  )
+
+  const seriesControls = useMemo(
+    () =>
+      showSeriesControls ? (
+        <EventSeriesPills
+          currentEventSlug={event.slug}
+          isDailySeries={tradingWindowMs === 24 * 60 * 60 * 1000}
+          tradingWindowMs={tradingWindowMs}
+          seriesEvents={seriesEvents}
+          variant="live"
+          rightSlot={
+            <EventLiveSeriesViewSwitch
+              activeView={activeView}
+              setActiveView={setActiveView}
+              liveColor={liveColor}
+              config={config}
+            />
+          }
+        />
+      ) : null,
+    [activeView, config, event.slug, liveColor, seriesEvents, showSeriesControls, tradingWindowMs],
   )
 
   return (
@@ -929,20 +965,7 @@ function EventLiveSeriesChartContent({
                 xAxisTickCount={isMobile ? 2 : 4}
                 xDomain={liveXAxisDomain}
                 xAxisTickValues={xAxisTickValues}
-                xAxisTickFormatter={(date) =>
-                  isEventClosed
-                    ? date.toLocaleTimeString(locale, {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false,
-                      })
-                    : date.toLocaleTimeString(locale, {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                        hour12: false,
-                      })
-                }
+                xAxisTickFormatter={xAxisTickFormatter}
                 clipXAxisLabelsToPlot={featuredChartLayout && !isEventClosed}
                 xAxisLabelsRightClipRatio={
                   featuredChartLayout && !isEventClosed ? FEATURED_LIVE_X_AXIS_DATA_END_RATIO : undefined
@@ -1023,23 +1046,7 @@ function EventLiveSeriesChartContent({
         )}
       </div>
 
-      {showSeriesControls && (
-        <EventSeriesPills
-          currentEventSlug={event.slug}
-          isDailySeries={tradingWindowMs === 24 * 60 * 60 * 1000}
-          tradingWindowMs={tradingWindowMs}
-          seriesEvents={seriesEvents}
-          variant="live"
-          rightSlot={
-            <EventLiveSeriesViewSwitch
-              activeView={activeView}
-              setActiveView={setActiveView}
-              liveColor={liveColor}
-              config={config}
-            />
-          }
-        />
-      )}
+      {seriesControls}
     </div>
   )
 }
