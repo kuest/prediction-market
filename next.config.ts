@@ -23,6 +23,7 @@ const config: NextConfig = {
     ignoreBuildErrors: !!process.env.VERCEL_ENV,
   },
   experimental: {
+    agentUpgrade: 'latest',
     inlineCss: true,
     serverActions: {
       bodySizeLimit: '2mb',
