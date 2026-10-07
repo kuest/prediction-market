@@ -147,7 +147,11 @@ async function loadLocalePublicData(locale: SupportedLocale): Promise<LocalePubl
     loadRuntimeThemeState(),
     loadGlobalAnnouncementSettings(),
   ])
-  cacheLife(runtimeTheme.cacheable ? 'max' : 'default')
+  if (runtimeTheme.cacheable) {
+    cacheLife('max')
+  } else {
+    cacheLife('default')
+  }
   const hasGlobalAnnouncement = globalAnnouncement.message.trim().length > 0
 
   return {
@@ -217,10 +221,7 @@ function LocaleBody({
 
 async function PrerenderedLocaleDocument({ children }: LocaleDocumentProps) {
   const locale = await getRootLocale()
-  const [publicData, publicRuntimeConfig] = await Promise.all([
-    loadLocalePublicData(locale),
-    getPublicRuntimeConfig(),
-  ])
+  const [publicData, publicRuntimeConfig] = await Promise.all([loadLocalePublicData(locale), getPublicRuntimeConfig()])
 
   return (
     <html
@@ -241,10 +242,7 @@ async function RuntimeLocaleDocument({ children }: LocaleDocumentProps) {
   await deferPublicShellPrerenderIfNeeded()
 
   const locale = await getRootLocale()
-  const [publicData, publicRuntimeConfig] = await Promise.all([
-    loadLocalePublicData(locale),
-    getPublicRuntimeConfig(),
-  ])
+  const [publicData, publicRuntimeConfig] = await Promise.all([loadLocalePublicData(locale), getPublicRuntimeConfig()])
 
   return (
     <html

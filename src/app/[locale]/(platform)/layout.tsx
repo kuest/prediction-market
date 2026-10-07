@@ -14,8 +14,6 @@ import { TradingOnboardingProvider } from '@/app/[locale]/(platform)/_providers/
 import { getRootLocale } from '@/i18n/root-locale'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
 import { buildChildParentMap, buildPlatformNavigationTags } from '@/lib/platform-navigation'
-import { shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
-import { getWagmiStateCookieValue } from '@/lib/wagmi-storage.server'
 import AppKitProvider from '@/providers/AppKitProvider'
 import { CommunityFollowsProvider } from '@/providers/CommunityFollowsProvider'
 import TradeAlertsProvider from '@/providers/TradeAlertsProvider'
@@ -60,10 +58,9 @@ async function PlatformLayoutContent({ children }: { children: ReactNode }) {
   )
 }
 
-export default async function PlatformLayout({ children }: LayoutProps<'/[locale]'>) {
-  const wagmiCookie = shouldPrerenderPublicShell() ? null : await getWagmiStateCookieValue()
+export default function PlatformLayout({ children }: LayoutProps<'/[locale]'>) {
   return (
-    <AppKitProvider wagmiCookie={wagmiCookie}>
+    <AppKitProvider wagmiCookie={null}>
       <CommunityFollowsProvider>
         <TradeAlertsProvider>
           <PlatformLayoutContent>{children}</PlatformLayoutContent>
