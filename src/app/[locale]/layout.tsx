@@ -32,7 +32,6 @@ import SiteIdentityProvider from '@/providers/SiteIdentityProvider'
 
 import '../globals.css'
 
-// Startup configuration keeps the initial document dynamic; child routes can validate their own navigations.
 export const instant = false
 
 export async function generateViewport(): Promise<Viewport> {
