@@ -32,6 +32,7 @@ import SiteIdentityProvider from '@/providers/SiteIdentityProvider'
 
 import '../globals.css'
 
+// Startup configuration keeps the initial document dynamic; child routes can validate their own navigations.
 export const instant = false
 
 export async function generateViewport(): Promise<Viewport> {
@@ -124,34 +125,34 @@ interface LocaleDocumentProps {
 
 interface LocaleBodyProps extends LocaleDocumentProps {
   locale: SupportedLocale
+  publicRuntimeConfig: Awaited<ReturnType<typeof getPublicRuntimeConfig>>
 }
 
-interface LocaleRuntimeData {
+interface LocalePublicData {
   globalAnnouncement: Awaited<ReturnType<typeof loadGlobalAnnouncementSettings>>
   hasGlobalAnnouncement: boolean
-  publicRuntimeConfig: Awaited<ReturnType<typeof getPublicRuntimeConfig>>
   runtimeTheme: RuntimeThemeState
 }
 
-async function loadLocaleRuntimeData(locale: SupportedLocale): Promise<LocaleRuntimeData> {
-  await deferPublicShellPrerenderIfNeeded()
+async function loadLocalePublicData(locale: SupportedLocale): Promise<LocalePublicData> {
+  'use cache'
+  cacheTag(cacheTags.settings)
 
   const enabledLocales = await loadEnabledLocales()
   if (!enabledLocales.includes(locale)) {
     notFound()
   }
 
-  const [runtimeTheme, publicRuntimeConfig, globalAnnouncement] = await Promise.all([
+  const [runtimeTheme, globalAnnouncement] = await Promise.all([
     loadRuntimeThemeState(),
-    getPublicRuntimeConfig(),
     loadGlobalAnnouncementSettings(),
   ])
+  cacheLife(runtimeTheme.cacheable ? 'max' : 'default')
   const hasGlobalAnnouncement = globalAnnouncement.message.trim().length > 0
 
   return {
     globalAnnouncement,
     hasGlobalAnnouncement,
-    publicRuntimeConfig,
     runtimeTheme,
   }
 }
@@ -183,7 +184,7 @@ function LocaleBody({
   publicRuntimeConfig,
   runtimeTheme,
   syncRootPreset,
-}: LocaleBodyProps & LocaleRuntimeData & { syncRootPreset: boolean }) {
+}: LocaleBodyProps & LocalePublicData & { syncRootPreset: boolean }) {
   return (
     <body className="flex min-h-screen flex-col font-sans">
       <PublicRuntimeConfigScript config={publicRuntimeConfig} />
@@ -216,17 +217,20 @@ function LocaleBody({
 
 async function PrerenderedLocaleDocument({ children }: LocaleDocumentProps) {
   const locale = await getRootLocale()
-  const runtimeData = await loadLocaleRuntimeData(locale)
+  const [publicData, publicRuntimeConfig] = await Promise.all([
+    loadLocalePublicData(locale),
+    getPublicRuntimeConfig(),
+  ])
 
   return (
     <html
       lang={locale}
       dir={locale === 'ar' ? 'rtl' : 'ltr'}
       className={openSauceOne.variable}
-      data-theme-preset={runtimeData.runtimeTheme.theme.presetId}
+      data-theme-preset={publicData.runtimeTheme.theme.presetId}
       suppressHydrationWarning
     >
-      <LocaleBody {...runtimeData} locale={locale} syncRootPreset={false}>
+      <LocaleBody {...publicData} publicRuntimeConfig={publicRuntimeConfig} locale={locale} syncRootPreset={false}>
         {children}
       </LocaleBody>
     </html>
@@ -234,8 +238,13 @@ async function PrerenderedLocaleDocument({ children }: LocaleDocumentProps) {
 }
 
 async function RuntimeLocaleDocument({ children }: LocaleDocumentProps) {
+  await deferPublicShellPrerenderIfNeeded()
+
   const locale = await getRootLocale()
-  const runtimeData = await loadLocaleRuntimeData(locale)
+  const [publicData, publicRuntimeConfig] = await Promise.all([
+    loadLocalePublicData(locale),
+    getPublicRuntimeConfig(),
+  ])
 
   return (
     <html
@@ -244,7 +253,7 @@ async function RuntimeLocaleDocument({ children }: LocaleDocumentProps) {
       className={openSauceOne.variable}
       suppressHydrationWarning
     >
-      <LocaleBody {...runtimeData} locale={locale} syncRootPreset>
+      <LocaleBody {...publicData} publicRuntimeConfig={publicRuntimeConfig} locale={locale} syncRootPreset>
         {children}
       </LocaleBody>
     </html>
