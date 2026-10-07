@@ -58,11 +58,12 @@ export async function loadEventPagePublicContentData(
   'use cache'
   cacheTag(cacheTags.event(eventSlug))
 
-  const marketContextSettings = await loadMarketContextSettings()
+  const [marketContextSettings, eventResult] = await Promise.all([
+    loadMarketContextSettings(),
+    EventRepository.getEventBySlug(eventSlug, '', locale),
+  ])
 
   const marketContextEnabled = marketContextSettings.enabled && Boolean(marketContextSettings.apiKey)
-
-  const eventResult = await EventRepository.getEventBySlug(eventSlug, '', locale)
 
   const { data: rawEvent, error } = eventResult
   if (error || !rawEvent) {

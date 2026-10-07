@@ -50,7 +50,7 @@ export default async function Layout({ children }: DocsSlugLayoutProps) {
         transparentMode: 'top',
       }}
       sidebar={{
-        prefetch: false,
+        prefetch: true,
         tabs: [
           {
             title: 'Documentation',

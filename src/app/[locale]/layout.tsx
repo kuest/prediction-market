@@ -141,9 +141,11 @@ async function loadLocaleRuntimeData(locale: SupportedLocale): Promise<LocaleRun
     notFound()
   }
 
-  const runtimeTheme = await loadRuntimeThemeState()
-  const publicRuntimeConfig = await getPublicRuntimeConfig()
-  const globalAnnouncement = await loadGlobalAnnouncementSettings()
+  const [runtimeTheme, publicRuntimeConfig, globalAnnouncement] = await Promise.all([
+    loadRuntimeThemeState(),
+    getPublicRuntimeConfig(),
+    loadGlobalAnnouncementSettings(),
+  ])
   const hasGlobalAnnouncement = globalAnnouncement.message.trim().length > 0
 
   return {
