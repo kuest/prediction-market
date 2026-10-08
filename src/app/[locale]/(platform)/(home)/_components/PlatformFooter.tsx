@@ -599,7 +599,7 @@ export function PlatformLayoutFooter() {
   )
 
   return (
-    <Suspense fallback={footer}>
+    <Suspense fallback={null}>
       <PathnamePlatformLayoutFooter>{footer}</PathnamePlatformLayoutFooter>
     </Suspense>
   )

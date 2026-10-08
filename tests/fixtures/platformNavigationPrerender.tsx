@@ -101,10 +101,14 @@ const { prelude } = await pendingPrerender
 const staticHtml = await new Response(prelude).text()
 
 hasHydrated = true
+pathname = '/'
+const homeFooter = renderShell(<PlatformLayoutFooter />)
 pathname = '/crypto'
 const categoryFooter = renderShell(<PlatformLayoutFooter />)
 pathname = '/event/example'
 const eventFooter = renderShell(<PlatformLayoutFooter />)
+pathname = '/sports/live'
+const sportsFooter = renderShell(<PlatformLayoutFooter />)
 pathname = '/new'
 const activeMobileNavigation = renderShell(<MobileBottomNav />)
 pathname = '/en/docs'
@@ -113,6 +117,15 @@ const disabledAnnouncement = renderShell(
 )
 
 process.stdout.write(
-  JSON.stringify({ suspended, staticHtml, categoryFooter, eventFooter, activeMobileNavigation, disabledAnnouncement }),
+  JSON.stringify({
+    suspended,
+    staticHtml,
+    homeFooter,
+    categoryFooter,
+    eventFooter,
+    sportsFooter,
+    activeMobileNavigation,
+    disabledAnnouncement,
+  }),
   () => process.exit(0),
 )
