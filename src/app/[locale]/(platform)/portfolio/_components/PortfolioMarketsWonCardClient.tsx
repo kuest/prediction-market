@@ -21,6 +21,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Drawer, DrawerContent, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer'
 import { toast } from '@/components/ui/toast'
+import { useAppKit } from '@/hooks/useAppKit'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
@@ -208,6 +209,7 @@ export default function PortfolioMarketsWonCardClient({ data }: PortfolioMarkets
   } = useMarketsWonClaimState()
   const { ensureTradingReady, openTradeRequirements, promptAutoRedeem } = useTradingOnboarding()
   const { signTypedDataAsync } = useSignTypedData()
+  const { open: openAppKit } = useAppKit()
   const { runWithSignaturePrompt } = useSignaturePromptRunner()
   const queryClient = useQueryClient()
   const user = useUser()
@@ -325,7 +327,11 @@ export default function PortfolioMarketsWonCardClient({ data }: PortfolioMarkets
       )
 
       if (response?.error) {
-        if (isTradingAuthRequiredError(response.error)) {
+        if (response.code === 'wallet_connector_not_connected') {
+          setIsDialogOpen(false)
+          toast.error(t('Your wallet connection expired. Reconnect your wallet and try again.'))
+          void openAppKit({ view: 'Connect' })
+        } else if (isTradingAuthRequiredError(response.error)) {
           setIsDialogOpen(false)
           openTradeRequirements({ forceTradingAuth: true })
         } else {
@@ -349,6 +355,13 @@ export default function PortfolioMarketsWonCardClient({ data }: PortfolioMarkets
       }
 
       if (response.partialFailure) {
+        if (response.failure?.code === 'wallet_connector_not_connected') {
+          setIsDialogOpen(false)
+          toast.error(t('Your wallet connection expired. Reconnect your wallet and try again.'))
+          void openAppKit({ view: 'Connect' })
+          return
+        }
+
         toast.error(t('We could not submit your claim. Please try again.'))
 
         const failureError = response.failure?.error
