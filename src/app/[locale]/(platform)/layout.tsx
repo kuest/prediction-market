@@ -14,6 +14,8 @@ import AppKitProvider from '@/providers/AppKitProvider'
 import { CommunityFollowsProvider } from '@/providers/CommunityFollowsProvider'
 import TradeAlertsProvider from '@/providers/TradeAlertsProvider'
 
+export const instant = false
+
 async function PlatformLayoutContent({ children }: { children: ReactNode }) {
   const { tags, childParentMap } = await loadPlatformLayoutNavigation()
 
