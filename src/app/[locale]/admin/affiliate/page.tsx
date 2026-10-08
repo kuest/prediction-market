@@ -1,5 +1,6 @@
 import { getExtracted } from 'next-intl/server'
 import { io } from 'next/cache'
+import { unstable_rethrow } from 'next/navigation'
 import { Suspense } from 'react'
 
 import AdminAffiliateContentClient from '@/app/[locale]/admin/affiliate/_components/AdminAffiliateContentClient'
@@ -145,6 +146,7 @@ async function AdminAffiliateContent() {
 
     feeTotals.forEach((result, idx) => {
       if (result.status !== 'fulfilled') {
+        unstable_rethrow(result.reason)
         console.warn('Failed to load affiliate fee totals', result.reason)
         return
       }

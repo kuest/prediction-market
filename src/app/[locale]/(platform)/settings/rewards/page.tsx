@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 import { getExtracted } from 'next-intl/server'
-import { notFound } from 'next/navigation'
+import { notFound, unstable_rethrow } from 'next/navigation'
 
 import type { SupportedLocale } from '@/i18n/locales'
 import type { DataApiRewardAccount, DataApiRewardMarket } from '@/lib/data-api/resolution-rewards'
@@ -106,24 +106,28 @@ export default async function RewardsSettingsPage({ params }: RewardsSettingsPag
         address: receiverAddress,
         feeType: 'AFFILIATE',
       }).catch((error) => {
+        unstable_rethrow(error)
         console.warn('Failed to load affiliate fee totals', error)
         return null
       })
     : Promise.resolve(null)
   const affiliateSeriesPromise = receiverAddress
     ? fetchFeeHistoryTimeSeries(receiverAddress, 'AFFILIATE').catch((error) => {
+        unstable_rethrow(error)
         console.warn('Failed to load affiliate fee history', error)
         return null
       })
     : Promise.resolve(null)
   const affiliateTotalPromise = receiverAddress
     ? fetchFeeHistoryTotal(receiverAddress, 'AFFILIATE').catch((error) => {
+        unstable_rethrow(error)
         console.warn('Failed to load affiliate fee total', error)
         return null
       })
     : Promise.resolve(null)
   const resolutionAccountPromise = user.deposit_wallet_address
     ? fetchResolutionRewardAccount(user.deposit_wallet_address).catch((error) => {
+        unstable_rethrow(error)
         console.warn('Failed to load resolution rewards account', error)
         return null
       })
@@ -160,6 +164,7 @@ export default async function RewardsSettingsPage({ params }: RewardsSettingsPag
   const indexedRewardMarkets = await Promise.all(
     rewardMarketIds.map((marketId) =>
       fetchResolutionRewardMarket(marketId).catch((error) => {
+        unstable_rethrow(error)
         console.warn('Failed to load resolution reward market history', { marketId, error })
         return null
       }),
