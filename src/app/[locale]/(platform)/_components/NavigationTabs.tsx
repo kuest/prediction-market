@@ -8,6 +8,7 @@ import NavigationMoreMenu from '@/app/[locale]/(platform)/_components/Navigation
 import NavigationTab from '@/app/[locale]/(platform)/_components/NavigationTab'
 import { useFilters } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
+import { useHasHydrated } from '@/hooks/useHasHydrated'
 import {
   resolveHorizontalScrollMaskClass,
   useHorizontalScrollShadows,
@@ -54,8 +55,7 @@ function useNavigationTabsRefs(tagCount: number) {
   return { containerRef, tabItemRef }
 }
 
-function useNavigationSelection(tags: ReadonlyArray<NavigationTag>) {
-  const pathname = usePathname()
+function useNavigationSelection(tags: ReadonlyArray<NavigationTag>, pathname: string | null) {
   const { filters } = useFilters()
   const { childParentMap } = usePlatformNavigationData()
   const dynamicHomeCategorySlugSet = useMemo(() => buildDynamicHomeCategorySlugSet([...tags]), [tags])
@@ -64,7 +64,7 @@ function useNavigationSelection(tags: ReadonlyArray<NavigationTag>) {
     () =>
       resolvePlatformNavigationSelection({
         dynamicHomeCategorySlugSet,
-        pathname,
+        pathname: pathname ?? '/',
         filters: {
           tag: filters.tag,
           mainTag: filters.mainTag,
@@ -83,12 +83,12 @@ function useNavigationSelection(tags: ReadonlyArray<NavigationTag>) {
   return { navigationSelection, activeIndex, dynamicHomeCategorySlugSet }
 }
 
-export default function NavigationTabs() {
+function NavigationTabsContent({ pathname }: { pathname: string | null }) {
   const { tags } = usePlatformNavigationData()
   const { containerRef, tabItemRef } = useNavigationTabsRefs(tags.length)
   const { showLeftShadow, showRightShadow } = useHorizontalScrollShadows({ containerRef })
-  const { navigationSelection, activeIndex, dynamicHomeCategorySlugSet } = useNavigationSelection(tags)
-  useScrollActiveItemIntoView({ activeIndex, containerRef, itemRef: tabItemRef })
+  const { navigationSelection, activeIndex, dynamicHomeCategorySlugSet } = useNavigationSelection(tags, pathname)
+  useScrollActiveItemIntoView({ activeIndex: pathname === null ? -1 : activeIndex, containerRef, itemRef: tabItemRef })
 
   return (
     <nav className="relative z-20 bg-background lg:sticky lg:top-17">
@@ -107,7 +107,7 @@ export default function NavigationTabs() {
               <NavigationTab
                 tag={tag}
                 href={getMainTagHref(tag.slug, dynamicHomeCategorySlugSet)}
-                isActive={navigationSelection.activeMainTagSlug === tag.slug}
+                isActive={pathname !== null && navigationSelection.activeMainTagSlug === tag.slug}
                 tabPaddingClass={index === 0 ? 'px-2.5 pl-0' : 'px-3'}
                 containerRef={(element) => {
                   tabItemRef.current[index] = element
@@ -125,4 +125,15 @@ export default function NavigationTabs() {
       </div>
     </nav>
   )
+}
+
+function PathnameNavigationTabs() {
+  const pathname = usePathname()
+  return <NavigationTabsContent pathname={pathname} />
+}
+
+export default function NavigationTabs() {
+  const hasHydrated = useHasHydrated()
+  // Unknown route params cannot provide a pathname in the public static shell.
+  return hasHydrated ? <PathnameNavigationTabs /> : <NavigationTabsContent pathname={null} />
 }

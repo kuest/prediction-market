@@ -1,10 +1,11 @@
 'use client'
 
 import type { Route } from 'next'
+import type { ReactNode } from 'react'
 
 import { CheckIcon, ChevronDownIcon, Globe2Icon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { Suspense, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 
 import type { SocialIconName } from '@/components/SocialIcon'
 import type { SupportedLocale } from '@/i18n/locales'
@@ -574,7 +575,7 @@ export default function PlatformFooter({
   )
 }
 
-export function PlatformLayoutFooter() {
+function PathnamePlatformLayoutFooter({ children }: { children: ReactNode }) {
   const pathname = usePathname()
   const { tags } = usePlatformNavigationData()
   const dynamicHomeCategorySlugSet = useMemo(() => buildDynamicHomeCategorySlugSet(tags), [tags])
@@ -587,9 +588,19 @@ export function PlatformLayoutFooter() {
     return null
   }
 
-  return (
+  return children
+}
+
+export function PlatformLayoutFooter() {
+  const footer = (
     <div className="container">
       <PlatformFooter />
     </div>
+  )
+
+  return (
+    <Suspense fallback={footer}>
+      <PathnamePlatformLayoutFooter>{footer}</PathnamePlatformLayoutFooter>
+    </Suspense>
   )
 }

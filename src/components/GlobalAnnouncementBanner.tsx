@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useMemo } from 'react'
+import { Suspense, useMemo } from 'react'
 
 import type { CustomJavascriptCodeDisablePage } from '@/lib/custom-javascript-code'
 
@@ -41,18 +41,15 @@ function useLocalizedPathname(locale: string) {
   return useMemo(() => stripLocalePrefix(pathname, locale), [locale, pathname])
 }
 
-export default function GlobalAnnouncementBanner({
+function GlobalAnnouncementBannerContent({
   locale,
   message,
   linkUrl,
-  disabledOn,
-}: GlobalAnnouncementBannerProps) {
-  const localizedPathname = useLocalizedPathname(locale)
+}: Pick<GlobalAnnouncementBannerProps, 'locale' | 'message' | 'linkUrl'>) {
   const localizedMessage = localizeGlobalAnnouncementMessage(locale, message)
   const hasMessage = localizedMessage.length > 0
-  const isEnabled = isCustomJavascriptCodeEnabledOnPathname({ disabledOn }, localizedPathname)
 
-  if (!hasMessage || !isEnabled) {
+  if (!hasMessage) {
     return null
   }
 
@@ -77,5 +74,26 @@ export default function GlobalAnnouncementBanner({
     >
       {content}
     </a>
+  )
+}
+
+function PathnameGlobalAnnouncementBanner(props: GlobalAnnouncementBannerProps) {
+  const localizedPathname = useLocalizedPathname(props.locale)
+  if (!isCustomJavascriptCodeEnabledOnPathname({ disabledOn: props.disabledOn }, localizedPathname)) {
+    return null
+  }
+
+  return <GlobalAnnouncementBannerContent {...props} />
+}
+
+export default function GlobalAnnouncementBanner(props: GlobalAnnouncementBannerProps) {
+  if (props.disabledOn.length === 0) {
+    return <GlobalAnnouncementBannerContent {...props} />
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <PathnameGlobalAnnouncementBanner {...props} />
+    </Suspense>
   )
 }

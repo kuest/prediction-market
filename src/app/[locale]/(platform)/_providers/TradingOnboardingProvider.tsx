@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 import { useAppKitAccount } from '@reown/appkit/react'
 import { useExtracted } from 'next-intl'
 import { usePathname } from 'next/navigation'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPublicClient, erc20Abi, erc1155Abi } from 'viem'
 import { useSignMessage, useSignTypedData } from 'wagmi'
 
@@ -31,6 +31,7 @@ import {
 import { useAffiliateOrderMetadata } from '@/hooks/useAffiliateOrderMetadata'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useDepositWalletPolling } from '@/hooks/useDepositWalletPolling'
+import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import {
@@ -463,6 +464,7 @@ function isPaymentsEnabledResponse(value: unknown): value is { enabled: boolean 
 }
 
 function TradingOnboardingProviderContent({ children, user }: TradingOnboardingProviderContentProps) {
+  const hasHydrated = useHasHydrated()
   const userId = user?.id
   const [activeModal, setActiveModal] = useState<OnboardingModal>(null)
   const [dismissedModal, setDismissedModal] = useState<OnboardingModal>(null)
@@ -1944,9 +1946,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
 
   return (
     <TradingOnboardingContext value={contextValue}>
-      <Suspense fallback={null}>
-        <TradingAuthRoutePromptSync />
-      </Suspense>
+      {hasHydrated && <TradingAuthRoutePromptSync />}
 
       {children}
 

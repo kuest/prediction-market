@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { CustomJavascriptCodeAttributeValue, CustomJavascriptCodeConfig } from '@/lib/custom-javascript-code'
 
@@ -276,8 +276,16 @@ function useCustomJavascriptCodeExecution(locale: string, codes: CustomJavascrip
   )
 }
 
-export default function CustomJavascriptCode({ locale, codes }: CustomJavascriptCodeProps) {
+function CustomJavascriptCodeExecution({ locale, codes }: CustomJavascriptCodeProps) {
   useCustomJavascriptCodeExecution(locale, codes)
 
   return null
+}
+
+export default function CustomJavascriptCode(props: CustomJavascriptCodeProps) {
+  return (
+    <Suspense fallback={null}>
+      <CustomJavascriptCodeExecution {...props} />
+    </Suspense>
+  )
 }

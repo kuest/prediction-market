@@ -50,14 +50,19 @@ const HowItWorks = lazy(() => import('@/app/[locale]/(platform)/_components/HowI
 
 const { useSession } = authClient
 
-export default function MobileBottomNav() {
+function PathnameMobileBottomNav() {
   const pathname = usePathname()
 
   return <MobileBottomNavContent key={pathname} pathname={pathname} />
 }
 
+export default function MobileBottomNav() {
+  const hasHydrated = useHasHydrated()
+  return hasHydrated ? <PathnameMobileBottomNav /> : <MobileBottomNavContent pathname={null} />
+}
+
 interface MobileBottomNavContentProps {
-  pathname: string
+  pathname: string | null
 }
 
 function useMobileBottomNavState() {
@@ -366,7 +371,7 @@ function MobileBottomNavContent({ pathname }: MobileBottomNavContentProps) {
             <MobileNavButton label={t('Search')} active={isSearchOpen} onClick={handleSearchAction} icon={SearchIcon} />
             <MobileNavLink href="/new" label={t('New')} active={pathname === '/new'} icon={SparkleIcon} />
             {isAuthenticated ? (
-              <MobilePortfolioNavLink active={pathname.startsWith('/portfolio')} />
+              <MobilePortfolioNavLink active={pathname?.startsWith('/portfolio') ?? false} />
             ) : (
               <MobileNavButton
                 label={t('More')}
