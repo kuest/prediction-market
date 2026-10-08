@@ -172,8 +172,12 @@ function getPreferredFailure(
   current: SignAndSubmitDepositWalletCallsResult | null,
   next: SignAndSubmitDepositWalletCallsResult,
 ) {
-  if (!current) {
+  if (!current || next.code === 'wallet_connector_not_connected') {
     return next
+  }
+
+  if (current.code === 'wallet_connector_not_connected') {
+    return current
   }
 
   if (next.error && isTradingAuthRequiredError(next.error) && !isTradingAuthRequiredError(current.error)) {

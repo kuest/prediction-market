@@ -121,6 +121,83 @@ describe('wallet client', () => {
     await expect(request).rejects.toBeInstanceOf(DepositWalletCallItemsSplitFallbackError)
   })
 
+  it('preserves partial submissions and prioritizes a later expired connector over the split failure', async () => {
+    mocks.getDepositWalletNonceAction.mockResolvedValue({ error: null, nonce: '1' })
+    mocks.submitDepositWalletTransactionAction
+      .mockResolvedValueOnce({ error: 'Transaction reverted.' })
+      .mockResolvedValueOnce({ error: null, txHash: '0x1' })
+    const signTypedDataAsync = mock()
+      .mockResolvedValueOnce('0xsignature')
+      .mockResolvedValueOnce('0xsignature')
+      .mockRejectedValueOnce({ name: 'ConnectorNotConnectedError', message: 'Connector not connected.' })
+    const onProgress = mock()
+
+    const result = await signAndSubmitDepositWalletCallItemsWithSplitFallback({
+      user: {
+        address: '0x0000000000000000000000000000000000000001',
+        deposit_wallet_address: '0x0000000000000000000000000000000000000002',
+      },
+      items: [1, 2, 3, 4],
+      getCall: () => ({
+        target: '0x0000000000000000000000000000000000000003',
+        value: '0',
+        data: '0x',
+      }),
+      signTypedDataAsync,
+      onProgress,
+    })
+
+    expect(result).toMatchObject({
+      error: null,
+      txHash: '0x1',
+      successfulItems: [1, 2],
+      failedItems: [3, 4],
+      partialFailure: true,
+      failure: {
+        error: WALLET_CONNECTOR_NOT_CONNECTED_MESSAGE,
+        code: 'wallet_connector_not_connected',
+      },
+    })
+    expect(signTypedDataAsync).toHaveBeenCalledTimes(3)
+    expect(mocks.submitDepositWalletTransactionAction).toHaveBeenCalledTimes(2)
+    expect(onProgress).toHaveBeenLastCalledWith({ successfulItems: [1, 2], failedItems: [3, 4] })
+  })
+
+  it('propagates an expired connector when an earlier chunk failed and no items submitted', async () => {
+    mocks.getDepositWalletNonceAction.mockResolvedValue({ error: null, nonce: '1' })
+    mocks.submitDepositWalletTransactionAction.mockResolvedValueOnce({ error: 'Claim unavailable.' })
+    const signTypedDataAsync = mock()
+      .mockResolvedValueOnce('0xsignature')
+      .mockRejectedValueOnce({ name: 'ConnectorNotConnectedError', message: 'Connector not connected.' })
+
+    const result = await signAndSubmitDepositWalletCallItemsWithSplitFallback({
+      user: {
+        address: '0x0000000000000000000000000000000000000001',
+        deposit_wallet_address: '0x0000000000000000000000000000000000000002',
+      },
+      items: [1, 2],
+      getCall: () => ({
+        target: '0x0000000000000000000000000000000000000003',
+        value: '0',
+        data: '0x',
+      }),
+      maxChunkSize: 1,
+      signTypedDataAsync,
+    })
+
+    expect(result).toMatchObject({
+      error: WALLET_CONNECTOR_NOT_CONNECTED_MESSAGE,
+      code: 'wallet_connector_not_connected',
+      successfulItems: [],
+      failedItems: [1, 2],
+      partialFailure: false,
+      failure: {
+        error: WALLET_CONNECTOR_NOT_CONNECTED_MESSAGE,
+        code: 'wallet_connector_not_connected',
+      },
+    })
+  })
+
   it('stops submitting remaining chunks when trading auth is required', async () => {
     mocks.getDepositWalletNonceAction.mockResolvedValue({
       error: null,
