@@ -4,6 +4,7 @@ import { hoisted, stubEnv, unstubAllEnvs } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
   cacheTag: mock(),
+  getExtracted: mock(),
   getMainTags: mock(),
   io: mock(),
 }))
@@ -14,7 +15,7 @@ void mock.module('next/cache', () => ({
 }))
 
 void mock.module('next-intl/server', () => ({
-  getExtracted: async () => (message: string) => message,
+  getExtracted: mocks.getExtracted,
 }))
 
 void mock.module('@/lib/db/queries/tag', () => ({
@@ -26,6 +27,8 @@ const { loadPlatformMainTags } = await import('@/lib/platform-main-tags')
 
 beforeEach(() => {
   mocks.cacheTag.mockClear()
+  mocks.getExtracted.mockReset()
+  mocks.getExtracted.mockResolvedValue((message: string) => message)
   mocks.getMainTags.mockReset()
   mocks.io.mockReset()
   mocks.io.mockResolvedValue(undefined)
@@ -47,6 +50,31 @@ afterEach(() => {
 })
 
 describe('platform layout navigation', () => {
+  it.each(['', '   '])(
+    'keeps forced prerenders with missing database env %j outside the navigation cache',
+    async (databaseUrl) => {
+      stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'true')
+      stubEnv('POSTGRES_URL', databaseUrl)
+
+      expect(await loadPlatformLayoutNavigation()).toEqual({ tags: [], childParentMap: {} })
+      expect(mocks.io).not.toHaveBeenCalled()
+      expect(mocks.getExtracted).not.toHaveBeenCalled()
+      expect(mocks.cacheTag).not.toHaveBeenCalled()
+      expect(mocks.getMainTags).not.toHaveBeenCalled()
+
+      stubEnv('NEXT_PHASE', 'phase-production-server')
+      stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
+
+      const result = await loadPlatformLayoutNavigation()
+
+      expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'new', 'crypto'])
+      expect(result.childParentMap.bitcoin).toBe('crypto')
+      expect(mocks.getExtracted).toHaveBeenCalledOnce()
+      expect(mocks.cacheTag).toHaveBeenCalledOnce()
+      expect(mocks.getMainTags).toHaveBeenCalledWith('en')
+    },
+  )
+
   it('waits for runtime before filling the menu cache in an env-less Docker build', async () => {
     const runtime = Promise.withResolvers<void>()
     mocks.io.mockReturnValue(runtime.promise)
