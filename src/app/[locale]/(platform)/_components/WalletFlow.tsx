@@ -16,6 +16,7 @@ import { useAppKit } from '@/hooks/useAppKit'
 import { useBalance } from '@/hooks/useBalance'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useLiFiWalletUsdBalance } from '@/hooks/useLiFiWalletUsdBalance'
+import { useMeldCheckoutIdFromUrl } from '@/hooks/useMeldCheckoutIdFromUrl'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { MAX_AMOUNT_INPUT } from '@/lib/amount-input'
@@ -296,10 +297,8 @@ export function WalletFlow({
   const { open: openAppKit } = useAppKit()
   const { depositView, setDepositView, handleDepositModalChange } = useDepositViewState(onDepositOpenChange)
   const [isLiFiBridgeOpen, setIsLiFiBridgeOpen] = useState(false)
-  const [returnedMeldCheckoutId, setReturnedMeldCheckoutId] = useState<string | null>(null)
-  const [isMeldReturnStatusOpen, setIsMeldReturnStatusOpen] = useState(false)
-  const returnedMeldCheckoutIdRef = useRef<string | null>(null)
-  const isMeldReturnStatusOpenRef = useRef(false)
+  const returnedMeldCheckoutId = useMeldCheckoutIdFromUrl()
+  const isMeldReturnStatusOpen = returnedMeldCheckoutId !== null
   const meldCheckoutHandoffIdsRef = useRef(new Set<string>())
   const meldCheckoutPopupsRef = useRef(new Map<string, MeldCheckoutPopupReference>())
   const meldCheckoutPollsRef = useRef(new Map<string, MeldCheckoutPoll>())
@@ -341,11 +340,7 @@ export function WalletFlow({
   }, [handleDepositModalChange, setDepositView])
 
   const handleCloseMeldReturnStatus = useCallback(() => {
-    const checkoutId = returnedMeldCheckoutIdRef.current
-    setIsMeldReturnStatusOpen(false)
-    isMeldReturnStatusOpenRef.current = false
-    setReturnedMeldCheckoutId(null)
-    returnedMeldCheckoutIdRef.current = null
+    const checkoutId = getMeldCheckoutIdFromUrl()
     if (checkoutId) {
       removeMeldCheckoutIdFromUrl(checkoutId)
       window.setTimeout(() => resumeMeldCheckoutPolling(checkoutId), 0)
@@ -357,12 +352,6 @@ export function WalletFlow({
     meldCheckoutPollControlRef.current.stop(checkoutId)
     clearMeldPendingCheckout(checkoutId)
     removeMeldCheckoutIdFromUrl(checkoutId)
-    if (returnedMeldCheckoutIdRef.current === checkoutId) {
-      returnedMeldCheckoutIdRef.current = null
-      isMeldReturnStatusOpenRef.current = false
-      setReturnedMeldCheckoutId(null)
-      setIsMeldReturnStatusOpen(false)
-    }
   }, [])
 
   const walletSendMessages = useMemo<WalletSendMessages>(
@@ -466,16 +455,12 @@ export function WalletFlow({
       if (!pendingCheckout) {
         return
       }
-      const previousCheckoutId = isMeldReturnStatusOpenRef.current ? returnedMeldCheckoutIdRef.current : null
+      const previousCheckoutId = getMeldCheckoutIdFromUrl()
       if (previousCheckoutId && previousCheckoutId !== checkoutId) {
         meldCheckoutHandoffIdsRef.current.add(previousCheckoutId)
       }
       meldCheckoutPollControlRef.current.stop(checkoutId)
       setMeldCheckoutIdInUrl(checkoutId)
-      returnedMeldCheckoutIdRef.current = checkoutId
-      isMeldReturnStatusOpenRef.current = true
-      setReturnedMeldCheckoutId(checkoutId)
-      setIsMeldReturnStatusOpen(true)
     }
 
     channel.addEventListener('message', handleReturn)
@@ -495,7 +480,7 @@ export function WalletFlow({
     const handoffTimer = window.setTimeout(() => {
       for (const checkoutId of handoffIds) {
         handoffIds.delete(checkoutId)
-        if (checkoutId !== returnedMeldCheckoutIdRef.current) {
+        if (checkoutId !== getMeldCheckoutIdFromUrl()) {
           resumeMeldCheckoutPolling(checkoutId)
         }
       }
@@ -507,7 +492,7 @@ export function WalletFlow({
   const handleUseConnectedWallet = useUseConnectedWalletHandler({ connectedWalletAddress, setWalletSendTo })
   const handleSetMaxAmount = useSetMaxAmountHandler({ balanceRaw: balance.raw, setWalletSendAmount })
 
-  useEffect(() => {
+  useEffect(function monitorMeldCheckouts() {
     let isActive = true
     const runningCheckouts = meldCheckoutPollsRef.current
     const expiryTimers = meldCheckoutExpiryTimersRef.current
@@ -539,12 +524,6 @@ export function WalletFlow({
       clearExpiryTimer(checkoutId)
       clearMeldPendingCheckout(checkoutId)
       removeMeldCheckoutIdFromUrl(checkoutId)
-      if (returnedMeldCheckoutIdRef.current === checkoutId) {
-        returnedMeldCheckoutIdRef.current = null
-        isMeldReturnStatusOpenRef.current = false
-        setReturnedMeldCheckoutId(null)
-        setIsMeldReturnStatusOpen(false)
-      }
     }
 
     function scheduleExpiry(pendingCheckout: { checkoutId: string; expiresAt: number }) {
@@ -650,7 +629,7 @@ export function WalletFlow({
       if (
         !isActive ||
         !isMeldCheckoutId(checkoutId) ||
-        (isMeldReturnStatusOpenRef.current && returnedMeldCheckoutIdRef.current === checkoutId) ||
+        getMeldCheckoutIdFromUrl() === checkoutId ||
         runningCheckouts.has(checkoutId)
       ) {
         return
@@ -710,13 +689,6 @@ export function WalletFlow({
       if (pendingCheckout) {
         scheduleExpiry(pendingCheckout)
         restoredCheckoutId = queryCheckoutId
-        returnedMeldCheckoutIdRef.current = queryCheckoutId
-        isMeldReturnStatusOpenRef.current = true
-        // Restore the client-only URL fallback after hydration while keeping HomePage static.
-        /* oxlint-disable react/set-state-in-effect */
-        setReturnedMeldCheckoutId(queryCheckoutId)
-        setIsMeldReturnStatusOpen(true)
-        /* oxlint-enable react/set-state-in-effect */
       } else {
         removeMeldCheckoutIdFromUrl(queryCheckoutId)
       }

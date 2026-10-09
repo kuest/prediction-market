@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, jest, mock, spyOn } from 'bun:test'
 
 import { MeldReturnStatus } from '@/app/[locale]/payments/meld/return/MeldReturnStatus'
@@ -6,6 +6,7 @@ import {
   clearMeldPendingCheckout,
   getMeldCheckoutIdFromUrl,
   listMeldPendingCheckouts,
+  markMeldCheckoutUnauthorized,
   removeMeldCheckoutIdFromUrl,
 } from '@/lib/payments/meld-return-channel'
 
@@ -38,6 +39,29 @@ afterEach(() => {
 })
 
 describe('Meld return status polling', () => {
+  it('shows an unavailable status without polling a checkout already marked unauthorized', async () => {
+    window.localStorage.setItem(pendingCheckoutKey, checkoutId)
+    markMeldCheckoutUnauthorized(checkoutId)
+    const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 401 }))
+
+    render(<MeldReturnStatus checkoutId={checkoutId} open onClose={() => undefined} />)
+
+    await waitFor(() => expect(screen.getByText('Status temporarily unavailable')).toBeInTheDocument())
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('expires an overdue checkout without fetching its status', async () => {
+    window.localStorage.setItem(pendingCheckoutKey, JSON.stringify([{ checkoutId, expiresAt: Date.now() - 1_000 }]))
+    const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))
+    const onExpired = mock()
+
+    render(<MeldReturnStatus checkoutId={checkoutId} open onClose={() => undefined} onExpired={onExpired} />)
+
+    await waitFor(() => expect(onExpired).toHaveBeenCalledWith(checkoutId))
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.getByText('Status temporarily unavailable')).toBeInTheDocument()
+  })
+
   it('clears the checkout and asks WalletFlow to close it when the Worker returns 404', async () => {
     window.localStorage.setItem(pendingCheckoutKey, checkoutId)
     const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }))

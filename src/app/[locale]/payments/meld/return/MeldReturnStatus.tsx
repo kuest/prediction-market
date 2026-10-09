@@ -55,118 +55,110 @@ export function MeldReturnStatus({
     onClose()
   }, [onClose])
 
-  useEffect(() => {
-    if (!open || !hasValidCheckoutId) {
-      return
-    }
-
-    if (isMeldCheckoutUnauthorized(checkoutId)) {
-      /* oxlint-disable react/set-state-in-effect */
-      setHasError(true)
-      /* oxlint-enable react/set-state-in-effect */
-      return
-    }
-
-    const pendingCheckout = ensureMeldPendingCheckout(checkoutId)
-    if (!pendingCheckout) {
-      /* oxlint-disable react/set-state-in-effect */
-      setHasError(true)
-      /* oxlint-enable react/set-state-in-effect */
-      onExpired?.(checkoutId)
-      return
-    }
-
-    const expiresAt = pendingCheckout.expiresAt
-    const controller = new AbortController()
-    let attempts = 0
-    let timeout: ReturnType<typeof setTimeout> | undefined
-
-    function finishExpiredCheckout() {
-      clearMeldPendingCheckout(checkoutId)
-      setHasError(true)
-      onExpired?.(checkoutId)
-    }
-
-    function schedulePoll() {
-      const remainingMs = expiresAt - Date.now()
-      if (remainingMs <= 0) {
-        finishExpiredCheckout()
-        return
-      }
-      const delay = Math.min(getMeldCheckoutPollDelay(attempts), remainingMs)
-      attempts += 1
-      timeout = setTimeout(() => void poll(), delay)
-    }
-
-    async function poll() {
-      if (Date.now() >= expiresAt) {
-        finishExpiredCheckout()
+  useEffect(
+    function pollMeldCheckoutStatus() {
+      if (!open || !hasValidCheckoutId) {
         return
       }
 
-      try {
-        const response = await fetch(`/api/payments/meld/checkouts/${encodeURIComponent(checkoutId)}/status`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-        if (controller.signal.aborted) {
-          return
-        }
-        if (response.status === 401) {
-          markMeldCheckoutUnauthorized(checkoutId)
-          setHasError(true)
-          return
-        }
-        if (response.status === 404) {
-          clearMeldPendingCheckout(checkoutId)
-          setHasError(true)
-          onExpired?.(checkoutId)
-          return
-        }
-        if (!response.ok) {
-          throw new Error('checkout_status_unavailable')
-        }
+      const pendingCheckout = ensureMeldPendingCheckout(checkoutId)
+      const expiresAt = pendingCheckout?.expiresAt ?? Date.now()
+      const controller = new AbortController()
+      let attempts = 0
+      let timeout: ReturnType<typeof setTimeout> | undefined
 
-        const result: unknown = await response.json()
-        if (
-          typeof result !== 'object' ||
-          result === null ||
-          !('status' in result) ||
-          typeof result.status !== 'string'
-        ) {
-          throw new Error('invalid_checkout_status')
+      function finishExpiredCheckout() {
+        clearMeldPendingCheckout(checkoutId)
+        setHasError(true)
+        onExpired?.(checkoutId)
+      }
+
+      function schedulePoll() {
+        const remainingMs = expiresAt - Date.now()
+        if (remainingMs <= 0) {
+          finishExpiredCheckout()
+          return
         }
-        if (controller.signal.aborted) {
+        const delay = Math.min(getMeldCheckoutPollDelay(attempts), remainingMs)
+        attempts += 1
+        timeout = setTimeout(() => void poll(), delay)
+      }
+
+      async function poll() {
+        if (isMeldCheckoutUnauthorized(checkoutId)) {
+          setHasError(true)
+          return
+        }
+        if (Date.now() >= expiresAt) {
+          finishExpiredCheckout()
           return
         }
 
-        setStatus(result.status)
-        setHasError(false)
-        if (TERMINAL_STATUSES.has(result.status)) {
-          clearMeldPendingCheckout(checkoutId)
-        }
-        if (result.status === 'SETTLED') {
-          void refetchBalance()
-        }
-        if (!TERMINAL_STATUSES.has(result.status)) {
-          schedulePoll()
-        }
-      } catch {
-        if (!controller.signal.aborted) {
-          setHasError(true)
-          schedulePoll()
+        try {
+          const response = await fetch(`/api/payments/meld/checkouts/${encodeURIComponent(checkoutId)}/status`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          })
+          if (controller.signal.aborted) {
+            return
+          }
+          if (response.status === 401) {
+            markMeldCheckoutUnauthorized(checkoutId)
+            setHasError(true)
+            return
+          }
+          if (response.status === 404) {
+            clearMeldPendingCheckout(checkoutId)
+            setHasError(true)
+            onExpired?.(checkoutId)
+            return
+          }
+          if (!response.ok) {
+            throw new Error('checkout_status_unavailable')
+          }
+
+          const result: unknown = await response.json()
+          if (
+            typeof result !== 'object' ||
+            result === null ||
+            !('status' in result) ||
+            typeof result.status !== 'string'
+          ) {
+            throw new Error('invalid_checkout_status')
+          }
+          if (controller.signal.aborted) {
+            return
+          }
+
+          setStatus(result.status)
+          setHasError(false)
+          if (TERMINAL_STATUSES.has(result.status)) {
+            clearMeldPendingCheckout(checkoutId)
+          }
+          if (result.status === 'SETTLED') {
+            void refetchBalance()
+          }
+          if (!TERMINAL_STATUSES.has(result.status)) {
+            schedulePoll()
+          }
+        } catch {
+          if (!controller.signal.aborted) {
+            setHasError(true)
+            schedulePoll()
+          }
         }
       }
-    }
 
-    void poll()
-    return () => {
-      controller.abort()
-      if (timeout) {
-        clearTimeout(timeout)
+      void poll()
+      return () => {
+        controller.abort()
+        if (timeout) {
+          clearTimeout(timeout)
+        }
       }
-    }
-  }, [checkoutId, hasValidCheckoutId, onExpired, open, refetchBalance])
+    },
+    [checkoutId, hasValidCheckoutId, onExpired, open, refetchBalance],
+  )
 
   if (!hasValidCheckoutId) {
     return null

@@ -1,6 +1,7 @@
 export const MELD_CHECKOUT_RETURN_CHANNEL = 'kuest:meld-checkout-return'
 export const MELD_CHECKOUT_POLL_EVENT = 'kuest:meld-checkout-poll'
 export const MELD_CHECKOUT_CLEARED_EVENT = 'kuest:meld-checkout-cleared'
+export const MELD_CHECKOUT_URL_EVENT = 'kuest:meld-checkout-url'
 const MELD_PENDING_CHECKOUT_STORAGE_KEY = 'kuest:pending-meld-checkout'
 export const MELD_CHECKOUT_PENDING_TTL_MS = 24 * 60 * 60 * 1_000
 const MELD_CHECKOUT_MAX_POLL_DELAY_MS = 5 * 60 * 1_000
@@ -345,6 +346,7 @@ export function setMeldCheckoutIdInUrl(checkoutId: string): void {
   const url = new URL(window.location.href)
   url.searchParams.set('meldCheckoutId', checkoutId)
   window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+  window.dispatchEvent(new Event(MELD_CHECKOUT_URL_EVENT))
 }
 
 export function removeMeldCheckoutIdFromUrl(checkoutId?: string): void {
@@ -360,4 +362,5 @@ export function removeMeldCheckoutIdFromUrl(checkoutId?: string): void {
 
   url.searchParams.delete('meldCheckoutId')
   window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`)
+  window.dispatchEvent(new Event(MELD_CHECKOUT_URL_EVENT))
 }

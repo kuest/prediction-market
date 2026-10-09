@@ -1641,13 +1641,13 @@ async function buildEventListQueryContext({
   }
 
   if (hideSports) {
-    whereConditions.push(not(buildTagContainsCondition('sport')))
+    whereConditions.push(sql`NOT ${buildTagContainsCondition('sport')}`)
   }
   if (hideCrypto) {
-    whereConditions.push(not(buildTagContainsCondition('crypto')))
+    whereConditions.push(sql`NOT ${buildTagContainsCondition('crypto')}`)
   }
   if (hideEarnings) {
-    whereConditions.push(not(buildTagContainsCondition('earning')))
+    whereConditions.push(sql`NOT ${buildTagContainsCondition('earning')}`)
   }
 
   return {
@@ -2035,13 +2035,13 @@ export const EventRepository = {
       }
 
       if (hideSports) {
-        whereConditions.push(not(buildTagContainsCondition('sport')))
+        whereConditions.push(sql`NOT ${buildTagContainsCondition('sport')}`)
       }
       if (hideCrypto) {
-        whereConditions.push(not(buildTagContainsCondition('crypto')))
+        whereConditions.push(sql`NOT ${buildTagContainsCondition('crypto')}`)
       }
       if (hideEarnings) {
-        whereConditions.push(not(buildTagContainsCondition('earning')))
+        whereConditions.push(sql`NOT ${buildTagContainsCondition('earning')}`)
       }
 
       const baseWhere = and(...whereConditions)
