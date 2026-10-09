@@ -6,5 +6,10 @@
 
 #nd-sidebar div:has(> [data-theme-toggle]:only-child) {
   width: fit-content;
-  align-self: center;
+  align-self: flex-start;
+  margin-inline-start: calc(var(--spacing) * 2);
+}
+
+#nd-sidebar [data-theme-toggle]:only-child {
+  border-inline-start-width: 0;
 }
