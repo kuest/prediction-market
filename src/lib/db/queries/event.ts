@@ -23,6 +23,7 @@ import { createHash } from 'node:crypto'
 
 import type { NonDefaultLocale, SupportedLocale } from '@/i18n/locales'
 import type { AdminEventAttentionFilter } from '@/lib/admin-event-attention'
+import type { OutcomePrices } from '@/lib/clob-event-prices'
 import type { EventListSortBy, EventListStatusFilter } from '@/lib/event-list-filters'
 import type { SportsSlugResolver } from '@/lib/sports-slug-mapping'
 import type { SportsVertical } from '@/lib/sports-vertical'
@@ -38,6 +39,7 @@ import type {
 import { DEFAULT_LOCALE, NON_DEFAULT_LOCALES } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { resolveClobUrl } from '@/lib/clob'
+import { EVENT_PRICES_TIMEOUT_MS, fetchOutcomePrices } from '@/lib/clob-event-prices'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import {
   CRYPTO_CADENCE_ROUTES,
@@ -88,12 +90,6 @@ import { normalizeSportsSegmentScores, resolveSportsSourceSegmentCount } from '@
 import { resolveCanonicalSportsSportSlug, resolveSportsSportSlugQueryCandidates } from '@/lib/sports-slug-mapping'
 import { getPublicAssetUrl } from '@/lib/storage'
 
-type PriceApiResponse = Record<string, { BUY?: string; SELL?: string } | undefined>
-interface OutcomePrices {
-  buy?: number
-  sell?: number
-}
-const MAX_PRICE_BATCH = 500
 const DEFAULT_EVENT_LIST_LIMIT = 32
 const DEFAULT_SPORTS_FEED_EVENT_LIMIT = 128
 const MAX_SPORTS_FEED_EVENT_LIMIT = 256
@@ -105,11 +101,6 @@ interface LastTradePriceEntry {
   token_id: string
   price: string
   side: 'BUY' | 'SELL'
-}
-
-interface FetchPriceBatchResult {
-  data: PriceApiResponse | null
-  aborted: boolean
 }
 
 function resolveSeriesEventDirection(outcomeText: string | null | undefined): 'up' | 'down' | null {
@@ -323,35 +314,6 @@ function resolveMarketDisplayPrice(
   return resolveOutcomeDisplayPrice(primaryOutcome) ?? 0.5
 }
 
-async function fetchPriceBatch(endpoint: string, tokenIds: string[]): Promise<FetchPriceBatchResult> {
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(
-        tokenIds.map((tokenId) => ({
-          token_id: tokenId,
-        })),
-      ),
-    })
-
-    if (!response.ok) {
-      return { data: null, aborted: false }
-    }
-
-    return { data: (await response.json()) as PriceApiResponse, aborted: false }
-  } catch (error) {
-    const aborted = isPrerenderAbortError(error)
-    if (!aborted) {
-      console.error('Failed to fetch outcome prices batch from CLOB.', error)
-    }
-    return { data: null, aborted }
-  }
-}
-
 async function fetchLastTradePrices(tokenIds: string[]): Promise<Map<string, number>> {
   const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
 
@@ -370,6 +332,7 @@ async function fetchLastTradePrices(tokenIds: string[]): Promise<Map<string, num
         Accept: 'application/json',
       },
       body: JSON.stringify(uniqueTokenIds.map((tokenId) => ({ token_id: tokenId }))),
+      signal: AbortSignal.timeout(EVENT_PRICES_TIMEOUT_MS),
     })
 
     if (!response.ok) {
@@ -384,95 +347,13 @@ async function fetchLastTradePrices(tokenIds: string[]): Promise<Map<string, num
       }
     })
   } catch (error) {
-    if (!isPrerenderAbortError(error)) {
+    if (!isPrerenderAbortError(error) && !(error instanceof Error && error.name === 'TimeoutError')) {
       console.error('Failed to fetch last trades prices', error)
     }
     return lastTradeMap
   }
 
   return lastTradeMap
-}
-
-function applyPriceBatch(
-  data: PriceApiResponse | null,
-  priceMap: Map<string, OutcomePrices>,
-  missingTokenIds: Set<string>,
-) {
-  if (!data) {
-    return
-  }
-
-  for (const [tokenId, priceBySide] of Object.entries(data ?? {})) {
-    if (!priceBySide) {
-      continue
-    }
-
-    const parsedBestAsk = priceBySide.BUY != null ? Number(priceBySide.BUY) : undefined
-    const parsedBestBid = priceBySide.SELL != null ? Number(priceBySide.SELL) : undefined
-    const normalizedBestAsk = parsedBestAsk != null && Number.isFinite(parsedBestAsk) ? parsedBestAsk : undefined
-    const normalizedBestBid = parsedBestBid != null && Number.isFinite(parsedBestBid) ? parsedBestBid : undefined
-
-    if (normalizedBestAsk == null && normalizedBestBid == null) {
-      continue
-    }
-
-    priceMap.set(tokenId, {
-      buy: normalizedBestAsk ?? normalizedBestBid,
-      sell: normalizedBestBid ?? normalizedBestAsk,
-    })
-    missingTokenIds.delete(tokenId)
-  }
-}
-
-async function fetchOutcomePrices(tokenIds: string[]): Promise<Map<string, OutcomePrices>> {
-  const uniqueTokenIds = Array.from(new Set(tokenIds.filter(Boolean)))
-
-  if (uniqueTokenIds.length === 0) {
-    return new Map()
-  }
-
-  const endpoint = `${resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl)}/prices`
-  const priceMap = new Map<string, OutcomePrices>()
-  const missingTokenIds = new Set(uniqueTokenIds)
-  let wasAborted = false
-
-  for (let i = 0; i < uniqueTokenIds.length; i += MAX_PRICE_BATCH) {
-    const batch = uniqueTokenIds.slice(i, i + MAX_PRICE_BATCH)
-    const batchResult = await fetchPriceBatch(endpoint, batch)
-    if (batchResult.aborted) {
-      wasAborted = true
-      break
-    }
-
-    if (batchResult.data) {
-      applyPriceBatch(batchResult.data, priceMap, missingTokenIds)
-    }
-
-    const batchMissingTokenIds = batch.filter((tokenId) => missingTokenIds.has(tokenId))
-    if (batchMissingTokenIds.length === 0) {
-      continue
-    }
-
-    const tokenResults = await Promise.allSettled(
-      batchMissingTokenIds.map((tokenId) => fetchPriceBatch(endpoint, [tokenId])),
-    )
-
-    for (const result of tokenResults) {
-      if (result.status === 'fulfilled') {
-        if (result.value.aborted) {
-          wasAborted = true
-          break
-        }
-        applyPriceBatch(result.value.data, priceMap, missingTokenIds)
-      }
-    }
-
-    if (wasAborted) {
-      break
-    }
-  }
-
-  return priceMap
 }
 
 interface ListEventsProps {
