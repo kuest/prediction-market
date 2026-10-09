@@ -1,7 +1,7 @@
 'use client'
 
-import { Custom } from 'fumadocs-openapi/playground/client'
 import { createOpenAPIPage } from 'fumadocs-openapi/ui'
+import { Custom } from 'fumadocs-openapi/ui/playground/client'
 import { useExtracted } from 'next-intl'
 import { useEffect, useMemo } from 'react'
 

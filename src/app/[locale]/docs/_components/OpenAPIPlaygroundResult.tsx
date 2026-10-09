@@ -1,8 +1,8 @@
 'use client'
 
-import type { ResultDisplayProps } from 'fumadocs-openapi/playground/client'
+import type { ResultDisplayProps } from 'fumadocs-openapi/ui/playground/client'
 
-import { DefaultResultDisplay } from 'fumadocs-openapi/playground/client'
+import { DefaultResultDisplay } from 'fumadocs-openapi/ui/playground/client'
 import { useMemo } from 'react'
 
 import { prettifyJsonResponseBody } from '@/lib/openapi-playground-result'
