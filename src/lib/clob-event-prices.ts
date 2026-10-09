@@ -9,6 +9,7 @@ export interface OutcomePrices {
 type PriceApiResponse = Record<string, { BUY?: string; SELL?: string } | undefined>
 interface FetchPriceBatchResult {
   data: PriceApiResponse | null
+  aborted: boolean
   stopFetching: boolean
   retryIndividually: boolean
 }
@@ -58,20 +59,26 @@ async function fetchPriceBatch(endpoint: string, tokenIds: string[]): Promise<Fe
     if (!response.ok) {
       return {
         data: null,
+        aborted: false,
         // HTTP 408 skips this batch; HTTP 400 can recover through individual requests.
         stopFetching: response.status !== 400 && response.status !== 408,
         retryIndividually: response.status === 400,
       }
     }
 
-    return { data: (await response.json()) as PriceApiResponse, stopFetching: false, retryIndividually: true }
+    return {
+      data: (await response.json()) as PriceApiResponse,
+      aborted: false,
+      stopFetching: false,
+      retryIndividually: true,
+    }
   } catch (error) {
     const aborted = isPrerenderAbortError(error)
     if (!aborted && !(error instanceof Error && error.name === 'TimeoutError')) {
       console.error('Failed to fetch outcome prices batch from CLOB.', error)
     }
     // Continue with later batches after transport failures, but respect prerender cancellation.
-    return { data: null, stopFetching: aborted, retryIndividually: false }
+    return { data: null, aborted, stopFetching: aborted, retryIndividually: false }
   }
 }
 
@@ -141,17 +148,18 @@ export async function fetchOutcomePrices(tokenIds: string[]): Promise<Map<string
       batchMissingTokenIds.map((tokenId) => fetchPriceBatch(endpoint, [tokenId])),
     )
 
-    let shouldStopFetching = false
+    let wasAborted = false
     for (const result of tokenResults) {
       if (result.status === 'fulfilled') {
-        if (result.value.stopFetching) {
-          shouldStopFetching = true
+        // A token's HTTP failure is a miss; only cancellation stops later batches.
+        if (result.value.aborted) {
+          wasAborted = true
         }
         applyPriceBatch(result.value.data, priceMap, missingTokenIds)
       }
     }
 
-    if (shouldStopFetching) {
+    if (wasAborted) {
       break
     }
   }

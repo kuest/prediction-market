@@ -112,12 +112,40 @@ describe('event display prices', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 
-  it('keeps successful individual prices but stops later batches after a service failure', async () => {
+  it.each([401, 403, 404, 405, 429, 500, 502, 503])(
+    'keeps successful prices and fetches later batches after an individual HTTP %s failure',
+    async (status) => {
+      const tokenIds = Array.from({ length: 501 }, (_, index) => `token-${index}`)
+      const batchPrices = Object.fromEntries(tokenIds.slice(2, 500).map((tokenId) => [tokenId, { BUY: '0.64' }]))
+      const fetchMock = mock()
+        .mockResolvedValueOnce(Response.json(batchPrices))
+        .mockResolvedValueOnce(new Response(null, { status }))
+        .mockResolvedValueOnce(Response.json({ 'token-1': { BUY: '0.25' } }))
+        .mockResolvedValueOnce(Response.json({ 'token-500': { BUY: '0.75' } }))
+      stubGlobal('fetch', fetchMock)
+
+      const prices = await fetchOutcomePrices(tokenIds)
+
+      expect(prices.size).toBe(500)
+      expect(prices.has('token-0')).toBe(false)
+      expect(prices.get('token-1')).toEqual({ buy: 0.25, sell: 0.25 })
+      expect(prices.get('token-500')).toEqual({ buy: 0.75, sell: 0.75 })
+      expect(fetchMock).toHaveBeenCalledTimes(4)
+    },
+  )
+
+  it.each([
+    { digest: 'HANGING_PROMISE_REJECTION' },
+    { name: 'AbortError' },
+    { code: 'UND_ERR_ABORTED' },
+    { message: 'During prerendering, fetch() rejects when the prerender is complete.' },
+  ])('stops later batches after an individual prerender cancellation: %j', async (error) => {
+    const logSpy = spyOn(console, 'error').mockImplementation(() => {})
     const tokenIds = Array.from({ length: 501 }, (_, index) => `token-${index}`)
     const batchPrices = Object.fromEntries(tokenIds.slice(2, 500).map((tokenId) => [tokenId, { BUY: '0.64' }]))
     const fetchMock = mock()
       .mockResolvedValueOnce(Response.json(batchPrices))
-      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockRejectedValueOnce(error)
       .mockResolvedValueOnce(Response.json({ 'token-1': { BUY: '0.25' } }))
     stubGlobal('fetch', fetchMock)
 
@@ -127,6 +155,7 @@ describe('event display prices', () => {
     expect(prices.get('token-1')).toEqual({ buy: 0.25, sell: 0.25 })
     expect(prices.has('token-500')).toBe(false)
     expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(logSpy).not.toHaveBeenCalled()
   })
 
   it('cancels a stalled request without launching individual retries', async () => {
