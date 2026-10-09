@@ -9,7 +9,7 @@ export interface OutcomePrices {
 type PriceApiResponse = Record<string, { BUY?: string; SELL?: string } | undefined>
 interface FetchPriceBatchResult {
   data: PriceApiResponse | null
-  aborted: boolean
+  stopFetching: boolean
   retryIndividually: boolean
 }
 
@@ -17,7 +17,7 @@ const MAX_PRICE_BATCH = 500
 
 export const EVENT_PRICES_TIMEOUT_MS = 2_000
 
-function isPrerenderAbortError(error: unknown) {
+export function isPrerenderAbortError(error: unknown) {
   if (!error || typeof error !== 'object') {
     return false
   }
@@ -56,16 +56,22 @@ async function fetchPriceBatch(endpoint: string, tokenIds: string[]): Promise<Fe
     })
 
     if (!response.ok) {
-      return { data: null, aborted: false, retryIndividually: response.status < 500 && response.status !== 429 }
+      return {
+        data: null,
+        // HTTP 408 skips this batch; HTTP 400 can recover through individual requests.
+        stopFetching: response.status !== 400 && response.status !== 408,
+        retryIndividually: response.status === 400,
+      }
     }
 
-    return { data: (await response.json()) as PriceApiResponse, aborted: false, retryIndividually: true }
+    return { data: (await response.json()) as PriceApiResponse, stopFetching: false, retryIndividually: true }
   } catch (error) {
     const aborted = isPrerenderAbortError(error)
     if (!aborted && !(error instanceof Error && error.name === 'TimeoutError')) {
       console.error('Failed to fetch outcome prices batch from CLOB.', error)
     }
-    return { data: null, aborted, retryIndividually: false }
+    // Continue with later batches after transport failures, but respect prerender cancellation.
+    return { data: null, stopFetching: aborted, retryIndividually: false }
   }
 }
 
@@ -110,18 +116,16 @@ export async function fetchOutcomePrices(tokenIds: string[]): Promise<Map<string
   const endpoint = `${resolveClobUrl(resolvePublicRuntimeEnv(process.env).clobUrl)}/prices`
   const priceMap = new Map<string, OutcomePrices>()
   const missingTokenIds = new Set(uniqueTokenIds)
-  let wasAborted = false
 
   for (let i = 0; i < uniqueTokenIds.length; i += MAX_PRICE_BATCH) {
     const batch = uniqueTokenIds.slice(i, i + MAX_PRICE_BATCH)
     const batchResult = await fetchPriceBatch(endpoint, batch)
-    if (batchResult.aborted) {
-      wasAborted = true
+    if (batchResult.stopFetching) {
       break
     }
 
     if (!batchResult.data && !batchResult.retryIndividually) {
-      break
+      continue
     }
 
     if (batchResult.data) {
@@ -137,17 +141,17 @@ export async function fetchOutcomePrices(tokenIds: string[]): Promise<Map<string
       batchMissingTokenIds.map((tokenId) => fetchPriceBatch(endpoint, [tokenId])),
     )
 
+    let shouldStopFetching = false
     for (const result of tokenResults) {
       if (result.status === 'fulfilled') {
-        if (result.value.aborted) {
-          wasAborted = true
-          break
+        if (result.value.stopFetching) {
+          shouldStopFetching = true
         }
         applyPriceBatch(result.value.data, priceMap, missingTokenIds)
       }
     }
 
-    if (wasAborted) {
+    if (shouldStopFetching) {
       break
     }
   }

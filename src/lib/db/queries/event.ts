@@ -39,7 +39,7 @@ import type {
 import { DEFAULT_LOCALE, NON_DEFAULT_LOCALES } from '@/i18n/locales'
 import { cacheTags } from '@/lib/cache-tags'
 import { resolveClobUrl } from '@/lib/clob'
-import { EVENT_PRICES_TIMEOUT_MS, fetchOutcomePrices } from '@/lib/clob-event-prices'
+import { EVENT_PRICES_TIMEOUT_MS, fetchOutcomePrices, isPrerenderAbortError } from '@/lib/clob-event-prices'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import {
   CRYPTO_CADENCE_ROUTES,
@@ -224,28 +224,6 @@ function isMoneylineMarketForAdminList(input: {
 
   const marketText = ` ${normalizeSportsMetadataText(`${input.short_title ?? ''} ${input.title ?? ''}`)} `
   return marketText.includes(' draw ') || marketText.includes(' moneyline ') || marketText.includes(' match winner ')
-}
-
-function isPrerenderAbortError(error: unknown) {
-  if (!error || typeof error !== 'object') {
-    return false
-  }
-
-  const record = error as { digest?: string; name?: string; code?: string; message?: string }
-
-  if (record.digest === 'HANGING_PROMISE_REJECTION') {
-    return true
-  }
-
-  if (record.name === 'AbortError' || record.code === 'UND_ERR_ABORTED') {
-    return true
-  }
-
-  if (typeof record.message === 'string' && record.message.includes('fetch() rejects when the prerender is complete')) {
-    return true
-  }
-
-  return false
 }
 
 function normalizeTradePrice(value: string | undefined) {
