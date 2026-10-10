@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 import * as actualNextCache from 'next/cache'
 import { isValidElement } from 'react'
 
-import { hoisted } from '../bun-test-helpers'
+import { hoisted, stubEnv, unstubAllEnvs } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
   findDynamicHomeCategoryBySlug: mock(),
@@ -32,10 +32,12 @@ void mock.module('@/lib/platform-routing', () => ({
   findDynamicHomeCategoryBySlug: (...args: any[]) => mocks.findDynamicHomeCategoryBySlug(...args),
   findDynamicHomeSubcategoryBySlug: (...args: any[]) => mocks.findDynamicHomeSubcategoryBySlug(...args),
   getMainTagSeoTitle: (value: string) => value,
+  isDynamicHomeCategorySlug: (slug: string) => slug === 'crypto',
 }))
 
 describe('dynamicHomeCategoryPage', () => {
   beforeEach(() => {
+    stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'false')
     mocks.findDynamicHomeCategoryBySlug.mockReset()
     mocks.findDynamicHomeSubcategoryBySlug.mockReset()
     mocks.loadPlatformMainTags.mockReset()
@@ -44,6 +46,35 @@ describe('dynamicHomeCategoryPage', () => {
     mocks.notFound.mockImplementation(() => {
       throw new Error('not found')
     })
+  })
+
+  afterEach(() => {
+    unstubAllEnvs()
+  })
+
+  it('keeps the placeholder when the public shell cannot be prerendered', async () => {
+    const { generateDynamicHomeCategoryStaticParams } =
+      await import('@/app/[locale]/(platform)/_lib/dynamic-home-category-page')
+
+    const params = await generateDynamicHomeCategoryStaticParams()
+
+    expect(params).toEqual([{ slug: '__placeholder__' }])
+    expect(mocks.loadPlatformMainTags).not.toHaveBeenCalled()
+  })
+
+  it('prerenders dynamic category paths for the build locale', async () => {
+    stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'true')
+    mocks.loadPlatformMainTags.mockResolvedValue({
+      data: [{ slug: 'crypto' }, { slug: 'sports' }, { slug: 'trending' }],
+    })
+
+    const { generateDynamicHomeCategoryStaticParams } =
+      await import('@/app/[locale]/(platform)/_lib/dynamic-home-category-page')
+
+    const params = await generateDynamicHomeCategoryStaticParams({ params: { locale: 'de' } })
+
+    expect(params).toEqual([{ slug: 'crypto' }])
+    expect(mocks.loadPlatformMainTags).toHaveBeenCalledWith('de')
   })
 
   it('routes category pages through cached timestamped home content', async () => {

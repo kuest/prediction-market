@@ -7,6 +7,7 @@ import {
   buildLocalizedPagePath,
   buildPredictionResultsOgImageUrl,
 } from '@/app/[locale]/(platform)/_lib/prediction-results-metadata'
+import { resolveSupportedLocale } from '@/i18n/locales'
 import { getRootLocale } from '@/i18n/root-locale'
 import { resolveCommitSha } from '@/lib/git'
 import { loadPlatformMainTags } from '@/lib/platform-main-tags'
@@ -14,7 +15,9 @@ import {
   findDynamicHomeCategoryBySlug,
   findDynamicHomeSubcategoryBySlug,
   getMainTagSeoTitle,
+  isDynamicHomeCategorySlug,
 } from '@/lib/platform-routing'
+import { shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
 import resolveSiteUrl from '@/lib/site-url'
 import {
   getPublicShellStaticParams,
@@ -33,8 +36,23 @@ function getCategoryEventCount(category: Awaited<ReturnType<typeof getMainTags>>
   return allItem?.type === 'link' ? (allItem.count ?? 0) : 0
 }
 
-export async function generateDynamicHomeCategoryStaticParams() {
-  return getPublicShellStaticParams({ slug: STATIC_PARAMS_PLACEHOLDER })
+export async function generateDynamicHomeCategoryStaticParams({
+  params,
+}: {
+  params?: Record<string, string | string[] | undefined>
+} = {}) {
+  if (!shouldPrerenderPublicShell()) {
+    return getPublicShellStaticParams({ slug: STATIC_PARAMS_PLACEHOLDER })
+  }
+
+  const localeParam = params?.locale
+  const locale = resolveSupportedLocale(typeof localeParam === 'string' ? localeParam : undefined)
+  const { data: mainTags } = await loadPlatformMainTags(locale)
+  const categoryParams = (mainTags ?? [])
+    .filter((tag) => isDynamicHomeCategorySlug(tag.slug))
+    .map(({ slug }) => ({ slug }))
+
+  return categoryParams.length > 0 ? categoryParams : getPublicShellStaticParams({ slug: STATIC_PARAMS_PLACEHOLDER })
 }
 
 export async function generateDynamicHomeSubcategoryStaticParams() {
