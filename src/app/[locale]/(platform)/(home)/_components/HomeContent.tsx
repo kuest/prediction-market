@@ -11,8 +11,8 @@ import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
-import { HOME_INITIAL_EVENTS_CACHE_LIFE } from '@/lib/home-initial-events-cache'
 import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
+import { PUBLIC_LISTING_PAGE_CACHE_LIFE } from '@/lib/public-listing-cache'
 import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
 
 interface HomeContentProps {
@@ -29,7 +29,7 @@ export default async function HomeContent({
   initialMainTag,
 }: HomeContentProps) {
   'use cache'
-  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
+  cacheLife(PUBLIC_LISTING_PAGE_CACHE_LIFE)
   cacheTag(cacheTags.eventsList)
 
   const resolvedLocale = await getRootLocale()
