@@ -115,7 +115,12 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export async function generateStaticParams() {
-  return [{ locale: 'en' }]
+  if (!shouldPrerenderPublicShell()) {
+    return [{ locale: 'en' }]
+  }
+
+  const enabledLocales = await loadEnabledLocales()
+  return enabledLocales.map((locale) => ({ locale }))
 }
 
 interface LocaleDocumentProps {

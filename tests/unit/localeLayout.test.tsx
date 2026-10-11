@@ -11,6 +11,7 @@ const mocks = hoisted(() => ({
   getRootLocale: mock(),
   loadEnabledLocales: mock(),
   loadGlobalAnnouncementSettings: mock(),
+  loadPlatformMainTags: mock(),
   loadRuntimeThemeState: mock(),
   notFound: mock(),
   shouldPrerenderPublicShell: mock(),
@@ -37,6 +38,11 @@ void mock.module('@/components/PwaInstallStateSync', () => ({ default: 'pwa-inst
 void mock.module('@/components/PwaServiceWorker', () => ({ default: 'pwa-service-worker' }))
 void mock.module('@/components/seo/SiteStructuredData', () => ({ default: 'site-structured-data' }))
 void mock.module('@/components/TestModeBannerDeferred', () => ({ default: 'test-mode-banner' }))
+void mock.module('@/app/[locale]/(platform)/(home)/_components/HomeInitialContent', () => ({ default: 'home-content' }))
+void mock.module('@/app/[locale]/(platform)/_lib/prediction-results-metadata', () => ({
+  buildLocalizedPagePath: (path: string) => path,
+  buildPredictionResultsOgImageUrl: () => 'https://example.com/og.png',
+}))
 
 void mock.module('@/i18n/locale-settings', () => ({
   loadEnabledLocales: (...args: unknown[]) => mocks.loadEnabledLocales(...args),
@@ -56,6 +62,23 @@ void mock.module('@/lib/global-announcement-settings', () => ({
 
 void mock.module('@/lib/public-runtime-config.server', () => ({
   getPublicRuntimeConfig: (...args: unknown[]) => mocks.getPublicRuntimeConfig(...args),
+}))
+
+void mock.module('@/lib/git', () => ({ resolveCommitSha: () => 'test-sha' }))
+void mock.module('@/lib/platform-main-tags', () => ({
+  loadPlatformMainTags: (...args: unknown[]) => mocks.loadPlatformMainTags(...args),
+}))
+void mock.module('@/lib/platform-routing', () => ({
+  findDynamicHomeCategoryBySlug: mock(),
+  findDynamicHomeSubcategoryBySlug: mock(),
+  getMainTagSeoTitle: (value: string) => value,
+  isDynamicHomeCategorySlug: (slug: string) => slug === 'crypto',
+}))
+void mock.module('@/lib/site-url', () => ({ default: () => 'https://example.com' }))
+void mock.module('@/lib/static-params', () => ({
+  getPublicShellStaticParams: () => [{ slug: '__placeholder__' }],
+  shouldBypassPublicShellPlaceholder: () => false,
+  STATIC_PARAMS_PLACEHOLDER: '__placeholder__',
 }))
 
 void mock.module('@/lib/public-shell-rendering', () => ({
@@ -113,12 +136,47 @@ describe('locale layout', () => {
       },
     })
     mocks.getPublicRuntimeConfig.mockReturnValue({})
+    mocks.loadPlatformMainTags.mockResolvedValue({ data: [{ slug: 'crypto' }, { slug: 'trending' }] })
     mocks.loadGlobalAnnouncementSettings.mockResolvedValue({
       disableFaucetBanner: false,
       disabledOn: [],
       linkUrl: null,
       message: '',
     })
+  })
+
+  it('generates enabled locale and category params together for public-shell builds', async () => {
+    mocks.shouldPrerenderPublicShell.mockReturnValue(true)
+    mocks.loadEnabledLocales.mockResolvedValue(['en', 'de', 'pt'])
+
+    const { generateStaticParams: generateLocaleParams } = await import('@/app/[locale]/layout')
+    const localeParams = await generateLocaleParams()
+    const { generateDynamicHomeCategoryStaticParams } =
+      await import('@/app/[locale]/(platform)/_lib/dynamic-home-category-page')
+    const categoryParams = await Promise.all(
+      localeParams.map(async ({ locale }) => {
+        const categories = await generateDynamicHomeCategoryStaticParams({ params: { locale } })
+        return categories.map(({ slug }) => ({ locale, slug }))
+      }),
+    )
+
+    expect(categoryParams.flat()).toEqual([
+      { locale: 'en', slug: 'crypto' },
+      { locale: 'de', slug: 'crypto' },
+      { locale: 'pt', slug: 'crypto' },
+    ])
+    expect(mocks.loadEnabledLocales).toHaveBeenCalledOnce()
+    expect(mocks.loadPlatformMainTags).toHaveBeenCalledTimes(3)
+    expect(mocks.loadPlatformMainTags).toHaveBeenCalledWith('en')
+    expect(mocks.loadPlatformMainTags).toHaveBeenCalledWith('de')
+    expect(mocks.loadPlatformMainTags).toHaveBeenCalledWith('pt')
+  })
+
+  it('keeps only the default locale when public-shell prerendering is disabled', async () => {
+    const { generateStaticParams } = await import('@/app/[locale]/layout')
+
+    await expect(generateStaticParams()).resolves.toEqual([{ locale: 'en' }])
+    expect(mocks.loadEnabledLocales).not.toHaveBeenCalled()
   })
 
   it('returns a complete runtime body without a document-wide Suspense fallback', async () => {
