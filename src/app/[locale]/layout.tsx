@@ -15,9 +15,10 @@ import PwaInstallStateSync from '@/components/PwaInstallStateSync'
 import PwaServiceWorker from '@/components/PwaServiceWorker'
 import SiteStructuredData from '@/components/seo/SiteStructuredData'
 import TestModeBannerDeferred from '@/components/TestModeBannerDeferred'
-import { loadEnabledLocales } from '@/i18n/locale-settings'
+import { loadEnabledLocales, loadEnabledLocalesForStaticGeneration } from '@/i18n/locale-settings'
 import { getRootLocale } from '@/i18n/root-locale'
 import { cacheTags } from '@/lib/cache-tags'
+import { hasDatabaseEnv } from '@/lib/db/env'
 import { openSauceOne } from '@/lib/fonts'
 import { loadGlobalAnnouncementSettings } from '@/lib/global-announcement-settings'
 import { IS_TEST_MODE } from '@/lib/network'
@@ -115,11 +116,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export async function generateStaticParams() {
-  if (!shouldPrerenderPublicShell()) {
+  if (!shouldPrerenderPublicShell() || !hasDatabaseEnv()) {
     return [{ locale: 'en' }]
   }
 
-  const enabledLocales = await loadEnabledLocales()
+  const enabledLocales = await loadEnabledLocalesForStaticGeneration()
   return enabledLocales.map((locale) => ({ locale }))
 }
 
