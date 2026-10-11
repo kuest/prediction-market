@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 import { notFound } from 'next/navigation'
 
 import EventContent from '@/app/[locale]/(platform)/event/[slug]/_components/EventContent'
@@ -10,6 +10,7 @@ import { getRootLocale } from '@/i18n/root-locale'
 import { cacheTags } from '@/lib/cache-tags'
 import { buildTranslatedEventFaqItems } from '@/lib/event-faq-server'
 import { buildEventPageMetadata } from '@/lib/event-open-graph'
+import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
 import { getEventRouteBySlug, loadEventPagePublicContentData } from '@/lib/event-page-data'
 import { resolveEventBasePath, resolveEventPagePath } from '@/lib/events-routing'
 import {
@@ -42,6 +43,7 @@ export async function generateMetadata({ params }: PageProps<'/[locale]/event/[s
 
 async function CachedEventPageContent({ slug }: { slug: string }) {
   'use cache'
+  cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
 
   const locale = await getRootLocale()
   cacheTag(cacheTags.event(slug))

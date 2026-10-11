@@ -1,4 +1,4 @@
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 
 import type { SupportedLocale } from '@/i18n/locales'
 import type { ThemeSiteIdentity } from '@/lib/theme-site-identity'
@@ -7,6 +7,7 @@ import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 import { loadMarketContextSettings } from '@/lib/ai/market-context-config'
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
+import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
 import { resolveSportsEventGroupPayload } from '@/lib/sports-event-group'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import 'server-only'
@@ -56,6 +57,7 @@ export async function loadEventPagePublicContentData(
   locale: SupportedLocale,
 ): Promise<EventPageContentData | null> {
   'use cache'
+  cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
   cacheTag(cacheTags.event(eventSlug))
 
   const [marketContextSettings, eventResult] = await Promise.all([
