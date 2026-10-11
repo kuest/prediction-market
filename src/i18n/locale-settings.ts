@@ -75,15 +75,6 @@ export async function loadEnabledLocales(): Promise<SupportedLocale[]> {
   return getEnabledLocalesInOrderFromSettings(data ?? undefined)
 }
 
-export async function loadEnabledLocalesForStaticGeneration(): Promise<SupportedLocale[]> {
-  const { data, error } = await SettingsRepository.getSettings()
-  if (error || !data) {
-    throw new Error(`Failed to load enabled locales for static generation: ${error ?? 'No settings data returned.'}`)
-  }
-
-  return getEnabledLocalesInOrderFromSettings(data)
-}
-
 export function getAutomaticTranslationsEnabledFromSettings(settings?: SettingsMap): boolean {
   const rawValue = settings?.[LOCALE_SETTINGS_GROUP]?.[AUTOMATIC_TRANSLATIONS_SETTINGS_KEY]?.value
   return normalizeBooleanSetting(rawValue, true)

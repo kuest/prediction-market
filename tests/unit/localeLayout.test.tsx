@@ -10,11 +10,9 @@ const mocks = hoisted(() => ({
   getPublicRuntimeConfig: mock(),
   getRootLocale: mock(),
   loadEnabledLocales: mock(),
-  loadEnabledLocalesForStaticGeneration: mock(),
   loadGlobalAnnouncementSettings: mock(),
   loadPlatformMainTags: mock(),
   loadRuntimeThemeState: mock(),
-  hasDatabaseEnv: mock(),
   notFound: mock(),
   shouldPrerenderPublicShell: mock(),
 }))
@@ -48,7 +46,6 @@ void mock.module('@/app/[locale]/(platform)/_lib/prediction-results-metadata', (
 
 void mock.module('@/i18n/locale-settings', () => ({
   loadEnabledLocales: (...args: unknown[]) => mocks.loadEnabledLocales(...args),
-  loadEnabledLocalesForStaticGeneration: (...args: unknown[]) => mocks.loadEnabledLocalesForStaticGeneration(...args),
 }))
 
 void mock.module('@/i18n/root-locale', () => ({
@@ -68,7 +65,6 @@ void mock.module('@/lib/public-runtime-config.server', () => ({
 }))
 
 void mock.module('@/lib/git', () => ({ resolveCommitSha: () => 'test-sha' }))
-void mock.module('@/lib/db/env', () => ({ hasDatabaseEnv: () => mocks.hasDatabaseEnv() }))
 void mock.module('@/lib/platform-main-tags', () => ({
   loadPlatformMainTags: (...args: unknown[]) => mocks.loadPlatformMainTags(...args),
 }))
@@ -125,12 +121,10 @@ describe('locale layout', () => {
     mocks.deferPublicShellPrerenderIfNeeded.mockResolvedValue(undefined)
     mocks.getRootLocale.mockResolvedValue('en')
     mocks.shouldPrerenderPublicShell.mockReturnValue(false)
-    mocks.hasDatabaseEnv.mockReturnValue(false)
     mocks.notFound.mockImplementation(() => {
       throw new Error('NEXT_NOT_FOUND')
     })
     mocks.loadEnabledLocales.mockResolvedValue(['en'])
-    mocks.loadEnabledLocalesForStaticGeneration.mockResolvedValue(['en'])
     mocks.loadRuntimeThemeState.mockResolvedValue({
       cacheable: true,
       site: {
@@ -151,10 +145,8 @@ describe('locale layout', () => {
     })
   })
 
-  it('generates enabled locale and category params together for public-shell builds', async () => {
+  it('generates static category params only for the default English locale', async () => {
     mocks.shouldPrerenderPublicShell.mockReturnValue(true)
-    mocks.hasDatabaseEnv.mockReturnValue(true)
-    mocks.loadEnabledLocalesForStaticGeneration.mockResolvedValue(['en', 'de', 'pt'])
 
     const { generateStaticParams: generateLocaleParams } = await import('@/app/[locale]/layout')
     const localeParams = await generateLocaleParams()
@@ -167,40 +159,16 @@ describe('locale layout', () => {
       }),
     )
 
-    expect(categoryParams.flat()).toEqual([
-      { locale: 'en', slug: 'crypto' },
-      { locale: 'de', slug: 'crypto' },
-      { locale: 'pt', slug: 'crypto' },
-    ])
-    expect(mocks.loadEnabledLocalesForStaticGeneration).toHaveBeenCalledOnce()
-    expect(mocks.loadPlatformMainTags).toHaveBeenCalledTimes(3)
+    expect(localeParams).toEqual([{ locale: 'en' }])
+    expect(categoryParams.flat()).toEqual([{ locale: 'en', slug: 'crypto' }])
+    expect(mocks.loadPlatformMainTags).toHaveBeenCalledOnce()
     expect(mocks.loadPlatformMainTags).toHaveBeenCalledWith('en')
-    expect(mocks.loadPlatformMainTags).toHaveBeenCalledWith('de')
-    expect(mocks.loadPlatformMainTags).toHaveBeenCalledWith('pt')
   })
 
-  it('keeps only the default locale when public-shell prerendering is disabled', async () => {
+  it('generates only the default English locale when public-shell prerendering is disabled', async () => {
     const { generateStaticParams } = await import('@/app/[locale]/layout')
 
     await expect(generateStaticParams()).resolves.toEqual([{ locale: 'en' }])
-    expect(mocks.loadEnabledLocalesForStaticGeneration).not.toHaveBeenCalled()
-  })
-
-  it('keeps only the default locale when the database environment is missing', async () => {
-    mocks.shouldPrerenderPublicShell.mockReturnValue(true)
-    const { generateStaticParams } = await import('@/app/[locale]/layout')
-
-    await expect(generateStaticParams()).resolves.toEqual([{ locale: 'en' }])
-    expect(mocks.loadEnabledLocalesForStaticGeneration).not.toHaveBeenCalled()
-  })
-
-  it('fails public-shell prerendering when enabled locales cannot be read', async () => {
-    mocks.shouldPrerenderPublicShell.mockReturnValue(true)
-    mocks.hasDatabaseEnv.mockReturnValue(true)
-    mocks.loadEnabledLocalesForStaticGeneration.mockRejectedValue(new Error('Settings query failed'))
-    const { generateStaticParams } = await import('@/app/[locale]/layout')
-
-    await expect(generateStaticParams()).rejects.toThrow('Settings query failed')
   })
 
   it('returns a complete runtime body without a document-wide Suspense fallback', async () => {
