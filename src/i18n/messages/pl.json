@@ -162,6 +162,8 @@
   "xum0-Y": "Gas sieci docelowej",
   "lMskYI": "Klikając „Potwierdź zlecenie”, akceptujesz nasze",
   "YqTNXp": "warunki",
+  "YWGn5Y": "Transakcja wysłana. Sprawdź jej status przed ponowną próbą.",
+  "QEW85N": "Sprawdź status transakcji",
   "I8uyPs": "Potwierdź transakcję w swoim portfelu",
   "FazwRl": "Spróbuj ponownie",
   "nvRuzz": "Przygotowywanie wyceny...",
@@ -2762,7 +2764,5 @@
   "aetEa0": "Otrzymuj na tym urządzeniu alerty o transakcjach obserwowanych osób.",
   "t-2AAt": "Nie udało się zaktualizować statusu obserwowania.",
   "-RU9lJ": "{trader} kupił {shares} {outcome} na {marketTitle}",
-  "l7onJY": "{trader} sprzedał {shares} {outcome} na {marketTitle}",
-  "YWGn5Y": "Transakcja wysłana. Sprawdź jej status przed ponowną próbą.",
-  "QEW85N": "Sprawdź status transakcji"
+  "l7onJY": "{trader} sprzedał {shares} {outcome} na {marketTitle}"
 }

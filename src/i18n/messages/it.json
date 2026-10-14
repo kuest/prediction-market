@@ -162,6 +162,8 @@
   "xum0-Y": "Gas della rete di destinazione",
   "lMskYI": "Facendo clic su Conferma ordine, accetti i nostri",
   "YqTNXp": "termini",
+  "YWGn5Y": "Transazione inviata. Controlla lo stato prima di riprovare.",
+  "QEW85N": "Controlla lo stato della transazione",
   "I8uyPs": "Conferma la transazione nel tuo portafoglio",
   "FazwRl": "Riprova",
   "nvRuzz": "Preparazione della quotazione...",
@@ -2762,7 +2764,5 @@
   "aetEa0": "Ricevi su questo dispositivo gli avvisi di trading delle persone che segui.",
   "t-2AAt": "Impossibile aggiornare lo stato del follow.",
   "-RU9lJ": "{trader} ha acquistato {shares} {outcome} su {marketTitle}",
-  "l7onJY": "{trader} ha venduto {shares} {outcome} su {marketTitle}",
-  "YWGn5Y": "Transazione inviata. Controlla lo stato prima di riprovare.",
-  "QEW85N": "Controlla lo stato della transazione"
+  "l7onJY": "{trader} ha venduto {shares} {outcome} su {marketTitle}"
 }

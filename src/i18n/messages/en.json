@@ -162,6 +162,8 @@
   "xum0-Y": "Destination chain gas",
   "lMskYI": "By clicking on Confirm Order, you agree to our",
   "YqTNXp": "terms",
+  "YWGn5Y": "Transaction sent. Check its status before trying again.",
+  "QEW85N": "Check transaction status",
   "I8uyPs": "Confirm transaction in your wallet",
   "FazwRl": "Try again",
   "nvRuzz": "Preparing your quote...",
@@ -2762,7 +2764,5 @@
   "aetEa0": "Get trade alerts from people you follow on this device.",
   "t-2AAt": "Could not update follow status.",
   "-RU9lJ": "{trader} bought {shares} {outcome} in {marketTitle}",
-  "l7onJY": "{trader} sold {shares} {outcome} in {marketTitle}",
-  "YWGn5Y": "Transaction sent. Check its status before trying again.",
-  "QEW85N": "Check transaction status"
+  "l7onJY": "{trader} sold {shares} {outcome} in {marketTitle}"
 }

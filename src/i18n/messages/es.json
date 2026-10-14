@@ -162,6 +162,8 @@
   "xum0-Y": "Gas de la red de destino",
   "lMskYI": "Al hacer clic en Confirmar pedido, aceptas nuestros",
   "YqTNXp": "términos",
+  "YWGn5Y": "Transacción enviada. Comprueba su estado antes de volver a intentarlo.",
+  "QEW85N": "Comprobar estado de la transacción",
   "I8uyPs": "Confirma la transacción en tu billetera",
   "FazwRl": "Reintentar",
   "nvRuzz": "Preparando tu cotización...",
@@ -2762,7 +2764,5 @@
   "aetEa0": "Recibe alertas de trading de las personas que sigues en este dispositivo.",
   "t-2AAt": "No se pudo actualizar el estado de seguimiento.",
   "-RU9lJ": "{trader} compró {shares} {outcome} en {marketTitle}",
-  "l7onJY": "{trader} vendió {shares} {outcome} en {marketTitle}",
-  "YWGn5Y": "Transacción enviada. Comprueba su estado antes de volver a intentarlo.",
-  "QEW85N": "Comprobar estado de la transacción"
+  "l7onJY": "{trader} vendió {shares} {outcome} en {marketTitle}"
 }

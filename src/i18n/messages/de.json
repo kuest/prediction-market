@@ -162,6 +162,8 @@
   "xum0-Y": "Gas der Zielkette",
   "lMskYI": "Indem du auf „Bestellung bestätigen“ klickst, stimmst du unseren",
   "YqTNXp": "Bedingungen",
+  "YWGn5Y": "Transaktion gesendet. Prüfe ihren Status, bevor du es erneut versuchst.",
+  "QEW85N": "Transaktionsstatus prüfen",
   "I8uyPs": "Transaktion in deiner Wallet bestätigen",
   "FazwRl": "Erneut versuchen",
   "nvRuzz": "Angebot wird vorbereitet...",
@@ -2762,7 +2764,5 @@
   "aetEa0": "Erhalte auf diesem Gerät Handelsbenachrichtigungen von Personen, denen du folgst.",
   "t-2AAt": "Follow-Status konnte nicht aktualisiert werden.",
   "-RU9lJ": "{trader} kaufte {shares} {outcome} in {marketTitle}",
-  "l7onJY": "{trader} verkaufte {shares} {outcome} in {marketTitle}",
-  "YWGn5Y": "Transaktion gesendet. Prüfe ihren Status, bevor du es erneut versuchst.",
-  "QEW85N": "Transaktionsstatus prüfen"
+  "l7onJY": "{trader} verkaufte {shares} {outcome} in {marketTitle}"
 }

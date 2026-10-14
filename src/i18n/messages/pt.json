@@ -162,6 +162,8 @@
   "xum0-Y": "Gás da rede de destino",
   "lMskYI": "Ao clicar em Confirmar pedido, você concorda com nossos",
   "YqTNXp": "termos",
+  "YWGn5Y": "Transação enviada. Verifique o status antes de tentar novamente.",
+  "QEW85N": "Verificar status da transação",
   "I8uyPs": "Confirme a transação na sua carteira",
   "FazwRl": "Tentar novamente",
   "nvRuzz": "Preparando sua cotação...",
@@ -2762,7 +2764,5 @@
   "aetEa0": "Receba neste dispositivo alertas de trading das pessoas que você segue.",
   "t-2AAt": "Não foi possível atualizar o status de follow.",
   "-RU9lJ": "{trader} comprou {shares} {outcome} em {marketTitle}",
-  "l7onJY": "{trader} vendeu {shares} {outcome} em {marketTitle}",
-  "YWGn5Y": "Transação enviada. Verifique o status antes de tentar novamente.",
-  "QEW85N": "Verificar status da transação"
+  "l7onJY": "{trader} vendeu {shares} {outcome} em {marketTitle}"
 }
