@@ -1,4 +1,4 @@
-const EMBED_SCRIPT_URL = 'https://unpkg.com/@kuestcom/embeds@1.3.12/dist/embeds/market/index.js'
+const EMBED_SCRIPT_URL = 'https://unpkg.com/@kuest/embeds@1.3.14/dist/embeds/market/index.js'
 
 type EmbedTheme = 'light' | 'dark'
 const CUSTOM_ELEMENT_NAME_PATTERN = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/
