@@ -2762,5 +2762,7 @@
   "aetEa0": "在此设备上接收您关注的用户的交易提醒。",
   "t-2AAt": "无法更新关注状态。",
   "-RU9lJ": "{trader} 在 {marketTitle} 买入了 {shares} 份 {outcome}",
-  "l7onJY": "{trader} 在 {marketTitle} 卖出了 {shares} 份 {outcome}"
+  "l7onJY": "{trader} 在 {marketTitle} 卖出了 {shares} 份 {outcome}",
+  "YWGn5Y": "交易已发送。请先检查交易状态，再尝试重试。",
+  "QEW85N": "检查交易状态"
 }

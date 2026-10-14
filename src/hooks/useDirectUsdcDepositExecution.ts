@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { encodeFunctionData, erc20Abi, parseUnits } from 'viem'
 import { usePublicClient, useWalletClient } from 'wagmi'
 
+import { useWalletDepositTransaction } from '@/hooks/useWalletDepositTransaction'
 import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
 import { sanitizeLiFiAmount } from '@/lib/lifi-amount'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
@@ -19,15 +20,20 @@ export function useDirectUsdcDepositExecution({
   toAddress,
 }: UseDirectUsdcDepositExecutionParams) {
   const { data: walletClient } = useWalletClient()
-  const publicClient = usePublicClient({ chainId: DEFAULT_CHAIN_ID })
+  const { pendingTransaction, trackTransaction, checkPendingTransaction } = useWalletDepositTransaction(fromAddress)
+  const publicClient = usePublicClient({ chainId: pendingTransaction?.chainId ?? DEFAULT_CHAIN_ID })
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!walletClient) {
-        throw new Error('Wallet not connected.')
-      }
       if (!publicClient) {
         throw new Error('Public client not available.')
+      }
+      const pendingHash = await checkPendingTransaction(publicClient)
+      if (pendingHash) {
+        return pendingHash
+      }
+      if (!walletClient) {
+        throw new Error('Wallet not connected.')
       }
       if (!fromAddress || !toAddress) {
         throw new Error('Missing wallet addresses.')
@@ -60,12 +66,8 @@ export function useDirectUsdcDepositExecution({
         value: 0n,
       })
 
-      const receipt = await publicClient.waitForTransactionReceipt({ hash })
-      if (receipt.status !== 'success') {
-        throw new Error('USDC transfer reverted.')
-      }
-
-      return hash
+      trackTransaction({ hash, chainId: DEFAULT_CHAIN_ID, phase: 'deposit' })
+      return await checkPendingTransaction(publicClient)
     },
   })
 
@@ -74,5 +76,6 @@ export function useDirectUsdcDepositExecution({
     isExecuting: mutation.isPending,
     executionError: mutation.error,
     executionHash: mutation.data,
+    pendingTransaction,
   }
 }

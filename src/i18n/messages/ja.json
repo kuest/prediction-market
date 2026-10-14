@@ -2762,5 +2762,7 @@
   "aetEa0": "このデバイスでフォロー中のユーザーの取引アラートを受け取ります。",
   "t-2AAt": "フォロー状態を更新できませんでした。",
   "-RU9lJ": "{trader}が{marketTitle}で{outcome}を{shares}口購入しました",
-  "l7onJY": "{trader}が{marketTitle}で{outcome}を{shares}口売却しました"
+  "l7onJY": "{trader}が{marketTitle}で{outcome}を{shares}口売却しました",
+  "YWGn5Y": "トランザクションを送信しました。再試行する前にステータスを確認してください。",
+  "QEW85N": "トランザクションのステータスを確認"
 }

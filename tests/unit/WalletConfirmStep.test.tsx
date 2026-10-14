@@ -9,11 +9,16 @@ const mocks = hoisted(() => ({
   direct: mock(),
   lifi: mock(),
   refetch: mock(),
+  pending: null as { hash: string; chainId: number } | null,
 }))
 
 void mock.module('@/hooks/useLiFiQuote', () => ({ useLiFiQuote: (params: unknown) => mocks.quote(params) }))
 void mock.module('@/hooks/useDirectUsdcDepositExecution', () => ({
-  useDirectUsdcDepositExecution: () => ({ execute: mocks.direct, isExecuting: false }),
+  useDirectUsdcDepositExecution: () => ({
+    execute: mocks.direct,
+    isExecuting: false,
+    pendingTransaction: mocks.pending,
+  }),
 }))
 void mock.module('@/hooks/useLiFiExecution', () => ({
   useLiFiExecution: () => ({ execute: mocks.lifi, isExecuting: false }),
@@ -38,6 +43,7 @@ beforeEach(() => {
   mocks.lifi.mockReset()
   mocks.refetch.mockReset()
   props.onComplete.mockReset()
+  mocks.pending = null
   mocks.quote.mockReturnValue({ isLoadingQuote: false, isQuoteError: false, refetchQuote: mocks.refetch })
 })
 
@@ -82,5 +88,16 @@ describe('wallet deposit confirmation', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
     expect(props.onComplete).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Confirm order' })).toBeEnabled()
+  })
+
+  it('checks an existing transaction even if the refreshed quote failed', async () => {
+    mocks.pending = { hash: '0xhash', chainId: 137 }
+    mocks.direct.mockResolvedValue('0xhash')
+    mocks.quote.mockReturnValue({ isLoadingQuote: false, isQuoteError: true, refetchQuote: mocks.refetch })
+    render(<WalletConfirmStep {...props} executionMode="direct-usdc" />)
+    expect(screen.getByRole('alert')).toHaveTextContent('Transaction sent.')
+    fireEvent.click(screen.getByRole('button', { name: 'Check transaction status' }))
+    await waitFor(() => expect(props.onComplete).toHaveBeenCalledTimes(1))
+    expect(mocks.refetch).not.toHaveBeenCalled()
   })
 })

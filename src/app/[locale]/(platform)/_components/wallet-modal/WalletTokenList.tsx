@@ -61,9 +61,9 @@ function WalletTokenList({
                 <div className="flex items-center gap-3">
                   <div className="relative shrink-0">
                     <Skeleton className="size-8.5 rounded-full" />
-                    <span className="absolute -right-1 -bottom-1 rounded-full bg-background p-0.5">
+                    <div className="absolute -right-1 -bottom-1 rounded-full bg-background p-0.5">
                       <Skeleton className="size-3.5 rounded-full" />
-                    </span>
+                    </div>
                   </div>
                   <div className="flex flex-col gap-0.5">
                     <div className="flex h-5 items-center">

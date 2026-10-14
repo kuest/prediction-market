@@ -2762,5 +2762,7 @@
   "aetEa0": "Receba neste dispositivo alertas de trading das pessoas que você segue.",
   "t-2AAt": "Não foi possível atualizar o status de follow.",
   "-RU9lJ": "{trader} comprou {shares} {outcome} em {marketTitle}",
-  "l7onJY": "{trader} vendeu {shares} {outcome} em {marketTitle}"
+  "l7onJY": "{trader} vendeu {shares} {outcome} em {marketTitle}",
+  "YWGn5Y": "Transação enviada. Verifique o status antes de tentar novamente.",
+  "QEW85N": "Verificar status da transação"
 }

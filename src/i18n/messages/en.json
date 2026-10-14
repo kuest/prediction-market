@@ -2762,5 +2762,7 @@
   "aetEa0": "Get trade alerts from people you follow on this device.",
   "t-2AAt": "Could not update follow status.",
   "-RU9lJ": "{trader} bought {shares} {outcome} in {marketTitle}",
-  "l7onJY": "{trader} sold {shares} {outcome} in {marketTitle}"
+  "l7onJY": "{trader} sold {shares} {outcome} in {marketTitle}",
+  "YWGn5Y": "Transaction sent. Check its status before trying again.",
+  "QEW85N": "Check transaction status"
 }

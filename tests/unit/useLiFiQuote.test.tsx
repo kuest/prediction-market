@@ -60,4 +60,43 @@ describe('useLiFiQuote', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(result.current.isLoadingQuote).toBe(false)
   })
+
+  it.each(['invalid', '123abc', 'NaN', 'Infinity', '0', '-1', '1.5', '1e9', '9'.repeat(400)])(
+    'rejects malformed or non-positive output amount %s',
+    async (toAmount) => {
+      stubGlobal(
+        'fetch',
+        mock().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            quote: {
+              estimate: { toAmount },
+              action: { toToken: { decimals: 6 } },
+            },
+          }),
+        }),
+      )
+      const { result } = renderHook(() => useLiFiQuote(params), { wrapper })
+      await waitFor(() => expect(result.current.isQuoteError).toBe(true))
+      expect(result.current.quote).toBeUndefined()
+    },
+  )
+
+  it.each([-1, 1.5, 'invalid', 256])('rejects invalid output decimals %s', async (decimals) => {
+    stubGlobal(
+      'fetch',
+      mock().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          quote: {
+            estimate: { toAmount: '804780000' },
+            action: { toToken: { decimals } },
+          },
+        }),
+      }),
+    )
+    const { result } = renderHook(() => useLiFiQuote(params), { wrapper })
+    await waitFor(() => expect(result.current.isQuoteError).toBe(true))
+    expect(result.current.quote).toBeUndefined()
+  })
 })

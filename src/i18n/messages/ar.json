@@ -2762,5 +2762,7 @@
   "aetEa0": "احصل على تنبيهات تداول من الأشخاص الذين تتابعهم على هذا الجهاز.",
   "t-2AAt": "تعذّر تحديث حالة المتابعة.",
   "-RU9lJ": "اشترى {trader} {shares} من {outcome} في {marketTitle}",
-  "l7onJY": "باع {trader} {shares} من {outcome} في {marketTitle}"
+  "l7onJY": "باع {trader} {shares} من {outcome} في {marketTitle}",
+  "YWGn5Y": "تم إرسال المعاملة. تحقق من حالتها قبل المحاولة مرة أخرى.",
+  "QEW85N": "التحقق من حالة المعاملة"
 }

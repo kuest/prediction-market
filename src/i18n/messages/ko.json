@@ -2762,5 +2762,7 @@
   "aetEa0": "이 기기에서 팔로우한 사용자의 거래 알림을 받으세요.",
   "t-2AAt": "팔로우 상태를 업데이트하지 못했습니다.",
   "-RU9lJ": "{trader}님이 {marketTitle}에서 {outcome} {shares}주를 매수했습니다",
-  "l7onJY": "{trader}님이 {marketTitle}에서 {outcome} {shares}주를 매도했습니다"
+  "l7onJY": "{trader}님이 {marketTitle}에서 {outcome} {shares}주를 매도했습니다",
+  "YWGn5Y": "트랜잭션이 전송되었습니다. 다시 시도하기 전에 상태를 확인하세요.",
+  "QEW85N": "트랜잭션 상태 확인"
 }

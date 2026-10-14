@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { decodeFunctionData, erc20Abi } from 'viem'
 import { polygon } from 'viem/chains'
@@ -27,14 +27,16 @@ const { useDirectUsdcDepositExecution } = await import('@/hooks/useDirectUsdcDep
 
 const fromAddress = '0x0000000000000000000000000000000000000001'
 const toAddress = '0x0000000000000000000000000000000000000002'
+let queryClient: QueryClient
 
 function wrapper({ children }: { children: ReactNode }) {
-  return <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
 beforeEach(() => {
+  queryClient = new QueryClient()
   mocks.send.mockReset().mockResolvedValue('0xhash')
-  mocks.receipt.mockReset().mockResolvedValue({ status: 'success' })
+  mocks.receipt.mockReset().mockResolvedValue({ status: 'success', transactionHash: '0xhash' })
 })
 
 describe('direct USDC deposit execution on Polygon', () => {
@@ -55,7 +57,7 @@ describe('direct USDC deposit execution on Polygon', () => {
       functionName: 'transfer',
       args: [toAddress, 804780000n],
     })
-    expect(mocks.receipt).toHaveBeenCalledWith({ hash: '0xhash' })
+    expect(mocks.receipt).toHaveBeenCalledWith({ hash: '0xhash', onReplaced: expect.any(Function) })
   })
 
   it('does not report success when the transaction reverts', async () => {
@@ -65,7 +67,42 @@ describe('direct USDC deposit execution on Polygon', () => {
       { wrapper },
     )
     await act(async () => {
-      await expect(result.current.execute()).rejects.toThrow('USDC transfer reverted.')
+      await expect(result.current.execute()).rejects.toThrow('Transaction reverted.')
     })
+  })
+
+  it('checks the broadcast hash after an RPC timeout, including after remounting', async () => {
+    mocks.receipt.mockRejectedValueOnce(new Error('RPC timeout'))
+    const first = renderHook(() => useDirectUsdcDepositExecution({ amountValue: '804.78', fromAddress, toAddress }), {
+      wrapper,
+    })
+    await act(async () => {
+      await expect(first.result.current.execute()).rejects.toThrow('RPC timeout')
+    })
+    await waitFor(() => expect(first.result.current.pendingTransaction?.hash).toBe('0xhash'))
+    first.unmount()
+    const second = renderHook(() => useDirectUsdcDepositExecution({ amountValue: '804.78', fromAddress, toAddress }), {
+      wrapper,
+    })
+    await act(async () => {
+      expect(await second.result.current.execute()).toBe('0xhash')
+    })
+    expect(mocks.send).toHaveBeenCalledTimes(1)
+    expect(mocks.receipt).toHaveBeenCalledTimes(2)
+  })
+
+  it('allows another send only after a confirmed revert', async () => {
+    mocks.receipt.mockResolvedValueOnce({ status: 'reverted', transactionHash: '0xhash' })
+    const { result } = renderHook(
+      () => useDirectUsdcDepositExecution({ amountValue: '804.78', fromAddress, toAddress }),
+      { wrapper },
+    )
+    await act(async () => {
+      await expect(result.current.execute()).rejects.toThrow('Transaction reverted.')
+    })
+    await act(async () => {
+      await result.current.execute()
+    })
+    expect(mocks.send).toHaveBeenCalledTimes(2)
   })
 })

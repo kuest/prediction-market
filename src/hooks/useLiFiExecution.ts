@@ -4,6 +4,7 @@ import { usePublicClient, useWalletClient } from 'wagmi'
 
 import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
 
+import { useWalletDepositTransaction } from '@/hooks/useWalletDepositTransaction'
 import { ZERO_ADDRESS } from '@/lib/contracts'
 import { sanitizeLiFiAmount } from '@/lib/lifi-amount'
 
@@ -16,15 +17,20 @@ interface UseLiFiExecutionParams {
 
 export function useLiFiExecution({ fromToken, amountValue, fromAddress, toAddress }: UseLiFiExecutionParams) {
   const { data: walletClient } = useWalletClient()
-  const publicClient = usePublicClient()
+  const { pendingTransaction, trackTransaction, checkPendingTransaction } = useWalletDepositTransaction(fromAddress)
+  const publicClient = usePublicClient({ chainId: pendingTransaction?.chainId ?? fromToken?.chainId })
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!walletClient) {
-        throw new Error('Wallet not connected.')
-      }
       if (!publicClient) {
         throw new Error('Public client not available.')
+      }
+      const pendingHash = await checkPendingTransaction(publicClient)
+      if (pendingHash) {
+        return pendingHash
+      }
+      if (!walletClient) {
+        throw new Error('Wallet not connected.')
       }
       if (!fromToken || !fromAddress || !toAddress) {
         throw new Error('Missing token or wallet addresses.')
@@ -93,7 +99,8 @@ export function useLiFiExecution({ fromToken, amountValue, fromAddress, toAddres
             value: 0n,
           })
 
-          await publicClient.waitForTransactionReceipt({ hash: approveHash })
+          trackTransaction({ hash: approveHash, chainId: fromToken.chainId, phase: 'approval' })
+          await checkPendingTransaction(publicClient)
         }
       }
 
@@ -124,9 +131,8 @@ export function useLiFiExecution({ fromToken, amountValue, fromAddress, toAddres
         gas: tx.gasLimit ? BigInt(tx.gasLimit) : undefined,
       })
 
-      await publicClient.waitForTransactionReceipt({ hash })
-
-      return hash
+      trackTransaction({ hash, chainId: fromToken.chainId, phase: 'deposit' })
+      return await checkPendingTransaction(publicClient)
     },
   })
 
@@ -135,5 +141,6 @@ export function useLiFiExecution({ fromToken, amountValue, fromAddress, toAddres
     isExecuting: mutation.isPending,
     executionError: mutation.error,
     executionHash: mutation.data,
+    pendingTransaction,
   }
 }

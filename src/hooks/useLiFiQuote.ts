@@ -72,16 +72,23 @@ export function useLiFiQuote({
 
       const data = await response.json()
       const quote = data?.quote
-      if (!quote?.estimate?.toAmount) {
+      const rawAmount = quote?.estimate?.toAmount
+      const toTokenDecimals = Number(quote?.action?.toToken?.decimals ?? 6)
+      const toAmountRaw = Number(rawAmount)
+      const toAmount = toAmountRaw / 10 ** toTokenDecimals
+      if (
+        typeof rawAmount !== 'string' ||
+        !/^\d+$/.test(rawAmount) ||
+        !Number.isInteger(toTokenDecimals) ||
+        toTokenDecimals < 0 ||
+        toTokenDecimals > 255 ||
+        !Number.isFinite(toAmount) ||
+        toAmount <= 0
+      ) {
         throw new Error('Invalid LI.FI quote response.')
       }
 
-      const toTokenDecimals = Number(quote?.action?.toToken?.decimals ?? 6)
-      const toAmountRaw = Number.parseFloat(quote?.estimate?.toAmount ?? '0')
-      const toAmount = toAmountRaw / 10 ** toTokenDecimals
-      const toAmountDisplay = Number.isFinite(toAmount)
-        ? formatNumber(toAmount, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
-        : null
+      const toAmountDisplay = formatNumber(toAmount, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
 
       const gasUsd =
         quote?.estimate?.gasCosts?.reduce((sum: number, gas: { amountUSD?: string }) => {
