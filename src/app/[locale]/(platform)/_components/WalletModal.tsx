@@ -30,6 +30,7 @@ import { COLLATERAL_TOKEN_ADDRESS } from '@/lib/contracts'
 import { DEFAULT_CHAIN_ID, IS_TEST_MODE, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 import { cn } from '@/lib/utils'
 import { defaultViemNetwork } from '@/lib/viem-network'
+import { isDirectUsdcDeposit } from '@/lib/wallet-deposit'
 
 export type { WalletDepositModalProps, WalletWithdrawModalProps }
 
@@ -125,16 +126,17 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
 
   const selectedTokenId = getSelectedWalletTokenId(walletTokenItems, preferredSelectedTokenId)
   const selectedToken = walletTokenItems.find((item) => item.id === selectedTokenId) ?? null
+  const useDirectDeposit = isDirectUsdcDeposit(selectedToken)
   const { quote: lifiQuote } = useLiFiQuote({
     fromToken: selectedToken,
     amountValue,
     fromAddress: walletEoaAddress,
     toAddress: walletAddress,
     refreshIndex: confirmRefreshIndex,
-    enabled: !isDirectTestModeDeposit,
+    enabled: open && !isDirectTestModeDeposit && !useDirectDeposit,
   })
   const directQuote = useMemo(() => {
-    if (!isDirectTestModeDeposit || !selectedToken || !amountValue.trim()) {
+    if (!useDirectDeposit || !selectedToken || !amountValue.trim()) {
       return null
     }
 
@@ -147,8 +149,8 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
       toAmountDisplay: formatDisplayAmount(amountValue),
       gasUsdDisplay: null,
     }
-  }, [amountValue, isDirectTestModeDeposit, selectedToken])
-  const quote = isDirectTestModeDeposit ? directQuote : lifiQuote
+  }, [amountValue, useDirectDeposit, selectedToken])
+  const quote = useDirectDeposit ? directQuote : lifiQuote
   const effectiveWalletBalance = isDirectTestModeDeposit ? directWalletBalance.text : walletBalance
   const isEffectiveWalletBalanceLoading = isDirectTestModeDeposit ? isLoadingDirectWalletBalance : isBalanceLoading
 
@@ -197,7 +199,7 @@ export function WalletDepositModal(props: WalletDepositModalProps) {
         selectedToken={selectedToken}
         quote={quote}
         refreshIndex={confirmRefreshIndex}
-        executionMode={isDirectTestModeDeposit ? 'direct-usdc' : 'lifi'}
+        executionMode={useDirectDeposit ? 'direct-usdc' : 'lifi'}
       />
     ) : (
       <WalletSuccessStep

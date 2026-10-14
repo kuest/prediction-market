@@ -44,56 +44,57 @@ export function useLiFiQuote({
     queryKey: [LIFI_QUOTE_QUERY_KEY, fromToken?.id, amountValue, fromAddress, toAddress, refreshIndex],
     enabled: canQuote,
     staleTime: 15_000,
+    retry: false,
     queryFn: async () => {
       if (!fromAddress || !toAddress || !fromToken) {
         return null
       }
 
-      try {
-        const response = await fetch('/api/lifi/quote', {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            fromChainId: fromToken.chainId,
-            fromTokenAddress: fromToken.address,
-            fromTokenDecimals: fromToken.decimals,
-            fromAddress,
-            toAddress,
-            amount: sanitizedAmount,
-          }),
-        })
+      const response = await fetch('/api/lifi/quote', {
+        signal: AbortSignal.timeout(30_000),
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          fromChainId: fromToken.chainId,
+          fromTokenAddress: fromToken.address,
+          fromTokenDecimals: fromToken.decimals,
+          fromAddress,
+          toAddress,
+          amount: sanitizedAmount,
+        }),
+      })
 
-        if (!response.ok) {
-          return null
-        }
+      if (!response.ok) {
+        throw new Error('Failed to fetch LI.FI quote.')
+      }
 
-        const data = await response.json()
-        const quote = data?.quote
+      const data = await response.json()
+      const quote = data?.quote
+      if (!quote?.estimate?.toAmount) {
+        throw new Error('Invalid LI.FI quote response.')
+      }
 
-        const toTokenDecimals = Number(quote?.action?.toToken?.decimals ?? 6)
-        const toAmountRaw = Number.parseFloat(quote?.estimate?.toAmount ?? '0')
-        const toAmount = toAmountRaw / 10 ** toTokenDecimals
-        const toAmountDisplay = Number.isFinite(toAmount)
-          ? formatNumber(toAmount, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
-          : null
+      const toTokenDecimals = Number(quote?.action?.toToken?.decimals ?? 6)
+      const toAmountRaw = Number.parseFloat(quote?.estimate?.toAmount ?? '0')
+      const toAmount = toAmountRaw / 10 ** toTokenDecimals
+      const toAmountDisplay = Number.isFinite(toAmount)
+        ? formatNumber(toAmount, { minimumFractionDigits: 2, maximumFractionDigits: 6 })
+        : null
 
-        const gasUsd =
-          quote?.estimate?.gasCosts?.reduce((sum: number, gas: { amountUSD?: string }) => {
-            const usd = Number.parseFloat(gas.amountUSD ?? '0')
-            return Number.isFinite(usd) ? sum + usd : sum
-          }, 0) ?? 0
-        const gasUsdDisplay = Number.isFinite(gasUsd)
-          ? formatNumber(gasUsd, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : null
+      const gasUsd =
+        quote?.estimate?.gasCosts?.reduce((sum: number, gas: { amountUSD?: string }) => {
+          const usd = Number.parseFloat(gas.amountUSD ?? '0')
+          return Number.isFinite(usd) ? sum + usd : sum
+        }, 0) ?? 0
+      const gasUsdDisplay = Number.isFinite(gasUsd)
+        ? formatNumber(gasUsd, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : null
 
-        return {
-          toAmountDisplay,
-          gasUsdDisplay,
-        }
-      } catch {
-        return null
+      return {
+        toAmountDisplay,
+        gasUsdDisplay,
       }
     },
   })
@@ -101,6 +102,7 @@ export function useLiFiQuote({
   return {
     quote: query.data,
     isLoadingQuote: query.isLoading || (query.isFetching && query.data === undefined),
+    isQuoteError: query.isError,
     refetchQuote: query.refetch,
   }
 }

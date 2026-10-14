@@ -4,6 +4,7 @@ import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MIN_USD_BALANCE } from '@/hooks/useLiFiWalletTokens'
 import { cn } from '@/lib/utils'
@@ -54,24 +55,28 @@ function WalletTokenList({
             Array.from({ length: 4 }).map((_, index) => (
               <div
                 key={`wallet-token-skeleton-${index}`}
+                aria-hidden="true"
                 className="flex w-full items-center justify-between rounded-lg border border-transparent px-3 py-1.5"
               >
                 <div className="flex items-center gap-3">
-                  <span className="inline-flex align-middle">
-                    <span className="size-8.5 animate-pulse rounded-full bg-accent" />
-                  </span>
-                  <div className="space-y-1">
-                    <span className="inline-flex align-middle">
-                      <span className="h-4 w-16 animate-pulse rounded-md bg-accent" />
-                    </span>
-                    <span className="inline-flex align-middle">
-                      <span className="h-3 w-24 animate-pulse rounded-md bg-accent" />
+                  <div className="relative shrink-0">
+                    <Skeleton className="size-8.5 rounded-full" />
+                    <span className="absolute -right-1 -bottom-1 rounded-full bg-background p-0.5">
+                      <Skeleton className="size-3.5 rounded-full" />
                     </span>
                   </div>
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex h-5 items-center">
+                      <Skeleton className="h-3.5 w-12 rounded" />
+                    </div>
+                    <div className="flex h-4 items-center">
+                      <Skeleton className="h-3 w-24 rounded" />
+                    </div>
+                  </div>
                 </div>
-                <span className="inline-flex align-middle">
-                  <span className="h-6 w-16 animate-pulse rounded-md bg-accent" />
-                </span>
+                <div className="flex h-7 items-center">
+                  <Skeleton className="h-5 w-16 rounded" />
+                </div>
               </div>
             ))}
           {showEmptyState && (
