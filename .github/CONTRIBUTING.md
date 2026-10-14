@@ -39,7 +39,7 @@ For code contributions:
 ### Development Setup
 
 1. Fork and clone the repository
-2. Use Bun 1.4.2
+2. Use Bun 1.4.3
 3. Install dependencies: `bun install`
 4. Create a branch using the appropriate prefix, for example `feat/name-in-english` or `fix/name-in-english`
 5. Make your changes
