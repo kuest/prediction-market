@@ -197,6 +197,7 @@ export interface HomeFeaturedSportsMarketGroup {
 }
 
 export interface HomeFeaturedRolloverEvent {
+  contextItems: HomeFeaturedContextItem[]
   event: Event
   kind: HomeFeaturedCardKind
   primaryMarkets: Market[]

@@ -51,6 +51,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { formatDollarValueLabel } from '@/lib/formatters'
 import { localizeHomeEventCardTitle } from '@/lib/home-featured-localization'
 import { serializeHomeFeaturedEventsForSave } from '@/lib/home-featured-payload'
+import { HOME_FEATURED_NEWS_LIMIT } from '@/lib/home-featured-settings'
 import { cn } from '@/lib/utils'
 
 import HomeFeaturedAdminPreviewImage from './HomeFeaturedAdminPreviewImage'
@@ -692,6 +693,7 @@ function HomeFeaturedSettingsDialog({
 }
 
 function HomeFeaturedContextDialog({
+  locale,
   isMobile,
   open,
   disabled,
@@ -700,6 +702,7 @@ function HomeFeaturedContextDialog({
   onOpenChange,
   onSave,
 }: {
+  locale: string
   isMobile: boolean
   open: boolean
   disabled: boolean
@@ -728,7 +731,7 @@ function HomeFeaturedContextDialog({
         next.push(contextItem)
       }
 
-      return next.slice(0, 3)
+      return next.slice(0, HOME_FEATURED_NEWS_LIMIT)
     })
   }
 
@@ -779,6 +782,7 @@ function HomeFeaturedContextDialog({
         body: JSON.stringify({
           title: item.title,
           slug: item.slug,
+          locale,
           newsSources,
         }),
       })
@@ -1237,6 +1241,7 @@ export default function HomeFeaturedMarketsSection({
       />
 
       <HomeFeaturedContextDialog
+        locale={locale}
         isMobile={isMobile}
         key={
           manageContextItem

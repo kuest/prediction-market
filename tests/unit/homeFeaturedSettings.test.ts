@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 
+import { parseHomeFeaturedEventsPayload } from '@/lib/home-featured-admin'
 import {
   getHomeFeaturedSettingsFromSettings,
   serializeHomeFeaturedSideCardSlides,
@@ -7,6 +8,28 @@ import {
 } from '@/lib/home-featured-settings'
 
 describe('home featured settings', () => {
+  it('preserves five selected news articles when saving a featured market', () => {
+    const contextItems = Array.from({ length: 6 }, (_, index) => ({
+      type: 'news',
+      source: 'Publisher',
+      title: `Story ${index + 1}`,
+      url: `https://example.com/story-${index + 1}`,
+      locale: 'pt',
+    }))
+    const result = parseHomeFeaturedEventsPayload([
+      {
+        targetType: 'series',
+        seriesSlug: 'daily-market',
+        eventId: 'current-event',
+        contextItems,
+      },
+    ])
+
+    expect(result.error).toBeNull()
+    expect(result.data?.[0]?.contextItems).toHaveLength(5)
+    expect(result.data?.[0]?.contextItems?.[4]?.url).toBe(contextItems[4]!.url)
+  })
+
   it('loads the side card image mode from key-value settings', () => {
     const settings = getHomeFeaturedSettingsFromSettings({
       home_featured: {

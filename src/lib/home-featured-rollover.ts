@@ -1,6 +1,15 @@
-import type { Event, EventSeriesEntry } from '@/types'
+import type { Event, EventSeriesEntry, HomeFeaturedRolloverEvent } from '@/types'
 
 import { isEventResolvedLike } from '@/lib/home-events'
+
+export function replaceHomeFeaturedRolloverSuccessor(
+  events: HomeFeaturedRolloverEvent[],
+  activeIndex: number,
+  nextEvent: HomeFeaturedRolloverEvent | null,
+) {
+  const retainedEvents = events.slice(0, activeIndex + 1)
+  return nextEvent ? [...retainedEvents, nextEvent] : retainedEvents
+}
 
 function parseFeaturedTimestamp(value: string | null | undefined) {
   if (!value) {

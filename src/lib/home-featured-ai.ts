@@ -9,7 +9,11 @@ import { EventRepository } from '@/lib/db/queries/event'
 import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import { buildHomeFeaturedNewsSearchPromptLines } from '@/lib/home-featured-news-search-prompt'
-import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
+import {
+  getHomeFeaturedSettingsFromSettings,
+  HOME_FEATURED_NEWS_LIMIT,
+  HOME_FEATURED_NEWS_TTL_MS,
+} from '@/lib/home-featured-settings'
 
 interface NewsHeadline {
   source: string
@@ -503,7 +507,7 @@ function normalizeNewsItems(
         : item
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
-    .slice(0, 3)
+    .slice(0, HOME_FEATURED_NEWS_LIMIT)
 }
 
 const NEWS_MATCH_STOP_WORDS = new Set([
@@ -588,7 +592,7 @@ function matchFallbackNewsForEvent(event: Event, headlines: NewsHeadline[]) {
       }
       return right.score - left.score
     })
-    .slice(0, 3)
+    .slice(0, HOME_FEATURED_NEWS_LIMIT)
     .map(({ headline, score }) => ({
       title: headline.title,
       source: headline.source,
@@ -712,6 +716,7 @@ export async function regenerateHomeFeaturedEvents(
       const prompt = [
         'Select featured prediction markets for a home carousel.',
         'Return JSON only with this shape: {"markets":[{"slug":"event-slug","news":[{"title":"headline","source":"source","url":"https://...","publishedAt":null,"score":0.8}]}]}',
+        `Use no more than ${HOME_FEATURED_NEWS_LIMIT} news articles per market.`,
         `Pick at most ${slotsToFill} markets. Prefer recent volume, clear public interest, sports live/today when relevant, and news relevance.`,
         'Use live web search when available to understand the current news cycle for each candidate.',
         ...buildHomeFeaturedNewsSearchPromptLines(),
@@ -742,7 +747,7 @@ export async function regenerateHomeFeaturedEvents(
             apiKey: openRouterSettings.apiKey,
             model: openRouterSettings.model,
             temperature: 0.2,
-            maxTokens: 900,
+            maxTokens: Math.max(1600, slotsToFill * 1200),
             webSearch: true,
             webSearchContextSize: 'high',
           },
@@ -834,11 +839,11 @@ export async function regenerateHomeFeaturedEvents(
     selectedMarkets.map((selection) => [selection.slug, selection]),
   )
 
-  if (openRouterSettings.apiKey && headlines.length > 0 && displayedEvents.length > 0) {
+  if (openRouterSettings.apiKey && displayedEvents.length > 0) {
     const prompt = [
       'Match relevant news headlines to prediction markets already selected for a featured home carousel.',
       'Return JSON only with this shape: {"markets":[{"slug":"event-slug","news":[{"title":"headline","source":"source","url":"https://...","publishedAt":null,"score":0.8}]}]}',
-      'Return every market slug that has at least one directly relevant headline. Use no more than 3 headlines per market.',
+      `Return every market slug that has at least one directly relevant headline. Use no more than ${HOME_FEATURED_NEWS_LIMIT} headlines per market.`,
       'Use live web search when available to find recent article URLs for markets whose provided headlines are weak or too generic.',
       ...buildHomeFeaturedNewsSearchPromptLines(),
       'The phrase "prediction market" describes our product only. Do not search for or return articles about prediction markets, betting, exchanges, Polymarket, Kalshi, regulation, or the app itself unless the market title is explicitly about those things.',
@@ -867,7 +872,7 @@ export async function regenerateHomeFeaturedEvents(
           apiKey: openRouterSettings.apiKey,
           model: openRouterSettings.model,
           temperature: 0.1,
-          maxTokens: 1200,
+          maxTokens: Math.max(1600, displayedEvents.length * 1200),
           webSearch: true,
           webSearchContextSize: 'high',
         },
@@ -884,7 +889,7 @@ export async function regenerateHomeFeaturedEvents(
     }
   }
 
-  const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000)
+  const expiresAt = new Date(Date.now() + HOME_FEATURED_NEWS_TTL_MS)
 
   for (const { item, event } of displayedEvents) {
     if (!item.id || item.contextMode === 'hidden' || item.contextMode === 'comments') {

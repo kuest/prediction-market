@@ -56,7 +56,11 @@ import {
   localizeHomeFeaturedMarketDates,
   resolveHomeFeaturedFullLidTitleValues,
 } from '@/lib/home-featured-localization'
-import { isHomeFeaturedEventEnded, resolveHomeFeaturedEventEndTimestamp } from '@/lib/home-featured-rollover'
+import {
+  isHomeFeaturedEventEnded,
+  replaceHomeFeaturedRolloverSuccessor,
+  resolveHomeFeaturedEventEndTimestamp,
+} from '@/lib/home-featured-rollover'
 import {
   DEFAULT_HOME_FEATURED_SIDE_CARD_TEXT,
   DEFAULT_HOME_FEATURED_SIDE_CARD_TITLE,
@@ -1953,12 +1957,14 @@ function FeaturedRightRailAction() {
 }
 
 interface HomeFeaturedRolloverQueueState {
+  contextItems: HomeFeaturedContextItem[]
   activeIndex: number
   events: HomeFeaturedRolloverEvent[]
 }
 
 function buildHomeFeaturedRolloverQueueState(item: HomeFeaturedEventCard): HomeFeaturedRolloverQueueState {
   return {
+    contextItems: item.contextItems,
     activeIndex: -1,
     events: item.targetType === 'series' && item.nextSeriesEvent ? [item.nextSeriesEvent] : [],
   }
@@ -1981,12 +1987,6 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
         return
       }
 
-      const futureEventCount = rolloverEvents.length - (activeIndex + 1)
-      if (futureEventCount >= 2) {
-        return
-      }
-
-      const lastKnownEvent = rolloverEvents.at(-1)?.event ?? activeEvent
       const controller = new AbortController()
       let retryTimeoutId: number | null = null
       let isActive = true
@@ -2008,7 +2008,8 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
       async function loadNextRolloverEvent() {
         try {
           const query = new URLSearchParams({
-            currentEventSlug: lastKnownEvent.slug,
+            currentEventSlug: activeEvent.slug,
+            featuredId: item.featuredId,
             locale,
           })
           const response = await fetch(`/api/home-featured/series-rollover?${query.toString()}`, {
@@ -2019,27 +2020,27 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
             throw new Error(`Featured rollover request failed with ${response.status}`)
           }
 
-          const payload = (await response.json()) as { nextEvent?: HomeFeaturedRolloverEvent | null }
+          const payload = (await response.json()) as {
+            currentEventId?: string
+            contextItems?: HomeFeaturedContextItem[]
+            nextEvent?: HomeFeaturedRolloverEvent | null
+          }
           const nextEvent = payload.nextEvent ?? null
           if (!isActive) {
             return
           }
 
-          if (!nextEvent) {
-            scheduleRolloverRetry()
-            return
-          }
-
           setQueueState((current) => {
-            if (current.events.some((event) => event.event.id === nextEvent.event.id)) {
+            const currentEventId = current.events[current.activeIndex]?.event.id ?? item.event.id
+            if (payload.currentEventId !== currentEventId) {
               return current
             }
 
-            return {
-              ...current,
-              events: [...current.events, nextEvent],
-            }
+            const events = replaceHomeFeaturedRolloverSuccessor(current.events, current.activeIndex, nextEvent)
+            return { ...current, events, contextItems: payload.contextItems ?? current.contextItems }
           })
+          retryAttempt = 0
+          retryTimeoutId = window.setTimeout(loadNextRolloverEvent, 60_000)
         } catch {
           if (isActive && !controller.signal.aborted) {
             scheduleRolloverRetry()
@@ -2057,7 +2058,7 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
         }
       }
     },
-    [activeEvent, activeIndex, item.targetType, locale, rolloverEvents],
+    [activeEvent.slug, item.event.id, item.featuredId, item.targetType, locale],
   )
 
   useEffect(
@@ -2084,13 +2085,14 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
           }
 
           if (current.activeIndex < 0) {
-            return { ...current, activeIndex: 0 }
+            return { ...current, activeIndex: 0, contextItems: currentNextEvent.contextItems }
           }
 
           const promotedIndex = current.activeIndex + 1
           return {
             ...current,
             activeIndex: 0,
+            contextItems: currentNextEvent.contextItems,
             events: current.events.slice(promotedIndex),
           }
         })
@@ -2110,16 +2112,13 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
   )
 
   return useMemo<HomeFeaturedEventCard>(() => {
-    if (!activeRolloverEvent) {
-      return item
-    }
-
     return {
       ...item,
       ...activeRolloverEvent,
+      contextItems: queueState.contextItems,
       nextSeriesEvent: nextRolloverEvent,
     }
-  }, [activeRolloverEvent, item, nextRolloverEvent])
+  }, [activeRolloverEvent, item, nextRolloverEvent, queueState.contextItems])
 }
 
 function FeaturedSlide({

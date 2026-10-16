@@ -13,6 +13,7 @@ import {
   HOME_FEATURED_INCLUDE_SPORTS_TODAY_KEY,
   HOME_FEATURED_MAX_CARDS_KEY,
   HOME_FEATURED_MIN_VOLUME_24H_KEY,
+  HOME_FEATURED_NEWS_LIMIT,
   HOME_FEATURED_NEWS_SOURCES_KEY,
   HOME_FEATURED_SETTINGS_GROUP,
   HOME_FEATURED_SIDE_CARD_CTA_HREF_KEY,
@@ -66,7 +67,7 @@ function parseContextItems(value: unknown): ReplaceHomeFeaturedContextItemInput[
     return []
   }
 
-  return value.slice(0, 3).flatMap((item) => {
+  return value.slice(0, HOME_FEATURED_NEWS_LIMIT).flatMap((item) => {
     if (!item || typeof item !== 'object') {
       return []
     }

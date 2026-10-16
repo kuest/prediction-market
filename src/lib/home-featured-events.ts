@@ -16,6 +16,7 @@ import type {
   HomeFeaturedOutcomeSummary,
   HomeFeaturedRolloverEvent,
   HomeFeaturedSideCardSettings,
+  HomeFeaturedSettings,
   HomeFeaturedSportsMarketGroup,
   Market,
 } from '@/types'
@@ -33,7 +34,8 @@ import { db } from '@/lib/drizzle'
 import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { formatDollarValueLabel } from '@/lib/formatters'
-import { findNextHomeFeaturedSeriesEvent } from '@/lib/home-featured-rollover'
+import { loadHomeFeaturedNews } from '@/lib/home-featured-news'
+import { findNextHomeFeaturedSeriesEvent, isHomeFeaturedEventEnded } from '@/lib/home-featured-rollover'
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
 import { HOME_INITIAL_EVENTS_CACHE_LIFE } from '@/lib/home-initial-events-cache'
 import { resolveDisplayPrice } from '@/lib/market-chance'
@@ -366,7 +368,11 @@ async function loadHomeFeaturedSeriesEvents(seriesSlug: string) {
   return EventRepository.getSeriesEventsBySeriesSlug(seriesSlug)
 }
 
-function buildHomeFeaturedRolloverEvent(event: Event, locale: SupportedLocale): HomeFeaturedRolloverEvent {
+function buildHomeFeaturedRolloverEvent(
+  event: Event,
+  locale: SupportedLocale,
+  contextItems: HomeFeaturedContextItem[],
+): HomeFeaturedRolloverEvent {
   const kind = resolveCardKind(event)
   const temporal = resolveTemporalStatus(event, locale)
 
@@ -376,6 +382,7 @@ function buildHomeFeaturedRolloverEvent(event: Event, locale: SupportedLocale): 
     primaryMarkets: buildPrimaryMarkets(event, kind),
     topOutcomes: buildTopOutcomes(event, kind),
     resolvedEventId: event.id,
+    contextItems,
     temporalStatus: temporal.temporalStatus,
     temporalLabel: temporal.temporalLabel,
     sportsMarketGroups: kind === 'sports' ? buildSportsMarketGroups(event) : [],
@@ -384,8 +391,19 @@ function buildHomeFeaturedRolloverEvent(event: Event, locale: SupportedLocale): 
 
 export async function getNextHomeFeaturedSeriesRolloverEvent(
   currentEventSlug: string,
+  featuredId: string,
   locale: SupportedLocale = DEFAULT_LOCALE,
 ) {
+  const { data: allSettings } = await loadHomeFeaturedSettings()
+  const settings = getHomeFeaturedSettingsFromSettings(allSettings ?? undefined)
+  if (!settings.enabled) {
+    return null
+  }
+  const { data: targets } = await HomeFeaturedEventsRepository.resolvePublicTargets(settings.maxCards)
+  const target = targets?.find((entry) => entry.featuredId === featuredId && entry.targetType === 'series')
+  if (!target) {
+    return null
+  }
   const { data: currentEvent, error: currentEventError } = await EventRepository.getEventBySlug(
     currentEventSlug,
     '',
@@ -394,7 +412,7 @@ export async function getNextHomeFeaturedSeriesRolloverEvent(
   if (currentEventError) {
     throw currentEventError
   }
-  if (!currentEvent?.series_slug) {
+  if (!currentEvent?.series_slug || currentEvent.series_slug !== target.seriesSlug) {
     return null
   }
 
@@ -405,40 +423,47 @@ export async function getNextHomeFeaturedSeriesRolloverEvent(
     throw seriesEventsError
   }
 
-  const nextSeriesEntry = findNextHomeFeaturedSeriesEvent(seriesEvents ?? [], currentEvent, Date.now())
-  if (!nextSeriesEntry) {
+  const now = Date.now()
+  const liveSeriesEntry = (seriesEvents ?? [])
+    .filter((entry) => entry.status === 'active' && Date.parse(entry.end_date ?? '') > now)
+    .sort((left, right) => Date.parse(left.end_date!) - Date.parse(right.end_date!))[0]
+  const previousSeriesEntry = (seriesEvents ?? [])
+    .filter(
+      (entry) =>
+        entry.status === 'resolved' ||
+        entry.status === 'archived' ||
+        Boolean(entry.resolved_at) ||
+        Date.parse(entry.end_date ?? '') <= now,
+    )
+    .sort((left, right) => Date.parse(right.end_date!) - Date.parse(left.end_date!))[0]
+  const isImmediatePredecessor =
+    Boolean(liveSeriesEntry) &&
+    currentEvent.id === previousSeriesEntry?.id &&
+    isHomeFeaturedEventEnded(currentEvent, now)
+  if (currentEvent.id !== target.eventId && currentEvent.id !== liveSeriesEntry?.id && !isImmediatePredecessor) {
     return null
   }
 
-  const { data: nextEvent, error: nextEventError } = await EventRepository.getEventBySlug(
-    nextSeriesEntry.slug,
-    '',
+  const nextSeriesEntry = findNextHomeFeaturedSeriesEvent(seriesEvents ?? [], currentEvent, now)
+  const nextEvent = nextSeriesEntry ? await loadHomeFeaturedEvent(nextSeriesEntry.slug, locale) : null
+  const contextInput = {
+    targetType: target.targetType,
+    mode: resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode),
+    featuredId: target.featuredId,
+    settings,
     locale,
-  )
-  if (nextEventError) {
-    throw nextEventError
+    refreshNews: true,
   }
-  if (!nextEvent) {
-    return null
+  const [contextItems, nextContextItems] = await Promise.all([
+    isImmediatePredecessor ? [] : resolveContextItems({ ...contextInput, event: currentEvent }),
+    nextEvent ? resolveContextItems({ ...contextInput, event: nextEvent }) : [],
+  ])
+
+  return {
+    currentEventId: currentEvent.id,
+    contextItems,
+    nextEvent: nextEvent ? buildHomeFeaturedRolloverEvent(nextEvent, locale, nextContextItems) : null,
   }
-
-  const resolvedNextEvent = await resolveFeaturedSportsEventPayload(nextEvent, locale)
-  return buildHomeFeaturedRolloverEvent(resolvedNextEvent, locale)
-}
-
-async function loadHomeFeaturedContextItems(
-  featuredEventIds: string[],
-  locale: SupportedLocale,
-  eventIdsByFeaturedIdEntries: [string, string][],
-) {
-  'use cache'
-  cacheLife(HOME_INITIAL_EVENTS_CACHE_LIFE)
-  cacheTag(cacheTags.eventsList, cacheTags.homeFeaturedEvents)
-
-  return HomeFeaturedEventsRepository.listContextItems(featuredEventIds, locale, {
-    includeDefaultFallback: true,
-    eventIdsByFeaturedId: new Map(eventIdsByFeaturedIdEntries),
-  })
 }
 
 function resolveHotTopicHref(slug: string) {
@@ -768,18 +793,6 @@ function shouldPreferComments(event: Event, targetType: 'event' | 'series') {
   )
 }
 
-function shouldPreferNews(event: Event) {
-  const tokens = new Set(
-    [event.main_tag, ...event.tags.map((tag) => tag.name), ...event.tags.map((tag) => tag.slug)]
-      .map((value) => value?.trim().toLowerCase())
-      .filter(Boolean),
-  )
-
-  return ['politics', 'economy', 'finance', 'geopolitics', 'weather', 'elections', 'election'].some((token) =>
-    tokens.has(token),
-  )
-}
-
 function resolveEffectiveContextMode(configuredMode: HomeFeaturedContextMode, defaultMode: HomeFeaturedContextMode) {
   return configuredMode === 'auto' && defaultMode !== 'auto' ? defaultMode : configuredMode
 }
@@ -855,37 +868,43 @@ async function fetchCompactComments(
   }
 }
 
-function resolveContextItems(input: {
+async function resolveContextItems(input: {
   event: Event
   targetType: 'event' | 'series'
   mode: HomeFeaturedContextMode
-  newsItems: HomeFeaturedContextItem[]
-  commentItems: HomeFeaturedContextItem[]
-  hasEnoughSeriesComments: boolean
+  featuredId: string
+  settings: HomeFeaturedSettings
+  locale: SupportedLocale
+  refreshNews?: boolean
 }) {
-  const { event, targetType, mode, newsItems, commentItems, hasEnoughSeriesComments } = input
-
+  const { event, targetType, mode, featuredId, settings, locale } = input
   if (mode === 'hidden') {
     return []
   }
 
-  if (mode === 'news') {
+  const comments =
+    mode === 'news'
+      ? { items: [], hasEnoughSeriesComments: false }
+      : await fetchCompactComments(event.slug, settings.commentBlacklist)
+  if (
+    mode === 'comments' ||
+    (mode === 'auto' && shouldPreferComments(event, targetType) && comments.hasEnoughSeriesComments)
+  ) {
+    return comments.items
+  }
+
+  const newsItems = await loadHomeFeaturedNews(
+    featuredId,
+    { id: event.id, title: event.title, slug: event.slug, end_date: event.end_date },
+    locale,
+    settings.newsSources,
+    input.refreshNews,
+  )
+  if (newsItems.length > 0) {
     return newsItems
   }
 
-  if (mode === 'comments') {
-    return commentItems
-  }
-
-  if (shouldPreferComments(event, targetType)) {
-    return hasEnoughSeriesComments ? commentItems : []
-  }
-
-  if (shouldPreferNews(event) && newsItems.length > 0) {
-    return newsItems
-  }
-
-  return newsItems.length > 0 ? newsItems : commentItems
+  return comments.items
 }
 
 export async function listHomeFeaturedEvents(
@@ -963,67 +982,63 @@ export async function listHomeFeaturedEvents(
         {
           config: configResult.data ?? null,
           seriesEvents,
-          nextEvent: nextEvent ? buildHomeFeaturedRolloverEvent(nextEvent, locale) : null,
+          nextEvent: nextEvent
+            ? buildHomeFeaturedRolloverEvent(
+                nextEvent,
+                locale,
+                await resolveContextItems({
+                  event: nextEvent,
+                  targetType: target.targetType,
+                  mode: resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode),
+                  featuredId: target.featuredId,
+                  settings,
+                  locale,
+                }),
+              )
+            : null,
         },
       ] as const
     }),
   )
   const liveSeriesByEventId = new Map(liveSeriesEntries)
 
-  const contextResult = await loadHomeFeaturedContextItems(
-    resolvedEvents.map((entry) => entry.target.featuredId),
-    locale,
-    resolvedEvents.map((entry) => [entry.target.featuredId, entry.target.eventId]),
-  )
-  const newsItemsByFeaturedId = contextResult.data ?? new Map()
-  const commentsByEventSlug = new Map<string, { hasEnoughSeriesComments: boolean; items: HomeFeaturedContextItem[] }>()
+  return Promise.all(
+    resolvedEvents.map(async (entry, index, all): Promise<HomeFeaturedEventCard> => {
+      const { target, event } = entry
+      const kind = resolveCardKind(event)
+      const mode = resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode)
+      const temporal = resolveTemporalStatus(event, locale)
+      const liveSeries = liveSeriesByEventId.get(event.id)
 
-  for (const entry of resolvedEvents) {
-    const effectiveMode = resolveEffectiveContextMode(entry.target.contextMode, settings.defaultContextMode)
-    if (effectiveMode === 'hidden' || effectiveMode === 'news') {
-      continue
-    }
-
-    commentsByEventSlug.set(entry.event.slug, await fetchCompactComments(entry.event.slug, settings.commentBlacklist))
-  }
-
-  return resolvedEvents.map((entry, index, all): HomeFeaturedEventCard => {
-    const { target, event } = entry
-    const kind = resolveCardKind(event)
-    const mode = resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode)
-    const newsItems = newsItemsByFeaturedId.get(target.featuredId) ?? []
-    const commentResult = commentsByEventSlug.get(event.slug) ?? { hasEnoughSeriesComments: false, items: [] }
-    const temporal = resolveTemporalStatus(event, locale)
-    const liveSeries = liveSeriesByEventId.get(event.id)
-
-    return {
-      featuredId: target.featuredId,
-      targetType: target.targetType,
-      source: target.source,
-      rank: target.rank,
-      contextMode: mode,
-      kind,
-      event,
-      primaryMarkets: buildPrimaryMarkets(event, kind),
-      topOutcomes: buildTopOutcomes(event, kind),
-      contextItems: resolveContextItems({
-        event,
+      return {
+        featuredId: target.featuredId,
         targetType: target.targetType,
-        mode,
-        newsItems,
-        commentItems: commentResult.items,
-        hasEnoughSeriesComments: commentResult.hasEnoughSeriesComments,
-      }),
-      previousTitle: all[index - 1]?.event.title ?? all.at(-1)?.event.title ?? null,
-      nextTitle: all[index + 1]?.event.title ?? all[0]?.event.title ?? null,
-      resolvedEventId: target.eventId,
-      resolvedSeriesSlug: target.seriesSlug,
-      temporalStatus: temporal.temporalStatus,
-      temporalLabel: temporal.temporalLabel,
-      sportsMarketGroups: kind === 'sports' ? buildSportsMarketGroups(event) : [],
-      liveChartConfig: liveSeries?.config ?? null,
-      seriesEvents: liveSeries?.seriesEvents ?? [],
-      nextSeriesEvent: liveSeries?.nextEvent ?? null,
-    }
-  })
+        source: target.source,
+        rank: target.rank,
+        contextMode: mode,
+        kind,
+        event,
+        primaryMarkets: buildPrimaryMarkets(event, kind),
+        topOutcomes: buildTopOutcomes(event, kind),
+        contextItems: await resolveContextItems({
+          event,
+          targetType: target.targetType,
+          mode,
+          featuredId: target.featuredId,
+          settings,
+          locale,
+        }),
+        previousTitle: all[index - 1]?.event.title ?? all.at(-1)?.event.title ?? null,
+        nextTitle: all[index + 1]?.event.title ?? all[0]?.event.title ?? null,
+        resolvedEventId: target.eventId,
+        resolvedSeriesSlug: target.seriesSlug,
+        temporalStatus: temporal.temporalStatus,
+        temporalLabel: temporal.temporalLabel,
+        sportsMarketGroups: kind === 'sports' ? buildSportsMarketGroups(event) : [],
+        liveChartConfig: liveSeries?.config ?? null,
+        seriesEvents: liveSeries?.seriesEvents ?? [],
+        nextSeriesEvent: liveSeries?.nextEvent ?? null,
+      }
+    }),
+  )
 }

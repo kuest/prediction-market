@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 
-import type { Event, EventSeriesEntry } from '@/types'
+import type { Event, EventSeriesEntry, HomeFeaturedRolloverEvent } from '@/types'
 
 import {
   findNextHomeFeaturedSeriesEvent,
   isHomeFeaturedEventEnded,
+  replaceHomeFeaturedRolloverSuccessor,
   resolveHomeFeaturedEventEndTimestamp,
 } from '@/lib/home-featured-rollover'
 
@@ -73,7 +74,45 @@ describe('homeFeaturedRollover', () => {
 
     expect(next?.id).toBe('live-next')
   })
+
+  it('replaces the stale successor before the first rollover', () => {
+    const stale = createRolloverEvent('stale')
+    const next = createRolloverEvent('next')
+
+    expect(replaceHomeFeaturedRolloverSuccessor([stale], -1, next)).toEqual([next])
+  })
+
+  it('clears the successor when the server no longer returns one', () => {
+    expect(replaceHomeFeaturedRolloverSuccessor([createRolloverEvent('stale')], -1, null)).toEqual([])
+  })
+
+  it('preserves the promoted event and replaces all future entries after rollover', () => {
+    const active = createRolloverEvent('active')
+    const stale = createRolloverEvent('stale')
+    const next = createRolloverEvent('next')
+    const result = replaceHomeFeaturedRolloverSuccessor([active, stale, next], 0, next)
+
+    expect(result).toEqual([active, next])
+    expect(result[0]).toBe(active)
+  })
+
+  it('preserves the promoted event when the successor is removed after rollover', () => {
+    const active = createRolloverEvent('active')
+
+    expect(replaceHomeFeaturedRolloverSuccessor([active, createRolloverEvent('stale')], 0, null)).toEqual([active])
+  })
+
+  it('uses the refreshed successor data when the event is unchanged', () => {
+    const stale = createRolloverEvent('next')
+    const next = { ...stale, event: { ...stale.event, title: 'Updated event' } }
+
+    expect(replaceHomeFeaturedRolloverSuccessor([stale], -1, next)[0]).toBe(next)
+  })
 })
+
+function createRolloverEvent(id: string): HomeFeaturedRolloverEvent {
+  return { event: { ...createEvent(), id }, contextItems: [] } as unknown as HomeFeaturedRolloverEvent
+}
 
 function createEventWithOverrides(overrides: Partial<Event>): Event {
   return { ...createEvent(), ...overrides }

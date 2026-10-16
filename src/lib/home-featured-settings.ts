@@ -29,6 +29,8 @@ export const HOME_FEATURED_SIDE_CARD_USE_IMAGE_KEY = 'side_card_use_image'
 export const HOME_FEATURED_SIDE_CARD_IMAGE_PATH_KEY = 'side_card_image_path'
 export const HOME_FEATURED_SIDE_CARD_SLIDES_KEY = 'side_card_slides_v1'
 
+export const HOME_FEATURED_NEWS_LIMIT = 5
+export const HOME_FEATURED_NEWS_TTL_MS = 2 * 60 * 60 * 1000
 export const HOME_FEATURED_SIDE_CARD_MAX_SLIDES = 8
 
 const HOME_FEATURED_CONTEXT_MODES: HomeFeaturedContextMode[] = ['auto', 'news', 'comments', 'hidden']
