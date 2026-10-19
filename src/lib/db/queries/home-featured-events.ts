@@ -404,6 +404,7 @@ async function resolveSeriesTarget(seriesSlug: string) {
   if (!normalizedSeriesSlug) {
     return null
   }
+  const now = new Date()
 
   const rows = await db
     .select({
@@ -425,6 +426,15 @@ async function resolveSeriesTarget(seriesSlug: string) {
         eq(events.is_hidden, false),
         buildPublicEventListVisibilityCondition(events.id),
         hasActiveFeaturedMarketCondition(),
+        or(
+          gt(events.end_date, now),
+          exists(
+            db
+              .select({ condition_id: markets.condition_id })
+              .from(markets)
+              .where(and(eq(markets.event_id, events.id), gt(markets.end_time, now))),
+          ),
+        ),
       ),
     )
     .orderBy(
@@ -585,6 +595,13 @@ function resolveAdminFeaturedEventTarget(row: AdminFeaturedEventRow, seriesTarge
 }
 
 export const HomeFeaturedEventsRepository = {
+  async resolveLiveSeriesEventSlug(seriesSlug: string): Promise<QueryResult<string | null>> {
+    return runQuery(async () => {
+      const event = await resolveSeriesTarget(seriesSlug)
+      return { data: event?.slug ?? null, error: null }
+    })
+  },
+
   async listAdminFeaturedEvents(locale?: string): Promise<QueryResult<HomeFeaturedEventAdminItem[]>> {
     return runQuery(async () => {
       const rows = await db
