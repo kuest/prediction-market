@@ -13,6 +13,7 @@ import type {
   SportsLinePickerOption,
 } from '@/app/[locale]/(platform)/sports/_components/_sports-games-center/sports-games-center-types'
 import type { SportsGamesButton, SportsGamesCard } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
+import type { HomeFeaturedRolloverQueueState } from '@/lib/home-featured-rollover'
 import type {
   HomeFeaturedContextItem,
   HomeFeaturedEventCard,
@@ -57,9 +58,10 @@ import {
   resolveHomeFeaturedFullLidTitleValues,
 } from '@/lib/home-featured-localization'
 import {
+  applyHomeFeaturedRolloverResponse,
   isHomeFeaturedEventEnded,
-  replaceHomeFeaturedRolloverSuccessor,
   resolveHomeFeaturedEventEndTimestamp,
+  resolveHomeFeaturedRolloverContextItems,
 } from '@/lib/home-featured-rollover'
 import {
   DEFAULT_HOME_FEATURED_SIDE_CARD_TEXT,
@@ -1956,15 +1958,10 @@ function FeaturedRightRailAction() {
   )
 }
 
-interface HomeFeaturedRolloverQueueState {
-  contextItems: HomeFeaturedContextItem[]
-  activeIndex: number
-  events: HomeFeaturedRolloverEvent[]
-}
-
 function buildHomeFeaturedRolloverQueueState(item: HomeFeaturedEventCard): HomeFeaturedRolloverQueueState {
   return {
     contextItems: item.contextItems,
+    sourceContextItems: item.contextItems,
     activeIndex: -1,
     events: item.targetType === 'series' && item.nextSeriesEvent ? [item.nextSeriesEvent] : [],
   }
@@ -2025,20 +2022,13 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
             contextItems?: HomeFeaturedContextItem[]
             nextEvent?: HomeFeaturedRolloverEvent | null
           }
-          const nextEvent = payload.nextEvent ?? null
           if (!isActive) {
             return
           }
 
-          setQueueState((current) => {
-            const currentEventId = current.events[current.activeIndex]?.event.id ?? item.event.id
-            if (payload.currentEventId !== currentEventId) {
-              return current
-            }
-
-            const events = replaceHomeFeaturedRolloverSuccessor(current.events, current.activeIndex, nextEvent)
-            return { ...current, events, contextItems: payload.contextItems ?? current.contextItems }
-          })
+          setQueueState((current) =>
+            applyHomeFeaturedRolloverResponse(current, item.event.id, item.contextItems, payload),
+          )
           retryAttempt = 0
           retryTimeoutId = window.setTimeout(loadNextRolloverEvent, 60_000)
         } catch {
@@ -2058,7 +2048,7 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
         }
       }
     },
-    [activeEvent.slug, item.event.id, item.featuredId, item.targetType, locale],
+    [activeEvent.slug, item.contextItems, item.event.id, item.featuredId, item.targetType, locale],
   )
 
   useEffect(
@@ -2115,10 +2105,10 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
     return {
       ...item,
       ...activeRolloverEvent,
-      contextItems: queueState.contextItems,
+      contextItems: resolveHomeFeaturedRolloverContextItems(queueState, item.contextItems),
       nextSeriesEvent: nextRolloverEvent,
     }
-  }, [activeRolloverEvent, item, nextRolloverEvent, queueState.contextItems])
+  }, [activeRolloverEvent, item, nextRolloverEvent, queueState])
 }
 
 function FeaturedSlide({

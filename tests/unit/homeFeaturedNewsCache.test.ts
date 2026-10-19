@@ -46,6 +46,7 @@ function matchingRows(condition: SQL) {
       params.includes(row.featured_event_id) &&
       params.includes(row.event_id) &&
       params.includes(row.locale) &&
+      (!params.includes('news') || row.item_type === 'news') &&
       row.expires_at.getTime() > Date.now(),
   )
 }
@@ -270,6 +271,24 @@ describe('home featured news refresh cache', () => {
     expect((await loadNews()).map((item) => item.title)).toEqual(['Saved pt story'])
     expect(state.completion).not.toHaveBeenCalled()
     expect(state.revalidateTag).not.toHaveBeenCalled()
+  })
+
+  it('does not mix English articles into a partially localized queue', async () => {
+    state.rows = [existingRow('pt'), existingRow('en')]
+
+    const items = await loadHomeFeaturedNews('featured', event, 'pt', [], false)
+
+    expect(items.map((item) => item.title)).toEqual(['Saved pt story'])
+  })
+
+  it('does not treat saved comments as a news cache hit', async () => {
+    state.rows = [{ ...existingRow('pt'), id: 'saved-comment', item_type: 'comment' }]
+    state.completion.mockResolvedValue('{"news":[{"url":"https://example.com/pt"}]}')
+
+    const items = await loadNews()
+
+    expect(items.map((item) => item.type)).toEqual(['news'])
+    expect(state.completion).toHaveBeenCalledTimes(1)
   })
 
   it('does not cache a missing API key as an empty search result', async () => {

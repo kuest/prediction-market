@@ -811,6 +811,7 @@ export const HomeFeaturedEventsRepository = {
     options: {
       includeDefaultFallback?: boolean
       eventIdsByFeaturedId?: Map<string, string | null | undefined>
+      itemType?: 'news' | 'comment'
       transaction?: HomeFeaturedTransaction
     } = {},
   ): Promise<QueryResult<Map<string, HomeFeaturedContextItem[]>>> {
@@ -840,6 +841,7 @@ export const HomeFeaturedEventsRepository = {
             ...(allowedEventIds.length > 0
               ? [inArray(home_featured_event_context_items.event_id, allowedEventIds)]
               : []),
+            ...(options.itemType ? [eq(home_featured_event_context_items.item_type, options.itemType)] : []),
             gt(home_featured_event_context_items.expires_at, now),
           ),
         )
@@ -885,6 +887,7 @@ export const HomeFeaturedEventsRepository = {
 
         const existing = await HomeFeaturedEventsRepository.listContextItems([featuredEventId], locale, {
           eventIdsByFeaturedId: new Map([[featuredEventId, eventId]]),
+          itemType: 'news',
           transaction: tx,
         })
         if (existing.error) {

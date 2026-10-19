@@ -1,6 +1,49 @@
-import type { Event, EventSeriesEntry, HomeFeaturedRolloverEvent } from '@/types'
+import type { Event, EventSeriesEntry, HomeFeaturedContextItem, HomeFeaturedRolloverEvent } from '@/types'
 
 import { isEventResolvedLike } from '@/lib/home-events'
+
+export interface HomeFeaturedRolloverQueueState {
+  contextItems: HomeFeaturedContextItem[]
+  sourceContextItems: HomeFeaturedContextItem[]
+  activeIndex: number
+  events: HomeFeaturedRolloverEvent[]
+}
+
+export function resolveHomeFeaturedRolloverContextItems(
+  queue: HomeFeaturedRolloverQueueState,
+  propContextItems: HomeFeaturedContextItem[],
+) {
+  return queue.activeIndex >= 0 || queue.sourceContextItems === propContextItems ? queue.contextItems : propContextItems
+}
+
+export function applyHomeFeaturedRolloverResponse(
+  current: HomeFeaturedRolloverQueueState,
+  initialEventId: string,
+  sourceContextItems: HomeFeaturedContextItem[],
+  response: {
+    currentEventId?: string
+    contextItems?: HomeFeaturedContextItem[]
+    nextEvent?: HomeFeaturedRolloverEvent | null
+  },
+): HomeFeaturedRolloverQueueState {
+  const currentEventId = current.events[current.activeIndex]?.event.id ?? initialEventId
+  const nextEvent = response.nextEvent ?? null
+  if (response.currentEventId !== currentEventId) {
+    if (nextEvent?.event.id !== currentEventId || current.activeIndex < 0) {
+      return current
+    }
+    const events = current.events.slice()
+    events[current.activeIndex] = nextEvent
+    return { ...current, events, contextItems: nextEvent.contextItems, sourceContextItems }
+  }
+
+  return {
+    ...current,
+    events: replaceHomeFeaturedRolloverSuccessor(current.events, current.activeIndex, nextEvent),
+    contextItems: response.contextItems ?? current.contextItems,
+    sourceContextItems,
+  }
+}
 
 export function replaceHomeFeaturedRolloverSuccessor(
   events: HomeFeaturedRolloverEvent[],

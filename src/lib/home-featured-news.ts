@@ -163,14 +163,19 @@ async function readSavedHomeFeaturedNews(featuredId: string, eventId: string, lo
   cacheLife({ stale: 0, revalidate: 60, expire: 300 })
   cacheTag(cacheTags.homeFeaturedEvents, cacheTags.settings)
 
-  const { data, error } = await HomeFeaturedEventsRepository.listContextItems([featuredId], locale, {
-    includeDefaultFallback: true,
-    eventIdsByFeaturedId: new Map([[featuredId, eventId]]),
-  })
-  if (error) {
-    throw new Error(error)
+  async function readLocale(savedLocale: SupportedLocale) {
+    const { data, error } = await HomeFeaturedEventsRepository.listContextItems([featuredId], savedLocale, {
+      eventIdsByFeaturedId: new Map([[featuredId, eventId]]),
+      itemType: 'news',
+    })
+    if (error) {
+      throw new Error(error)
+    }
+    return data?.get(featuredId) ?? []
   }
-  return data?.get(featuredId) ?? []
+
+  const localizedItems = await readLocale(locale)
+  return localizedItems.length > 0 || locale === DEFAULT_LOCALE ? localizedItems : readLocale(DEFAULT_LOCALE)
 }
 
 export async function loadHomeFeaturedNews(
