@@ -419,6 +419,43 @@ function hasActiveFeaturedMarketCondition() {
   )
 }
 
+function hasOpenFeaturedWindowCondition(now: Date) {
+  return or(
+    gt(events.end_date, now),
+    exists(
+      db
+        .select({ condition_id: markets.condition_id })
+        .from(markets)
+        .where(
+          and(
+            eq(markets.event_id, events.id),
+            eq(markets.is_active, true),
+            eq(markets.is_resolved, false),
+            gt(markets.end_time, now),
+          ),
+        ),
+    ),
+    and(
+      isNull(events.end_date),
+      not(
+        exists(
+          db
+            .select({ condition_id: markets.condition_id })
+            .from(markets)
+            .where(
+              and(
+                eq(markets.event_id, events.id),
+                eq(markets.is_active, true),
+                eq(markets.is_resolved, false),
+                isNotNull(markets.end_time),
+              ),
+            ),
+        ),
+      ),
+    ),
+  )
+}
+
 async function resolveSeriesTarget(seriesSlug: string) {
   const normalizedSeriesSlug = seriesSlug.trim()
   if (!normalizedSeriesSlug) {
@@ -446,40 +483,7 @@ async function resolveSeriesTarget(seriesSlug: string) {
         eq(events.is_hidden, false),
         buildPublicEventListVisibilityCondition(events.id),
         hasActiveFeaturedMarketCondition(),
-        or(
-          gt(events.end_date, now),
-          exists(
-            db
-              .select({ condition_id: markets.condition_id })
-              .from(markets)
-              .where(
-                and(
-                  eq(markets.event_id, events.id),
-                  eq(markets.is_active, true),
-                  eq(markets.is_resolved, false),
-                  gt(markets.end_time, now),
-                ),
-              ),
-          ),
-          and(
-            isNull(events.end_date),
-            not(
-              exists(
-                db
-                  .select({ condition_id: markets.condition_id })
-                  .from(markets)
-                  .where(
-                    and(
-                      eq(markets.event_id, events.id),
-                      eq(markets.is_active, true),
-                      eq(markets.is_resolved, false),
-                      isNotNull(markets.end_time),
-                    ),
-                  ),
-              ),
-            ),
-          ),
-        ),
+        hasOpenFeaturedWindowCondition(now),
       ),
     )
     .orderBy(
@@ -503,6 +507,7 @@ async function resolveSeriesTargetsBySlug(seriesSlugs: string[]) {
   if (normalizedSeriesSlugs.length === 0) {
     return targetBySeriesSlug
   }
+  const now = new Date()
 
   const rows = await db
     .select({
@@ -524,6 +529,7 @@ async function resolveSeriesTargetsBySlug(seriesSlugs: string[]) {
         eq(events.is_hidden, false),
         buildPublicEventListVisibilityCondition(events.id),
         hasActiveFeaturedMarketCondition(),
+        hasOpenFeaturedWindowCondition(now),
       ),
     )
     .orderBy(
