@@ -10,6 +10,7 @@ import { parseOpenRouterProviderSettings } from '@/lib/ai/market-context-config'
 import { requestOpenRouterCompletion, sanitizeForPrompt } from '@/lib/ai/openrouter'
 import { cacheTags } from '@/lib/cache-tags'
 import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
+import { claimHomeFeaturedNewsRefresh } from '@/lib/db/queries/home-featured-news-refresh'
 import { SettingsRepository } from '@/lib/db/queries/settings'
 import {
   assertHomeFeaturedNewsMetadataUrlAllowed,
@@ -193,6 +194,9 @@ export async function loadHomeFeaturedNews(
     const { data: allSettings } = await SettingsRepository.getSettings()
     const openRouter = parseOpenRouterProviderSettings(allSettings ?? undefined)
     if (!openRouter.apiKey) {
+      return await readSavedHomeFeaturedNews(featuredId, event.id, locale)
+    }
+    if (!(await claimHomeFeaturedNewsRefresh(featuredId, event.id, locale))) {
       return await readSavedHomeFeaturedNews(featuredId, event.id, locale)
     }
 
