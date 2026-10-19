@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, gt, inArray, isNull, lte, not, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, gt, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { cacheTag, revalidateTag } from 'next/cache'
 
@@ -432,7 +432,32 @@ async function resolveSeriesTarget(seriesSlug: string) {
             db
               .select({ condition_id: markets.condition_id })
               .from(markets)
-              .where(and(eq(markets.event_id, events.id), gt(markets.end_time, now))),
+              .where(
+                and(
+                  eq(markets.event_id, events.id),
+                  eq(markets.is_active, true),
+                  eq(markets.is_resolved, false),
+                  gt(markets.end_time, now),
+                ),
+              ),
+          ),
+          and(
+            isNull(events.end_date),
+            not(
+              exists(
+                db
+                  .select({ condition_id: markets.condition_id })
+                  .from(markets)
+                  .where(
+                    and(
+                      eq(markets.event_id, events.id),
+                      eq(markets.is_active, true),
+                      eq(markets.is_resolved, false),
+                      isNotNull(markets.end_time),
+                    ),
+                  ),
+              ),
+            ),
           ),
         ),
       ),
@@ -595,10 +620,65 @@ function resolveAdminFeaturedEventTarget(row: AdminFeaturedEventRow, seriesTarge
 }
 
 export const HomeFeaturedEventsRepository = {
-  async resolveLiveSeriesEventSlug(seriesSlug: string): Promise<QueryResult<string | null>> {
+  async resolveLiveSeriesDestination(
+    seriesSlug: string,
+    selectedMarketSlug: string | null,
+    selectedConditionId: string | null,
+  ): Promise<QueryResult<{ eventSlug: string; marketSlug: string | null; conditionId: string | null } | null>> {
     return runQuery(async () => {
       const event = await resolveSeriesTarget(seriesSlug)
-      return { data: event?.slug ?? null, error: null }
+      if (!event) {
+        return { data: null, error: null }
+      }
+
+      if (!selectedMarketSlug && !selectedConditionId) {
+        return { data: { eventSlug: event.slug, marketSlug: null, conditionId: null }, error: null }
+      }
+
+      const currentMarkets = await db
+        .select({
+          condition_id: markets.condition_id,
+          slug: markets.slug,
+          title: markets.title,
+          short_title: markets.short_title,
+        })
+        .from(markets)
+        .where(and(eq(markets.event_id, event.id), eq(markets.is_active, true), eq(markets.is_resolved, false)))
+      const oldMarket = selectedConditionId
+        ? (
+            await db
+              .select({ title: markets.title, short_title: markets.short_title })
+              .from(markets)
+              .where(eq(markets.condition_id, selectedConditionId))
+              .limit(1)
+          )[0]
+        : null
+      const exactMatches = currentMarkets.filter(
+        (market) => market.slug === selectedMarketSlug || market.condition_id === selectedConditionId,
+      )
+      const oldTitle = oldMarket?.short_title?.trim().toLowerCase() || oldMarket?.title.trim().toLowerCase()
+      const titleMatches = oldTitle
+        ? currentMarkets.filter(
+            (market) => (market.short_title?.trim().toLowerCase() || market.title.trim().toLowerCase()) === oldTitle,
+          )
+        : []
+      const selectedMarket =
+        exactMatches.length === 1
+          ? exactMatches[0]
+          : titleMatches.length === 1
+            ? titleMatches[0]
+            : currentMarkets.length === 1
+              ? currentMarkets[0]
+              : null
+
+      return {
+        data: {
+          eventSlug: event.slug,
+          marketSlug: selectedMarket?.slug ?? null,
+          conditionId: selectedMarket?.condition_id ?? null,
+        },
+        error: null,
+      }
     })
   },
 

@@ -539,7 +539,8 @@ function FeaturedHeaderActions({ event, className }: { event: HomeFeaturedEventC
 }
 
 function resolveFeaturedDestinationHref(item: HomeFeaturedEventCard, locale: string) {
-  const seriesSlug = item.kind !== 'sports' ? item.resolvedSeriesSlug || item.event.series_slug : null
+  const seriesSlug =
+    item.targetType === 'series' && item.kind !== 'sports' ? item.resolvedSeriesSlug || item.event.series_slug : null
   return seriesSlug
     ? `/api/home-featured/live-link?seriesSlug=${encodeURIComponent(seriesSlug)}&locale=${encodeURIComponent(locale)}`
     : resolveEventPagePath(item.event)
@@ -629,7 +630,7 @@ function resolveFeaturedOutcomeHref(
   fallbackHref: string,
 ) {
   if (fallbackHref.startsWith('/api/home-featured/live-link?')) {
-    return `${fallbackHref}&outcomeIndex=${outcome.outcomeIndex}`
+    return `${fallbackHref}&outcomeIndex=${outcome.outcomeIndex}&marketSlug=${encodeURIComponent(outcome.marketSlug ?? '')}&conditionId=${encodeURIComponent(outcome.conditionId)}`
   }
 
   return (
