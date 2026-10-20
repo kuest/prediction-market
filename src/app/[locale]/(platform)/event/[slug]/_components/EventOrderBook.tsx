@@ -430,19 +430,18 @@ export default function EventOrderBook({
       ),
     [midpointCents, rewardConfig],
   )
-  const isMarketOrderBookEmpty = useMemo(
+  const hasMarketOrders = useMemo(
     () =>
-      Boolean(summaries) &&
-      market.outcomes.every((marketOutcome) => {
+      market.outcomes.some((marketOutcome) => {
         const marketSummary = marketOutcome.token_id ? summaries?.[marketOutcome.token_id] : null
-        return !marketSummary?.asks?.length && !marketSummary?.bids?.length
+        return Boolean(marketSummary?.asks?.length || marketSummary?.bids?.length)
       }),
     [market.outcomes, summaries],
   )
+  const heldMarketHasOrders = useHeldRowCount(Number(hasMarketOrders), market.condition_id) > 0
   const showLiquidityAction = Boolean(
-    isMarketOrderBookEmpty &&
-    heldAskCount === 0 &&
-    heldBidCount === 0 &&
+    summaries &&
+    !heldMarketHasOrders &&
     currentTimestamp != null &&
     canProvideMarketLiquidity(market, currentTimestamp),
   )
