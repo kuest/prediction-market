@@ -1,4 +1,4 @@
-import { connection, NextResponse } from 'next/server'
+import { connection } from 'next/server'
 
 import { DEFAULT_LOCALE, resolveSupportedLocale } from '@/i18n/locales'
 import { HomeFeaturedEventsRepository } from '@/lib/db/queries/home-featured-events'
@@ -39,10 +39,11 @@ export async function GET(request: Request) {
         )
       : `/event/${encodeURIComponent(target.eventSlug)}`
     : '/predictions'
-  const destination = new URL(`${localePrefix}${eventPath}`, request.url)
-
-  return NextResponse.redirect(destination, {
+  return new Response(null, {
     status: 307,
-    headers: { 'Cache-Control': 'no-store' },
+    headers: {
+      Location: `${localePrefix}${eventPath}`,
+      'Cache-Control': 'no-store',
+    },
   })
 }
