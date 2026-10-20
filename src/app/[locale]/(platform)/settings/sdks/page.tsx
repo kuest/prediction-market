@@ -98,7 +98,7 @@ export default async function SdkDownloadsSettingsPage() {
               actions: [
                 {
                   id: 'python-sdk',
-                  label: 'SDK',
+                  label: t('SDK'),
                   href: buildSdkDownloadUrl('python', 'unified'),
                   variant: 'outline',
                 },
@@ -132,7 +132,7 @@ export default async function SdkDownloadsSettingsPage() {
               actions: [
                 {
                   id: 'typescript-sdk',
-                  label: 'SDK',
+                  label: t('SDK'),
                   href: buildSdkDownloadUrl('typescript', 'unified'),
                   variant: 'outline',
                 },

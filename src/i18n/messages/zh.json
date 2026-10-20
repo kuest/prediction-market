@@ -1143,6 +1143,7 @@
   "Z0bShp": "使用个性化 SDK 包构建交易机器人和集成。CLOB 客户端负责订单簿交易，Relayer 客户端帮助路由并执行已签名的操作。",
   "_Z1NW3": "Python",
   "ehGmeh": "适用于交易机器人、服务和工作流自动化。",
+  "4-ppNT": "SDK",
   "Gsmpzd": "Rust",
   "9b4qha": "适用于高性能机器人、服务和工作流自动化。",
   "xVv8Lk": "TypeScript",

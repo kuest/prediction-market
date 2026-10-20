@@ -1143,6 +1143,7 @@
   "Z0bShp": "Crea bots de trading e integraciones con paquetes de SDK personalizados. El cliente CLOB gestiona el trading en el libro de órdenes, mientras que el cliente Relayer ayuda a enrutar y ejecutar acciones firmadas.",
   "_Z1NW3": "Python",
   "ehGmeh": "Para bots de trading, servicios y automatización de flujos de trabajo.",
+  "4-ppNT": "SDK",
   "Gsmpzd": "Rust",
   "9b4qha": "Para bots de alto rendimiento, servicios y automatización de flujos de trabajo.",
   "xVv8Lk": "TypeScript",
