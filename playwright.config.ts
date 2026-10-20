@@ -15,14 +15,14 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
   webServer: {
-    command: 'bun run --bun next start --port 3100',
+    command: 'bun run --bun next build && bun run --bun next start --port 3100',
     url: 'http://localhost:3100',
     reuseExistingServer: false,
     env: { NEXT_INSTANT_TEST: '1' },
-    timeout: 60_000,
+    timeout: 300_000,
   },
 })
