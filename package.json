@@ -16,7 +16,6 @@
     "fmt": "oxfmt",
     "test": "AGENT=1 bun test --parallel tests/unit --reporter=dots",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install --with-deps chromium",
     "test:unit": "AGENT=1 bun test --parallel tests/unit --reporter=dots",
     "postinstall": "husky",
     "db:push": "bun scripts/migrate.ts"
