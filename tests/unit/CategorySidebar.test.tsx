@@ -34,7 +34,6 @@ describe('categorySidebar', () => {
         categorySlug="crypto"
         categoryTitle="Crypto"
         activeSubcategorySlug={null}
-        onNavigate={() => {}}
         sidebarItems={[
           { type: 'link', slug: 'crypto', label: 'All', count: 3, icon: 'all-grid', isAll: true },
           { type: 'link', slug: '5M', label: '5 Min', count: 0, icon: 'five-minute' },
@@ -66,7 +65,6 @@ describe('categorySidebar', () => {
         categorySlug="finance"
         categoryTitle="Finance"
         activeSubcategorySlug={null}
-        onNavigate={() => {}}
         sidebarItems={[
           { type: 'link', slug: 'finance', label: 'All', count: 3, icon: 'all-grid', isAll: true },
           {
@@ -90,7 +88,6 @@ describe('categorySidebar', () => {
         categorySlug="finance"
         categoryTitle="Finance"
         activeSubcategorySlug={null}
-        onNavigate={() => {}}
         sidebarItems={[
           { type: 'link', slug: 'finance', label: 'All', count: 3, icon: 'all-grid', isAll: true },
           { type: 'link', slug: 'stocks', label: 'Stocks', count: 2, icon: 'stocks' },
@@ -118,7 +115,6 @@ describe('categorySidebar', () => {
         categorySlug="weather"
         categoryTitle="Weather"
         activeSubcategorySlug="high-temperature"
-        onNavigate={() => {}}
         sidebarItems={[
           { type: 'link', slug: 'weather', label: 'All', count: 6, icon: 'all-grid', isAll: true },
           {
@@ -173,7 +169,6 @@ describe('categorySidebar', () => {
         categorySlug="crypto"
         categoryTitle="Crypto"
         activeSubcategorySlug={null}
-        onNavigate={() => {}}
         sidebarItems={sidebarItems}
         subcategories={childs}
       />,

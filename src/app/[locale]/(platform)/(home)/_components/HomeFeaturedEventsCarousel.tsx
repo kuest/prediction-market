@@ -24,6 +24,7 @@ import type {
   Market,
 } from '@/types'
 
+import IntentPrefetchLink from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import EventMarketChannelProvider from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
 import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
@@ -501,12 +502,12 @@ function FeaturedBreadcrumb({ items }: { items: Array<{ label: string; href: str
       {items.map((breadcrumbItem, index) => (
         <span key={`${breadcrumbItem.href}:${breadcrumbItem.label}`} className="flex min-w-0 items-center gap-1.5">
           {index > 0 && <span className="shrink-0 text-muted-foreground/60">·</span>}
-          <Link
+          <IntentPrefetchLink
             href={breadcrumbItem.href}
             className="truncate underline-offset-2 transition-colors hover:text-foreground hover:underline"
           >
             {breadcrumbItem.label}
-          </Link>
+          </IntentPrefetchLink>
         </span>
       ))}
     </nav>

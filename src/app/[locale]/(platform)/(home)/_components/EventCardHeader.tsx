@@ -6,9 +6,9 @@ import {
   formatHomeCardChanceLabel,
   resolveHomeCardBinaryOutcome,
 } from '@/app/[locale]/(platform)/(home)/_utils/homeCardMarketDisplay'
+import IntentPrefetchLink from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
 import EventIconImage from '@/components/EventIconImage'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { Link } from '@/i18n/navigation'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { isEventResolvedLike } from '@/lib/home-events'
@@ -67,7 +67,7 @@ export default function EventCardHeader({
 
   return (
     <div className="mb-3 flex items-start justify-between">
-      <Link href={eventHref} className="flex flex-1 items-center gap-2 pr-2">
+      <IntentPrefetchLink href={eventHref} className="flex flex-1 items-center gap-2 pr-2">
         <div className="flex size-10 shrink-0 items-center justify-center self-start rounded-sm">
           <EventIconImage
             src={event.icon_url}
@@ -78,7 +78,7 @@ export default function EventCardHeader({
         </div>
 
         {titleNode}
-      </Link>
+      </IntentPrefetchLink>
 
       {isSingleMarket && !isResolvedEvent && hasPrimaryDisplayChance && (
         <div className="relative -mt-3 flex flex-col items-center">

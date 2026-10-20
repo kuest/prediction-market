@@ -6,12 +6,12 @@ import { useEffect, useMemo, useState } from 'react'
 import type { PlatformNavigationTag } from '@/lib/platform-navigation'
 import type { Event } from '@/types'
 
+import IntentPrefetchLink from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
 import { usePlatformNavigationData } from '@/app/[locale]/(platform)/_providers/PlatformNavigationProvider'
 import EventBookmark from '@/app/[locale]/(platform)/event/[slug]/_components/EventBookmark'
 import EventEmbed from '@/app/[locale]/(platform)/event/[slug]/_components/EventEmbed'
 import EventShare from '@/app/[locale]/(platform)/event/[slug]/_components/EventShare'
 import EventIconImage from '@/components/EventIconImage'
-import { Link } from '@/i18n/navigation'
 import { resolveCryptoCadenceEventPresentation } from '@/lib/crypto-cadence-event'
 import { resolveEventHeaderSubcategoryHref } from '@/lib/event-header-routing'
 import { isPlatformMainCategorySlug } from '@/lib/platform-routing'
@@ -119,13 +119,13 @@ function useScrollPastThreshold(threshold: number) {
 function EventHeaderTaxonomyItem({ href, label, className }: EventHeaderTaxonomyItemData & { className?: string }) {
   if (href) {
     return (
-      <Link
+      <IntentPrefetchLink
         href={href}
         className={cn('block truncate transition-colors hover:text-foreground', className)}
         title={label}
       >
         {label}
-      </Link>
+      </IntentPrefetchLink>
     )
   }
 

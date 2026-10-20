@@ -12,6 +12,8 @@ import { isPlatformReservedRootSlug, normalizePublicProfileSlug } from '@/lib/pl
 import { deferPublicShellPrerenderIfNeeded, shouldPrerenderPublicShell } from '@/lib/public-shell-rendering'
 import { shouldBypassPublicShellPlaceholder, STATIC_PARAMS_PLACEHOLDER } from '@/lib/static-params'
 
+// Direct visits await URL data to deliver complete HTML without JavaScript.
+// Intent-prefetched navigation is covered by the production instant() tests.
 export const instant = false
 
 export const generateStaticParams = generateDynamicHomeSubcategoryStaticParams

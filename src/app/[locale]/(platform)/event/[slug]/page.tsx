@@ -20,6 +20,8 @@ import {
 } from '@/lib/static-params'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 
+// Direct visits await URL data to deliver complete HTML without JavaScript.
+// Intent-prefetched navigation is covered by the production instant() tests.
 export const instant = false
 
 export async function generateStaticParams() {

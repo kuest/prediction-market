@@ -434,7 +434,6 @@ function useHomeClientContentState({
     categoryPageTitle,
     activeSidebarSubcategorySlug,
     secondaryNavigation,
-    handleSecondaryNavigation,
   }
 }
 
@@ -467,7 +466,6 @@ function HomeClientContent({
     categoryPageTitle,
     activeSidebarSubcategorySlug,
     secondaryNavigation,
-    handleSecondaryNavigation,
   } = useHomeClientContentState({
     childParentMap,
     dynamicHomeCategorySlugSet,
@@ -488,7 +486,6 @@ function HomeClientContent({
             categorySlug={categorySidebar.slug}
             categoryTitle={categorySidebar.title}
             activeSubcategorySlug={activeSidebarSubcategorySlug}
-            onNavigate={handleSecondaryNavigation}
             sidebarItems={categorySidebar.sidebarItems}
             subcategories={categorySidebar.childs}
           />

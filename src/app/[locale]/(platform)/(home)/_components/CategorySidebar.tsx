@@ -14,14 +14,13 @@ import type {
 } from '@/lib/platform-navigation'
 
 import { categorySidebarInlineIcons } from '@/app/[locale]/(platform)/(home)/_components/CategorySidebarInlineIcons'
-import { Link } from '@/i18n/navigation'
+import IntentPrefetchLink from '@/app/[locale]/(platform)/_components/IntentPrefetchLink'
 import { cn } from '@/lib/utils'
 
 interface CategorySidebarProps {
   activeSubcategorySlug: string | null
   categorySlug: string
   categoryTitle: string
-  onNavigate: (target: Pick<PlatformCategorySidebarLinkItem, 'href' | 'slug'>) => void
   sidebarItems?: PlatformCategorySidebarItem[]
   subcategories: PlatformNavigationChild[]
 }
@@ -33,7 +32,6 @@ interface CategorySidebarLinkProps {
   icon?: PlatformCategorySidebarIconKey
   isActive: boolean
   isNested?: boolean
-  onClick: () => void
   useInlineIcon: boolean
 }
 
@@ -287,14 +285,12 @@ function CategorySidebarLink({
   icon,
   isActive,
   isNested = false,
-  onClick,
   useInlineIcon,
 }: CategorySidebarLinkProps) {
   return (
-    <Link
+    <IntentPrefetchLink
       href={href}
       aria-current={isActive ? 'page' : undefined}
-      onClick={onClick}
       className={cn(
         'flex w-full items-center justify-between gap-3 rounded-md px-3 text-sm transition-colors',
         isNested ? 'py-2.5 font-medium' : 'py-3 font-semibold',
@@ -312,7 +308,7 @@ function CategorySidebarLink({
       {typeof count === 'number' && (
         <span className="shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">{count}</span>
       )}
-    </Link>
+    </IntentPrefetchLink>
   )
 }
 
@@ -339,7 +335,6 @@ export default function CategorySidebar({
   activeSubcategorySlug,
   categorySlug,
   categoryTitle,
-  onNavigate,
   sidebarItems,
   subcategories,
 }: CategorySidebarProps) {
@@ -388,10 +383,9 @@ export default function CategorySidebar({
                   activeSubcategorySlug === item.slug ? 'bg-muted' : 'hover:bg-muted/60',
                 )}
               >
-                <Link
+                <IntentPrefetchLink
                   href={href}
                   aria-current={activeSubcategorySlug === item.slug ? 'page' : undefined}
-                  onClick={() => onNavigate({ slug: item.slug, href: item.href })}
                   className="flex min-w-0 flex-1 items-center gap-2.5 p-3"
                 >
                   {item.icon && (
@@ -405,7 +399,7 @@ export default function CategorySidebar({
                       {item.count}
                     </span>
                   )}
-                </Link>
+                </IntentPrefetchLink>
                 <button
                   type="button"
                   aria-label={`${item.label} sub-items`}
@@ -431,7 +425,6 @@ export default function CategorySidebar({
                       icon={subItem.icon}
                       isActive={activeSubcategorySlug === subItem.slug}
                       isNested
-                      onClick={() => onNavigate({ slug: subItem.slug, href: subItem.href })}
                       useInlineIcon={useInlineIcon}
                     >
                       {subItem.label}
@@ -450,7 +443,6 @@ export default function CategorySidebar({
             href={href}
             icon={item.icon}
             isActive={isAllItem ? activeSubcategorySlug === null : activeSubcategorySlug === item.slug}
-            onClick={() => onNavigate({ slug: item.slug, href: item.href })}
             useInlineIcon={useInlineIcon}
           >
             {isAllItem ? t('All') : item.label}
