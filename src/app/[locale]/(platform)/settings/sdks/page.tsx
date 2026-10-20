@@ -48,13 +48,13 @@ export default async function SdkDownloadsSettingsPage() {
   const builderCode = addressToBuilderCode(feeReceiver)
   const geoblock = getBlockedCountriesFromSettings(allSettings ?? undefined).length > 0
 
-  function buildSdkDownloadUrl(language: 'python' | 'rust' | 'typescript', sdk: 'clob' | 'relayer') {
+  function buildSdkDownloadUrl(language: 'python' | 'rust' | 'typescript', sdk: 'unified' | 'clob' | 'relayer') {
     const url = new URL('/download', sdkDownloadUrl)
     url.searchParams.set('sdk', sdk)
     url.searchParams.set('language', language)
     url.searchParams.set('site_url', siteUrl)
 
-    if (sdk === 'clob') {
+    if (sdk !== 'relayer') {
       url.searchParams.set('builder_code', builderCode)
       url.searchParams.set('geoblock', geoblock ? 'true' : 'false')
     }
@@ -97,15 +97,9 @@ export default async function SdkDownloadsSettingsPage() {
               logoSrc: '/images/sdks/python.svg',
               actions: [
                 {
-                  id: 'python-clob',
-                  label: t('CLOB'),
-                  href: buildSdkDownloadUrl('python', 'clob'),
-                  variant: 'outline',
-                },
-                {
-                  id: 'python-relayer',
-                  label: t('Relayer'),
-                  href: buildSdkDownloadUrl('python', 'relayer'),
+                  id: 'python-sdk',
+                  label: 'SDK',
+                  href: buildSdkDownloadUrl('python', 'unified'),
                   variant: 'outline',
                 },
               ],
@@ -137,15 +131,9 @@ export default async function SdkDownloadsSettingsPage() {
               logoSrc: '/images/sdks/typescript.svg',
               actions: [
                 {
-                  id: 'typescript-clob',
-                  label: t('CLOB'),
-                  href: buildSdkDownloadUrl('typescript', 'clob'),
-                  variant: 'outline',
-                },
-                {
-                  id: 'typescript-relayer',
-                  label: t('Relayer'),
-                  href: buildSdkDownloadUrl('typescript', 'relayer'),
+                  id: 'typescript-sdk',
+                  label: 'SDK',
+                  href: buildSdkDownloadUrl('typescript', 'unified'),
                   variant: 'outline',
                 },
               ],
