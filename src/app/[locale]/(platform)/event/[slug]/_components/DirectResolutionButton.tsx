@@ -57,7 +57,6 @@ import {
   resolveResolutionActorAddress,
   YES_OR_NO_IDENTIFIER,
 } from '@/lib/direct-resolution'
-import { resolveFallbackOutcomeUnitPrice } from '@/lib/market-pricing'
 import { DEFAULT_CHAIN_ID } from '@/lib/network'
 import { buildPublicProfilePath } from '@/lib/platform-routing'
 import { readCreatorProposerWhitelistStatus } from '@/lib/proposer-whitelist'
@@ -67,6 +66,7 @@ import { cn } from '@/lib/utils'
 import { resolveViemRpcUrls } from '@/lib/viem-network'
 import { WALLET_CONNECTOR_NOT_CONNECTED_MESSAGE, WalletConnectorNotConnectedError } from '@/lib/wallet'
 import { signAndSubmitDepositWalletCalls } from '@/lib/wallet/client'
+import { useOutcomeTopOfBookPrice } from '@/stores/useOrder'
 import { useUser } from '@/stores/useUser'
 
 import { resolveWinningOutcomeIndex } from '../_utils/eventMarketUtils'
@@ -755,6 +755,14 @@ export default function DirectResolutionButton({
   )
   const hasDeployedDepositWallet = Boolean(user?.deposit_wallet_address && user.deposit_wallet_status === 'deployed')
   const isResolved = Boolean(market.is_resolved || market.condition?.resolved)
+  const liveYesPrice = useOutcomeTopOfBookPrice(OUTCOME_INDEX.YES, undefined, {
+    market,
+    enabled: isDirect && !isResolved,
+  })
+  const liveNoPrice = useOutcomeTopOfBookPrice(OUTCOME_INDEX.NO, undefined, {
+    market,
+    enabled: isDirect && !isResolved,
+  })
   const resolvedWinningOutcomeIndex = isResolved ? resolveWinningOutcomeIndex(market) : null
   const resolvedWinningOutcome =
     resolvedWinningOutcomeIndex === OUTCOME_INDEX.YES
@@ -832,7 +840,7 @@ export default function DirectResolutionButton({
         value: 'yes' as const,
         label: yesLabel,
         outcomeIndex: OUTCOME_INDEX.YES,
-        price: resolveFallbackOutcomeUnitPrice(market, OUTCOME_INDEX.YES),
+        price: liveYesPrice,
         imageUrl: resolveImageUrl(yesLabel),
         accentColor: resolveTeamColor(yesLabel),
       },
@@ -840,13 +848,13 @@ export default function DirectResolutionButton({
         value: 'no' as const,
         label: noLabel,
         outcomeIndex: OUTCOME_INDEX.NO,
-        price: resolveFallbackOutcomeUnitPrice(market, OUTCOME_INDEX.NO),
+        price: liveNoPrice,
         imageUrl: resolveImageUrl(noLabel),
         accentColor: resolveTeamColor(noLabel),
       },
     ]
     return base
-  }, [event.sports_team_logo_urls, event.sports_teams, market, t])
+  }, [event.sports_team_logo_urls, event.sports_teams, liveNoPrice, liveYesPrice, market, t])
   const showOutcomeImages = outcomeOptions.every((option) => Boolean(option.imageUrl))
   const selectedOutcomeOption = outcomeOptions.find((option) => option.value === selectedOutcome) ?? null
   const bondAmount = parseUsdcAmount(reportSummary.bond)

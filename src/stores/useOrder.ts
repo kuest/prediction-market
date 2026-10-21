@@ -51,6 +51,7 @@ interface OrderState {
   type: OrderType
   amount: string
   limitPrice: string
+  limitPriceSelectionKey: string | null
   limitShares: string
   limitExpirationOption: LimitExpirationOption
   limitExpirationTimestamp: number | null
@@ -76,6 +77,48 @@ interface OrderState {
   setLastMouseEvent: (lastMouseEvent: any) => void
 }
 
+function getLimitPriceSelectionKey(state: Pick<OrderState, 'event' | 'market' | 'outcome'>) {
+  return [
+    state.event?.id ?? 'no-event',
+    state.market?.condition_id ?? 'no-market',
+    state.outcome?.token_id ?? 'no-outcome',
+  ].join(':')
+}
+
+export function selectOrderOutcomeAtDisplayedPrice({
+  market,
+  outcome,
+  displayedPrice,
+  currentMarketConditionId,
+  setMarket,
+  setOutcome,
+  setLimitPrice,
+}: {
+  market: Market | null
+  outcome: Outcome | null | undefined
+  displayedPrice: number | null
+  currentMarketConditionId: string | null | undefined
+  setMarket: (market: Market) => void
+  setOutcome: (outcome: Outcome) => void
+  setLimitPrice: (price: string) => void
+}) {
+  if (!market || !outcome) {
+    return false
+  }
+
+  if (currentMarketConditionId !== market.condition_id) {
+    setMarket(market)
+  }
+  setOutcome(outcome)
+
+  const cents =
+    displayedPrice !== null && Number.isFinite(displayedPrice) && displayedPrice >= 0 && displayedPrice <= 1
+      ? toCents(displayedPrice)
+      : null
+  setLimitPrice(cents === null ? '' : cents.toFixed(1))
+  return true
+}
+
 export const useOrder = create<OrderState>()((set, _, store) => ({
   event: null,
   market: null,
@@ -84,6 +127,7 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
   type: resolveStoredOrderType(),
   amount: '',
   limitPrice: '0.0',
+  limitPriceSelectionKey: null,
   limitShares: '0',
   limitExpirationOption: 'never',
   limitExpirationTimestamp: null,
@@ -97,7 +141,10 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
         return state
       }
 
-      return { event }
+      return {
+        event,
+        limitPriceSelectionKey: state.event?.id === event.id ? state.limitPriceSelectionKey : null,
+      }
     }),
   setMarket: (market: Market) =>
     set((state) => {
@@ -105,7 +152,11 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
         return state
       }
 
-      return { market }
+      return {
+        market,
+        limitPriceSelectionKey:
+          state.market?.condition_id === market.condition_id ? state.limitPriceSelectionKey : null,
+      }
     }),
   setOutcome: (outcome: Outcome) =>
     set((state) => {
@@ -113,7 +164,10 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
         return state
       }
 
-      return { outcome }
+      return {
+        outcome,
+        limitPriceSelectionKey: state.outcome?.token_id === outcome.token_id ? state.limitPriceSelectionKey : null,
+      }
     }),
   reset: () => set(store.getInitialState()),
   setSide: (side: OrderSide) =>
@@ -129,13 +183,15 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
       type,
       amount: '',
       limitPrice: '0.0',
+      limitPriceSelectionKey: null,
       limitShares: '0',
       limitExpirationOption: 'never',
       limitExpirationTimestamp: null,
       side: state.side,
     })),
   setAmount: (amount: string) => set({ amount }),
-  setLimitPrice: (price: string) => set({ limitPrice: price }),
+  setLimitPrice: (price: string) =>
+    set((state) => ({ limitPrice: price, limitPriceSelectionKey: getLimitPriceSelectionKey(state) })),
   setLimitShares: (shares: string) => set({ limitShares: shares }),
   setLimitExpirationOption: (option: LimitExpirationOption) => set({ limitExpirationOption: option }),
   setLimitExpirationTimestamp: (timestamp: number | null) => set({ limitExpirationTimestamp: timestamp }),
@@ -147,13 +203,17 @@ export const useOrder = create<OrderState>()((set, _, store) => ({
 export function useOutcomeTopOfBookPrice(
   outcomeIndex: typeof OUTCOME_INDEX.YES | typeof OUTCOME_INDEX.NO,
   sideOverride?: OrderSide,
+  options?: { market?: Market | null; enabled?: boolean },
 ) {
-  const market = useOrder((state) => state.market)
+  const selectedMarket = useOrder((state) => state.market)
   const orderSide = useOrder((state) => state.side)
+  const market = options?.market ?? selectedMarket
   const outcome =
     market?.outcomes.find((current) => current.outcome_index === outcomeIndex) ?? market?.outcomes[outcomeIndex]
   const tokenId = outcome?.token_id ? String(outcome.token_id) : null
-  const { data: orderBookSummaries } = useOrderBookSummaries(tokenId ? [tokenId] : [], { enabled: Boolean(tokenId) })
+  const { data: orderBookSummaries } = useOrderBookSummaries(tokenId ? [tokenId] : [], {
+    enabled: Boolean(tokenId) && (options?.enabled ?? true),
+  })
 
   return useMemo(() => {
     return resolveOutcomeUnitPrice(market, outcomeIndex, {
@@ -185,6 +245,7 @@ export function useAmountAsNumber() {
 
 interface SyncLimitPriceWithOutcomeParams {
   syncKey: string
+  limitPriceSelectionKey: string | null
   lastSyncKeyRef: { current: string }
   hasSyncedRef: { current: boolean }
   outcomeIndex: number | null | undefined
@@ -195,6 +256,7 @@ interface SyncLimitPriceWithOutcomeParams {
 
 function syncLimitPriceWithOutcome({
   syncKey,
+  limitPriceSelectionKey,
   lastSyncKeyRef,
   hasSyncedRef,
   outcomeIndex,
@@ -208,6 +270,11 @@ function syncLimitPriceWithOutcome({
   }
 
   if (outcomeIndex === undefined || outcomeIndex === null) {
+    return
+  }
+
+  if (limitPriceSelectionKey === syncKey) {
+    hasSyncedRef.current = true
     return
   }
 
@@ -231,13 +298,8 @@ function syncLimitPriceWithOutcome({
 
 export function useSyncLimitPriceWithOutcome() {
   const outcomeIndex = useOrder((state) => state.outcome?.outcome_index)
-  const syncKey = useOrder((state) =>
-    [
-      state.event?.id ?? 'no-event',
-      state.market?.condition_id ?? 'no-market',
-      state.outcome?.token_id ?? 'no-outcome',
-    ].join(':'),
-  )
+  const syncKey = useOrder(getLimitPriceSelectionKey)
+  const limitPriceSelectionKey = useOrder((state) => state.limitPriceSelectionKey)
   const setLimitPrice = useOrder((state) => state.setLimitPrice)
   const yesPrice = useYesPrice()
   const noPrice = useNoPrice()
@@ -248,6 +310,7 @@ export function useSyncLimitPriceWithOutcome() {
     function syncLimitPriceWithSelectedOutcome() {
       syncLimitPriceWithOutcome({
         syncKey,
+        limitPriceSelectionKey,
         lastSyncKeyRef,
         hasSyncedRef,
         outcomeIndex,
@@ -256,6 +319,6 @@ export function useSyncLimitPriceWithOutcome() {
         setLimitPrice,
       })
     },
-    [noPrice, outcomeIndex, setLimitPrice, syncKey, yesPrice],
+    [limitPriceSelectionKey, noPrice, outcomeIndex, setLimitPrice, syncKey, yesPrice],
   )
 }

@@ -1,6 +1,8 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, fireEvent, render as testingRender, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, jest } from 'bun:test'
 
+import { ORDER_SIDE } from '@/lib/constants'
 import { NEGRISK_DRO_CTF_ADAPTER_V4_ADDRESS } from '@/lib/contracts'
 
 import { hoisted, spyOn, stubGlobal, unstubAllGlobals } from '../bun-test-helpers'
@@ -16,6 +18,7 @@ const mocks = hoisted(() => ({
   balanceLoading: false,
   balanceError: false,
   refetchBalance: mock(),
+  clobUrl: '',
   user: {
     id: 'user-1',
     address: '0x1111111111111111111111111111111111111111',
@@ -64,7 +67,7 @@ void mock.module('@/hooks/useIsMobile', () => ({
 }))
 
 void mock.module('@/hooks/usePublicRuntimeConfig', () => ({
-  usePublicRuntimeConfig: () => ({ polygonRpcUrl: '' }),
+  usePublicRuntimeConfig: () => ({ polygonRpcUrl: '', clobUrl: mocks.clobUrl }),
 }))
 
 void mock.module('@/hooks/useBalance', () => ({
@@ -86,6 +89,13 @@ void mock.module('@/lib/proposer-whitelist', () => ({
 
 const { default: DirectResolutionButton } =
   await import('@/app/[locale]/(platform)/event/[slug]/_components/DirectResolutionButton?bun-test')
+const { useOrder } = await import('@/stores/useOrder')
+
+function render(ui: Parameters<typeof testingRender>[0], queryClient = new QueryClient()) {
+  return testingRender(ui, {
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+  })
+}
 
 const market = {
   condition_id: 'condition-1',
@@ -119,6 +129,7 @@ const event = {
 
 describe('DirectResolutionButton', () => {
   beforeEach(() => {
+    useOrder.getState().reset()
     window.localStorage.clear()
     mocks.fetch.mockReset()
     mocks.readContract.mockReset()
@@ -130,6 +141,7 @@ describe('DirectResolutionButton', () => {
     mocks.balanceLoading = false
     mocks.balanceError = false
     mocks.refetchBalance.mockReset()
+    mocks.clobUrl = ''
     mocks.user.id = 'user-1'
     mocks.user.address = '0x1111111111111111111111111111111111111111'
     mocks.user.deposit_wallet_address = '0x5555555555555555555555555555555555555555'
@@ -164,8 +176,64 @@ describe('DirectResolutionButton', () => {
   })
 
   afterEach(() => {
+    useOrder.getState().reset()
     unstubAllGlobals()
     jest.restoreAllMocks()
+  })
+
+  it('matches the order buttons for each outcome and trading side using their shared book cache', async () => {
+    mocks.clobUrl = 'https://clob.test'
+    const quotedMarket = {
+      ...market,
+      outcomes: (market as any).outcomes.map((outcome: any, index: number) => ({
+        ...outcome,
+        token_id: index === 0 ? 'yes-token' : 'no-token',
+      })),
+    }
+    const quotedEvent = { ...event, markets: [quotedMarket] } as never
+    const queryClient = new QueryClient()
+    const yesBookKey = ['orderbook-summary', mocks.clobUrl, 'yes-token']
+    const noBookKey = ['orderbook-summary', mocks.clobUrl, 'no-token']
+    queryClient.setQueryData(yesBookKey, {
+      'yes-token': {
+        bids: [{ price: '0.57', size: '10' }],
+        asks: [{ price: '0.61', size: '10' }],
+      },
+    })
+    queryClient.setQueryData(noBookKey, {
+      'no-token': {
+        bids: [{ price: '0.39', size: '10' }],
+        asks: [{ price: '0.43', size: '10' }],
+      },
+    })
+
+    render(<DirectResolutionButton market={quotedMarket} event={quotedEvent} />, queryClient)
+    expect(screen.getByText('61%')).toBeInTheDocument()
+    expect(screen.getByText('43%')).toBeInTheDocument()
+
+    act(() => useOrder.getState().setSide(ORDER_SIDE.SELL))
+    await waitFor(() => expect(screen.getByText('57%')).toBeInTheDocument())
+    expect(screen.getByText('39%')).toBeInTheDocument()
+    act(() => useOrder.getState().setSide(ORDER_SIDE.BUY))
+    await waitFor(() => expect(screen.getByText('61%')).toBeInTheDocument())
+
+    act(() => {
+      queryClient.setQueryData(yesBookKey, {
+        'yes-token': { bids: [{ price: '0.78', size: '10' }], asks: [{ price: '0.82', size: '10' }] },
+      })
+      queryClient.setQueryData(noBookKey, {
+        'no-token': { bids: [{ price: '0.16', size: '10' }], asks: [{ price: '0.2', size: '10' }] },
+      })
+    })
+    await waitFor(() => expect(screen.getByText('82%')).toBeInTheDocument())
+    expect(screen.getByText('20%')).toBeInTheDocument()
+
+    act(() => {
+      queryClient.setQueryData(yesBookKey, { 'yes-token': { bids: [], asks: [] } })
+      queryClient.setQueryData(noBookKey, { 'no-token': { bids: [], asks: [] } })
+    })
+    await waitFor(() => expect(screen.getByText('55%')).toBeInTheDocument())
+    expect(screen.getByText('45%')).toBeInTheDocument()
   })
 
   it('reuses the inline report summary when the review dialog opens', async () => {
