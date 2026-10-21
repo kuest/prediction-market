@@ -1152,7 +1152,7 @@
   "ZLTWkd": "Lee la documentación de los SDK unificados de TypeScript y Python, los clientes Rust separados y los ejemplos de market maker.",
   "HtWKCN": "Abrir documentación",
   "0VE59S": "Ejemplos de market maker",
-  "ecmU-i": "Estos ejemplos de market maker aún incluyen los clientes CLOB separados. Lee el README incluido antes de usar un bot; estas plantillas todavía no admiten el SDK unificado.",
+  "-cpOBF": "Usa estos ejemplos de market maker como referencias prácticas para comprender los flujos de los SDKs y diseñar tus propios bots, lógica y estrategias para nuevos mercados.",
   "5q3qC0": "Descargar",
   "99-nbG": "Market maker en {language}",
   "32N7Ig": "Configuración de trading",

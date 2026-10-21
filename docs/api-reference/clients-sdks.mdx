@@ -185,10 +185,7 @@ on the server and are separate from the order's public `builder_code`.
 
 ## Market-maker workflow
 
-The TypeScript and Python market-maker downloads currently vendor the **older, separate
-CLOB clients**. Their bot code has not been migrated to the unified SDKs. The Rust
-example likewise uses its separate Rust CLOB client. Read each example's bundled
-README before running it. A market-making service usually:
+A market-making service usually:
 
 1. discovers active markets through Gamma;
 2. checks CLOB token IDs, tick size, negative-risk status, and trading state;

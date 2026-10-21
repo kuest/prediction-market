@@ -180,7 +180,7 @@ export default async function SdkDownloadsSettingsPage() {
           <h2 className="text-xl font-semibold tracking-tight">{t('Market Maker Examples')}</h2>
           <p className="text-sm text-muted-foreground">
             {t(
-              'These market maker examples still bundle the separate CLOB clients. Read the included README before using a bot; unified SDK support is not yet available in these templates.',
+              'Use these market maker examples as practical references to understand SDK workflows and shape your own bots, logic, and strategies for new markets.',
             )}
           </p>
         </div>
