@@ -29,7 +29,25 @@ interface CryptoRelatedSourceEvent {
 
 interface CryptoRelatedEventCandidate extends HomeVisibleEventCandidate {
   title: string
+  start_date?: string | null
   series_recurrence?: string | null
+}
+
+export function isCurrentCryptoRelatedRound(
+  candidate: Pick<CryptoRelatedEventCandidate, 'start_date' | 'end_date' | 'status'>,
+  currentTimestamp: number,
+  durationMinutes: number,
+) {
+  const listedStart = candidate.start_date ? Date.parse(candidate.start_date) : null
+  const end = candidate.end_date ? Date.parse(candidate.end_date) : Number.NaN
+  const roundStart = end - durationMinutes * 60_000
+  return (
+    candidate.status === 'active' &&
+    Number.isFinite(roundStart) &&
+    (listedStart == null || (Number.isFinite(listedStart) && listedStart <= currentTimestamp)) &&
+    roundStart <= currentTimestamp &&
+    currentTimestamp < end
+  )
 }
 
 interface RelatedEventOutcomeRow {
@@ -90,8 +108,10 @@ export function selectCryptoRelatedEventCandidates<T extends CryptoRelatedEventC
   }
 
   const shouldExcludeCurrentAsset = cadenceRoute.routeSlug === currentCadenceRouteSlug
-  const cadenceCandidates = candidates.filter((candidate) =>
-    matchesCryptoCadenceRoute(candidate, cadenceRoute.routeSlug),
+  const cadenceCandidates = candidates.filter(
+    (candidate) =>
+      matchesCryptoCadenceRoute(candidate, cadenceRoute.routeSlug) &&
+      isCurrentCryptoRelatedRound(candidate, options.currentTimestamp, cadenceRoute.durationMinutes),
   )
   const sameAssetCandidates: T[] = []
   const otherAssetCandidates: T[] = []

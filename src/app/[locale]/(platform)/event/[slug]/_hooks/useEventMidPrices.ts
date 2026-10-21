@@ -28,7 +28,10 @@ function normalizePrice(value: string | number | undefined | null) {
   return normalizeClobMarketPrice(value)
 }
 
-function resolveQuote(priceBySide: { BUY?: string; SELL?: string } | undefined, midpoint: number | null): MarketQuote {
+export function resolveQuote(
+  priceBySide: { BUY?: string; SELL?: string } | undefined,
+  midpoint: number | null,
+): MarketQuote {
   // CLOB /prices returns BUY as best ask and SELL as best bid for the token.
   const ask = normalizePrice(priceBySide?.BUY)
   const bid = normalizePrice(priceBySide?.SELL)

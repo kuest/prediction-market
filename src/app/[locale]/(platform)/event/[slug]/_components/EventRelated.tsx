@@ -7,8 +7,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import type { Event } from '@/types'
 
 import EventRelatedSkeleton from '@/app/[locale]/(platform)/event/[slug]/_components/EventRelatedSkeleton'
+import { useEventLastTrades } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventLastTrades'
+import { useEventMarketQuotes } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMidPrices'
 import EventIconImage from '@/components/EventIconImage'
 import { Button } from '@/components/ui/button'
+import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
 import {
   resolveHorizontalScrollMaskClass,
   scrollElementIntoHorizontalView,
@@ -23,6 +26,7 @@ import {
   resolveCryptoCadenceRouteSlug,
 } from '@/lib/crypto-cadence-event'
 import { resolveEventPagePath } from '@/lib/events-routing'
+import { resolveHomeCardDisplayPrice } from '@/lib/market-chance'
 import { cn } from '@/lib/utils'
 
 interface EventRelatedProps {
@@ -48,7 +52,9 @@ interface RelatedEvent {
   sports_sport_slug?: string | null
   sports_league_slug?: string | null
   sports_section?: 'games' | 'props' | null
-  chance: number | null
+  condition_id: string | null
+  token_id: string | null
+  end_date: string | null
 }
 
 interface UseRelatedEventsParams {
@@ -81,7 +87,7 @@ async function fetchRelatedEvents(params: UseRelatedEventsParams): Promise<Relat
     url.searchParams.set('locale', locale)
   }
 
-  const response = await fetch(url.toString())
+  const response = await fetch(url.toString(), { cache: 'no-store' })
 
   if (!response.ok) {
     throw new Error('Failed to fetch related events.')
@@ -99,9 +105,10 @@ function useRelatedEvents(params: UseRelatedEventsParams) {
     queryKey,
     queryFn: () => fetchRelatedEvents({ cadence, eventSlug, tag, locale }),
     enabled,
-    staleTime: 30_000,
+    staleTime: 0,
     gcTime: 300_000,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => (query.state.data?.length ? 60_000 : 15_000),
     retry: 3,
   })
 }
@@ -179,12 +186,55 @@ export default function EventRelated({ event }: EventRelatedProps) {
     data: events = [],
     isLoading: loading,
     error,
+    refetch,
   } = useRelatedEvents({
     cadence: cryptoCadenceRouteSlug ? activeTag : undefined,
     eventSlug: event.slug,
     tag: cryptoCadenceRouteSlug ? undefined : activeTag,
     locale,
   })
+  const currentTimestamp = useCurrentTimestamp({ intervalMs: cryptoCadenceRouteSlug ? 1_000 : false })
+  const visibleEvents = useMemo(
+    () =>
+      cryptoCadenceRouteSlug && currentTimestamp != null
+        ? events.filter((candidate) => candidate.end_date && Date.parse(candidate.end_date) > currentTimestamp)
+        : events,
+    [cryptoCadenceRouteSlug, currentTimestamp, events],
+  )
+  const marketTargets = useMemo(
+    () =>
+      visibleEvents.flatMap((candidate) =>
+        candidate.condition_id && candidate.token_id
+          ? [{ conditionId: candidate.condition_id, tokenId: candidate.token_id }]
+          : [],
+      ),
+    [visibleEvents],
+  )
+  const quotesByMarket = useEventMarketQuotes(marketTargets)
+  const lastTradesByMarket = useEventLastTrades(marketTargets)
+
+  useEffect(() => {
+    if (!cryptoCadenceRouteSlug) {
+      return
+    }
+
+    const nextExpiry = Math.min(
+      ...events
+        .map((candidate) => (candidate.end_date ? Date.parse(candidate.end_date) : Number.POSITIVE_INFINITY))
+        .filter((timestamp) => timestamp > Date.now()),
+    )
+    if (!Number.isFinite(nextExpiry)) {
+      return
+    }
+
+    const timeout = window.setTimeout(
+      () => {
+        void refetch()
+      },
+      Math.max(0, nextExpiry - Date.now() + 50),
+    )
+    return () => window.clearTimeout(timeout)
+  }, [cryptoCadenceRouteSlug, events, refetch])
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const buttonsWrapperRef = useRef<HTMLDivElement>(null)
@@ -323,50 +373,61 @@ export default function EventRelated({ event }: EventRelatedProps) {
         <div className="rounded-xl border p-4 text-sm text-muted-foreground">
           {t('Failed to fetch related events.')}
         </div>
-      ) : events.length > 0 ? (
+      ) : visibleEvents.length > 0 ? (
         <ul className="grid gap-2 lg:w-85">
-          {events.map((relatedEvent) => (
-            <li key={relatedEvent.id}>
-              <Link
-                href={resolveEventPagePath(relatedEvent)}
-                className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/80"
-              >
-                <EventIconImage
-                  src={relatedEvent.icon_url}
-                  alt={relatedEvent.title}
-                  sizes="42px"
-                  containerClassName="size-[42px] shrink-0 rounded-sm"
-                />
-                <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                  <strong className="line-clamp-2 text-[13px] font-medium text-foreground">{relatedEvent.title}</strong>
-                  <div className="flex shrink-0 items-start gap-0">
-                    {relatedEvent.has_live_chart && (
-                      <span className="relative mt-1.5 flex size-2">
-                        <span className="sr-only">{t('Live')}</span>
-                        <span
-                          aria-hidden
-                          className={`absolute inline-flex size-2 animate-ping rounded-full bg-red-500 opacity-75`}
-                        />
-                        <span aria-hidden className="relative inline-flex size-2 rounded-full bg-red-500" />
-                      </span>
-                    )}
-                    <span className="flex min-w-13 flex-col items-end">
-                      <span
-                        className={cn(`text-right text-xl leading-none font-semibold text-foreground tabular-nums`)}
-                      >
-                        {Number.isFinite(relatedEvent.chance) ? `${Math.round(relatedEvent.chance ?? 0)}%` : t('—')}
-                      </span>
-                      {relatedEvent.outcome_label && (
-                        <span className="mt-1 text-sm leading-none text-muted-foreground">
-                          {normalizeOutcomeLabel(relatedEvent.outcome_label)}
+          {visibleEvents.map((relatedEvent) => {
+            const price = relatedEvent.condition_id
+              ? resolveHomeCardDisplayPrice(
+                  quotesByMarket[relatedEvent.condition_id],
+                  lastTradesByMarket[relatedEvent.condition_id],
+                )
+              : null
+            const chance = price == null ? null : price * 100
+            return (
+              <li key={relatedEvent.id}>
+                <Link
+                  href={resolveEventPagePath(relatedEvent)}
+                  className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-muted/80"
+                >
+                  <EventIconImage
+                    src={relatedEvent.icon_url}
+                    alt={relatedEvent.title}
+                    sizes="42px"
+                    containerClassName="size-[42px] shrink-0 rounded-sm"
+                  />
+                  <div className="flex min-w-0 flex-1 items-center justify-between gap-3">
+                    <strong className="line-clamp-2 text-[13px] font-medium text-foreground">
+                      {relatedEvent.title}
+                    </strong>
+                    <div className="flex shrink-0 items-start gap-0">
+                      {relatedEvent.has_live_chart && (
+                        <span className="relative mt-1.5 flex size-2">
+                          <span className="sr-only">{t('Live')}</span>
+                          <span
+                            aria-hidden
+                            className={`absolute inline-flex size-2 animate-ping rounded-full bg-red-500 opacity-75`}
+                          />
+                          <span aria-hidden className="relative inline-flex size-2 rounded-full bg-red-500" />
                         </span>
                       )}
-                    </span>
+                      <span className="flex min-w-13 flex-col items-end">
+                        <span
+                          className={cn(`text-right text-xl leading-none font-semibold text-foreground tabular-nums`)}
+                        >
+                          {Number.isFinite(chance) ? `${Math.round(chance ?? 0)}%` : t('—')}
+                        </span>
+                        {relatedEvent.outcome_label && (
+                          <span className="mt-1 text-sm leading-none text-muted-foreground">
+                            {normalizeOutcomeLabel(relatedEvent.outcome_label)}
+                          </span>
+                        )}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </Link>
-            </li>
-          ))}
+                </Link>
+              </li>
+            )
+          })}
         </ul>
       ) : (
         <div className="rounded-xl border p-4 text-sm text-muted-foreground">

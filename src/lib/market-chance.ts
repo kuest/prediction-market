@@ -68,6 +68,19 @@ export function resolveDisplayPrice({
   return normalizedLastTrade
 }
 
+export function resolveHomeCardDisplayPrice(
+  quote: { bid: number | null; ask: number | null; mid: number | null } | null | undefined,
+  lastTrade: number | null | undefined,
+) {
+  return resolveDisplayPrice({
+    bid: quote?.bid ?? null,
+    ask: quote?.ask ?? null,
+    midpoint: quote?.mid ?? null,
+    lastTrade,
+    strictFallbacks: true,
+  })
+}
+
 export function buildChanceByMarket(markets: Market[], priceOverrides: Record<string, number> = {}) {
   function getPrice(market: Market) {
     const override = priceOverrides[market.condition_id]

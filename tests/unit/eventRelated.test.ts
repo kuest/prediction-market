@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 
 import {
   buildRelatedEventPrimaryOutcomes,
+  isCurrentCryptoRelatedRound,
   selectCryptoRelatedEventCandidates,
   selectRelatedEventCandidates,
 } from '@/lib/event-related'
@@ -10,12 +11,14 @@ function createCandidate({
   id,
   seriesSlug,
   title,
+  startDate,
   endDate,
   status = 'active',
 }: {
   id: string
   seriesSlug?: string
   title?: string
+  startDate?: string
   endDate: string
   status?: 'active' | 'draft'
 }) {
@@ -25,6 +28,7 @@ function createCandidate({
     title: title ?? id,
     status,
     series_slug: seriesSlug ?? null,
+    start_date: startDate ?? new Date(Date.parse(endDate) - 24 * 60 * 60 * 1_000).toISOString(),
     end_date: endDate,
     created_at: endDate,
     updated_at: endDate,
@@ -171,7 +175,7 @@ describe('selectCryptoRelatedEventCandidates', () => {
 
     const selected = selectCryptoRelatedEventCandidates(currentEvent, [bitcoin, ethereum, wrongCadence], {
       cadenceSlug,
-      currentTimestamp: Date.parse('2026-07-23T18:00:00.000Z'),
+      currentTimestamp: Date.parse('2026-07-24T15:59:00.000Z'),
       limit: 3,
     })
 
@@ -201,7 +205,7 @@ describe('selectCryptoRelatedEventCandidates', () => {
 
     const selected = selectCryptoRelatedEventCandidates(current15MinuteEvent, [bitcoin, ethereum], {
       cadenceSlug: '15M',
-      currentTimestamp: Date.parse('2026-07-23T18:00:00.000Z'),
+      currentTimestamp: Date.parse('2026-07-24T15:59:00.000Z'),
       limit: 3,
     })
 
@@ -222,10 +226,84 @@ describe('selectCryptoRelatedEventCandidates', () => {
 
     const selected = selectCryptoRelatedEventCandidates(currentEvent, [ethereum, bitcoin], {
       cadenceSlug: '15M',
-      currentTimestamp: Date.parse('2026-07-23T18:00:00.000Z'),
+      currentTimestamp: Date.parse('2026-07-24T15:59:00.000Z'),
       limit: 1,
     })
 
     expect(selected.map((event) => event.id)).toEqual(['bitcoin-15m'])
+  })
+
+  it('switches from the ending round to the next at the exact boundary', () => {
+    const ending = createCandidate({
+      id: 'eth-old',
+      seriesSlug: 'eth-up-or-down-5m',
+      startDate: '2026-07-23T18:00:00.000Z',
+      endDate: '2026-07-23T18:05:00.000Z',
+    })
+    const next = createCandidate({
+      id: 'eth-next',
+      seriesSlug: 'eth-up-or-down-5m',
+      startDate: '2026-07-23T18:05:00.000Z',
+      endDate: '2026-07-23T18:10:00.000Z',
+    })
+    function selectAt(timestamp: string) {
+      return selectCryptoRelatedEventCandidates(currentEvent, [ending, next], {
+        cadenceSlug: '5m',
+        currentTimestamp: Date.parse(timestamp),
+        limit: 3,
+      }).map((event) => event.id)
+    }
+
+    expect(selectAt('2026-07-23T18:04:59.999Z')).toEqual(['eth-old'])
+    expect(selectAt('2026-07-23T18:05:00.000Z')).toEqual(['eth-next'])
+    expect(selectAt('2026-07-23T18:10:00.000Z')).toEqual([])
+  })
+
+  it('omits unresolved expired and future rounds without selecting one arbitrarily', () => {
+    const expired = createCandidate({
+      id: 'eth-expired',
+      seriesSlug: 'eth-up-or-down-5m',
+      startDate: '2026-07-23T17:55:00.000Z',
+      endDate: '2026-07-23T18:00:00.000Z',
+    })
+    const future = createCandidate({
+      id: 'eth-future',
+      seriesSlug: 'eth-up-or-down-5m',
+      startDate: '2026-07-23T18:05:00.000Z',
+      endDate: '2026-07-23T18:10:00.000Z',
+    })
+    const missingStart = { ...future, id: 'eth-no-start', start_date: null }
+    const currentTimestamp = Date.parse('2026-07-23T18:02:00.000Z')
+
+    expect(isCurrentCryptoRelatedRound(expired, currentTimestamp, 5)).toBe(false)
+    expect(isCurrentCryptoRelatedRound(future, currentTimestamp, 5)).toBe(false)
+    expect(isCurrentCryptoRelatedRound(missingStart, currentTimestamp, 5)).toBe(false)
+    expect(
+      selectCryptoRelatedEventCandidates(currentEvent, [expired, future, missingStart], {
+        cadenceSlug: '5m',
+        currentTimestamp,
+        limit: 3,
+      }),
+    ).toEqual([])
+  })
+
+  it('uses the cadence window when a valid current round has no listing start date', () => {
+    const current = {
+      ...createCandidate({
+        id: 'eth-current',
+        seriesSlug: 'eth-up-or-down-5m',
+        endDate: '2026-07-23T18:05:00.000Z',
+      }),
+      start_date: null,
+    }
+    const currentTimestamp = Date.parse('2026-07-23T18:02:00.000Z')
+    expect(isCurrentCryptoRelatedRound(current, currentTimestamp, 5)).toBe(true)
+    expect(
+      selectCryptoRelatedEventCandidates(currentEvent, [current], {
+        cadenceSlug: '5m',
+        currentTimestamp,
+        limit: 3,
+      }).map((event) => event.id),
+    ).toEqual(['eth-current'])
   })
 })

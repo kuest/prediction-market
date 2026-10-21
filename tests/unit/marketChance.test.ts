@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 
-import { buildChanceByMarket, normalizeMarketPrice, resolveDisplayPrice } from '@/lib/market-chance'
+import { resolveQuote } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMidPrices'
+import {
+  buildChanceByMarket,
+  normalizeMarketPrice,
+  resolveDisplayPrice,
+  resolveHomeCardDisplayPrice,
+} from '@/lib/market-chance'
 
 describe('market chance normalization', () => {
   it('accepts both decimal and percent-style market prices', () => {
@@ -61,5 +67,22 @@ describe('market chance normalization', () => {
     ).toEqual({
       'market-1': 64,
     })
+  })
+
+  it('uses the same home price for two-sided books without any trade', () => {
+    expect(resolveHomeCardDisplayPrice({ bid: 0.63, ask: 0.65, mid: 0.64 }, null)).toBe(0.64)
+  })
+
+  it('shows a dash for absent, invalid, or unilateral quotes without a valid midpoint or trade', () => {
+    expect(resolveHomeCardDisplayPrice(null, null)).toBeNull()
+    expect(resolveHomeCardDisplayPrice({ bid: Number.NaN, ask: null, mid: null }, null)).toBeNull()
+    expect(resolveHomeCardDisplayPrice({ bid: 0.6, ask: null, mid: null }, null)).toBeNull()
+  })
+
+  it('uses the home midpoint or last trade fallback for unilateral and wide books', () => {
+    expect(resolveHomeCardDisplayPrice({ bid: 0.6, ask: null, mid: 0.61 }, null)).toBe(0.61)
+    expect(resolveHomeCardDisplayPrice(resolveQuote({ SELL: '0.6' }, null), null)).toBe(0.6)
+    expect(resolveHomeCardDisplayPrice({ bid: 0.2, ask: 0.8, mid: 0.5 }, 0.42)).toBe(0.42)
+    expect(resolveHomeCardDisplayPrice(null, 0.67)).toBe(0.67)
   })
 })
