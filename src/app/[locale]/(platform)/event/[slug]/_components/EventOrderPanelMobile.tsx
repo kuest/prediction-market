@@ -16,7 +16,12 @@ import { ORDER_SIDE, OUTCOME_INDEX } from '@/lib/constants'
 import { formatCentsLabel } from '@/lib/formatters'
 import { resolveFallbackOutcomeUnitPrice, resolveMarketOutcome } from '@/lib/market-pricing'
 import { formatOddsFromPrice } from '@/lib/odds-format'
-import { useIsSingleMarket, useOrder, useOutcomeTopOfBookPrice } from '@/stores/useOrder'
+import {
+  selectOrderOutcomeAtDisplayedPrice,
+  useIsSingleMarket,
+  useOrder,
+  useOutcomeTopOfBookPrice,
+} from '@/stores/useOrder'
 
 interface EventMobileOrderPanelProps {
   event: Event
@@ -84,6 +89,24 @@ export default function EventOrderPanelMobile({
   const yesPriceLabel = oddsFormat === 'price' ? formatCentsLabel(yesPrice) : formatOddsFromPrice(yesPrice, oddsFormat)
   const noPriceLabel = oddsFormat === 'price' ? formatCentsLabel(noPrice) : formatOddsFromPrice(noPrice, oddsFormat)
 
+  function handleQuickBuy(outcome: Outcome | null, displayedPrice: number | null) {
+    if (!activeMarket || !outcome) {
+      return
+    }
+
+    state.setSide(ORDER_SIDE.BUY)
+    selectOrderOutcomeAtDisplayedPrice({
+      market: activeMarket,
+      outcome,
+      displayedPrice,
+      currentMarketConditionId: state.market?.condition_id,
+      setMarket: state.setMarket,
+      setOutcome: state.setOutcome,
+      setLimitPrice: state.setLimitPrice,
+    })
+    state.setIsMobileOrderPanelOpen(true)
+  }
+
   return (
     <Drawer open={state.isMobileOrderPanelOpen} onOpenChange={state.setIsMobileOrderPanelOpen}>
       {shouldShowDefaultTrigger && (
@@ -98,15 +121,7 @@ export default function EventOrderPanelMobile({
                 variant="yes"
                 size="outcomeLg"
                 className="relative w-full translate-y-0 bg-yes-foreground text-white transition-transform duration-150 ease-out hover:translate-y-px hover:bg-yes-foreground active:translate-y-0.5 dark:bg-yes dark:hover:bg-yes"
-                onClick={() => {
-                  if (!activeMarket || !buyYesOutcome) {
-                    return
-                  }
-
-                  state.setMarket(activeMarket)
-                  state.setOutcome(buyYesOutcome)
-                  state.setIsMobileOrderPanelOpen(true)
-                }}
+                onClick={() => handleQuickBuy(buyYesOutcome, yesPrice)}
               >
                 <span className="truncate opacity-70">
                   {t('Buy')} {buyYesOutcomeLabel}
@@ -120,15 +135,7 @@ export default function EventOrderPanelMobile({
                 variant="no"
                 size="outcomeLg"
                 className="relative w-full translate-y-0 bg-no-foreground text-white transition-transform duration-150 ease-out hover:translate-y-px hover:bg-no-foreground active:translate-y-0.5 dark:bg-no dark:hover:bg-no"
-                onClick={() => {
-                  if (!activeMarket || !buyNoOutcome) {
-                    return
-                  }
-
-                  state.setMarket(activeMarket)
-                  state.setOutcome(buyNoOutcome)
-                  state.setIsMobileOrderPanelOpen(true)
-                }}
+                onClick={() => handleQuickBuy(buyNoOutcome, noPrice)}
               >
                 <span className="truncate opacity-70">
                   {t('Buy')} {buyNoOutcomeLabel}

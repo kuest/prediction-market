@@ -41,7 +41,7 @@ import { resolveDisplayPrice } from '@/lib/market-chance'
 import { resolveMarketOutcome, resolveOutcomeUnitPrice } from '@/lib/market-pricing'
 import { calculateMarketFill, normalizeBookLevels } from '@/lib/order-panel-utils'
 import { cn } from '@/lib/utils'
-import { useIsSingleMarket, useOrder } from '@/stores/useOrder'
+import { selectOrderOutcomeAtDisplayedPrice, useIsSingleMarket, useOrder } from '@/stores/useOrder'
 import { useUser } from '@/stores/useUser'
 
 interface EventMarketsProps {
@@ -262,19 +262,23 @@ function useCashOutFlow({
 
 function useMarketInteractionHandlers({
   selectedOutcome,
+  selectedMarketConditionId,
   toggleMarket,
   expandMarket,
   setMarket,
   setOutcome,
+  setLimitPrice,
   setSide,
   setIsMobileOrderPanelOpen,
   inputRef,
 }: {
   selectedOutcome: Event['markets'][number]['outcomes'][number] | null | undefined
+  selectedMarketConditionId: string | null | undefined
   toggleMarket: (conditionId: string) => void
   expandMarket: (conditionId: string) => void
   setMarket: (market: Event['markets'][number]) => void
   setOutcome: (outcome: Event['markets'][number]['outcomes'][number]) => void
+  setLimitPrice: (price: string) => void
   setSide: (side: typeof ORDER_SIDE.BUY | typeof ORDER_SIDE.SELL) => void
   setIsMobileOrderPanelOpen: (value: boolean) => void
   inputRef: React.RefObject<HTMLInputElement | null> | null | undefined
@@ -296,17 +300,31 @@ function useMarketInteractionHandlers({
   )
 
   const handleBuy = useCallback(
-    (market: Event['markets'][number], outcomeIndex: number, source: 'mobile' | 'desktop') => {
+    (
+      market: Event['markets'][number],
+      outcomeIndex: number,
+      source: 'mobile' | 'desktop',
+      displayedPrice: number | null,
+    ) => {
       expandMarket(market.condition_id)
-      setMarket(market)
       const outcome =
         outcomeIndex === OUTCOME_INDEX.YES || outcomeIndex === OUTCOME_INDEX.NO
           ? resolveMarketOutcome(market, outcomeIndex)
           : null
-      if (outcome) {
-        setOutcome(outcome)
-      }
       setSide(ORDER_SIDE.BUY)
+      if (outcome) {
+        selectOrderOutcomeAtDisplayedPrice({
+          market,
+          outcome,
+          displayedPrice,
+          currentMarketConditionId: selectedMarketConditionId,
+          setMarket,
+          setOutcome,
+          setLimitPrice,
+        })
+      } else {
+        setMarket(market)
+      }
 
       if (source === 'mobile') {
         setIsMobileOrderPanelOpen(true)
@@ -314,7 +332,16 @@ function useMarketInteractionHandlers({
         inputRef?.current?.focus()
       }
     },
-    [expandMarket, inputRef, setIsMobileOrderPanelOpen, setMarket, setOutcome, setSide],
+    [
+      expandMarket,
+      inputRef,
+      selectedMarketConditionId,
+      setIsMobileOrderPanelOpen,
+      setLimitPrice,
+      setMarket,
+      setOutcome,
+      setSide,
+    ],
   )
 
   return { handleToggle, handleBuy }
@@ -619,6 +646,7 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
   const selectedOutcome = useOrder((state) => state.outcome)
   const setMarket = useOrder((state) => state.setMarket)
   const setOutcome = useOrder((state) => state.setOutcome)
+  const setLimitPrice = useOrder((state) => state.setLimitPrice)
   const setSide = useOrder((state) => state.setSide)
   const setType = useOrder((state) => state.setType)
   const setIsMobileOrderPanelOpen = useOrder((state) => state.setIsMobileOrderPanelOpen)
@@ -760,10 +788,12 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
     })
   const { handleToggle, handleBuy } = useMarketInteractionHandlers({
     selectedOutcome,
+    selectedMarketConditionId: selectedMarketId,
     toggleMarket,
     expandMarket,
     setMarket,
     setOutcome,
+    setLimitPrice,
     setSide,
     setIsMobileOrderPanelOpen,
     inputRef,
@@ -826,7 +856,14 @@ export default function EventMarkets({ event, isMobile }: EventMarketsProps) {
                   showInReviewTag={showInReviewTag}
                   activeOutcomeIndex={activeOutcomeIndex}
                   onToggle={() => handleToggle(market)}
-                  onBuy={(cardMarket, outcomeIndex, source) => handleBuy(cardMarket, outcomeIndex, source)}
+                  onBuy={(cardMarket, outcomeIndex, source) =>
+                    handleBuy(
+                      cardMarket,
+                      outcomeIndex,
+                      source,
+                      outcomeIndex === OUTCOME_INDEX.YES ? resolvedRow.yesPriceValue : resolvedRow.noPriceValue,
+                    )
+                  }
                   chanceHighlightKey={chanceHighlightKey}
                   liveVolume={liveVolumeByCondition[market.condition_id]}
                   volumeOverride={volumeByCondition[market.condition_id]}
