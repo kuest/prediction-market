@@ -20,7 +20,7 @@ VALUES (
   'XAUUSD',
   '#FFD700',
   '/images/live-assets/gold-radio.svg',
-  true,
+  false,
   true,
   450
 )
