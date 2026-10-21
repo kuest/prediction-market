@@ -26,6 +26,7 @@ import {
   hexToRgba,
   inferIntervalMsFromSeriesSlug,
   isCanonicalBinanceDailySnapshot,
+  isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
   isGoldMarketSessionOpen,
   isShortLiveSeriesCadence,
@@ -482,9 +483,17 @@ function EventLiveSeriesChartContent({
     seriesClassification: seriesReferenceClassification,
   })
   const requiresCanonicalGoldClose = isGoldDailySeries(config.series_slug)
+  const hasCanonicalGoldDailyClose = isCanonicalGoldDailyCloseSnapshot({
+    snapshot: referenceSnapshot,
+    snapshotStatus: referenceSnapshotStatus,
+    eventWindowStartTimestamp: liveSeriesStartTimestamp,
+    eventWindowEndTimestamp: explicitEndTimestamp,
+  })
   const finalPrice = isEventClosed
     ? requiresCanonicalGoldClose
-      ? referenceClosingPrice
+      ? hasCanonicalGoldDailyClose
+        ? referenceClosingPrice
+        : null
       : requiresCanonicalBinanceClose
         ? hasCanonicalBinanceDailySnapshot
           ? referenceClosingPrice
@@ -583,6 +592,10 @@ function EventLiveSeriesChartContent({
       return data.length > 0 ? data : liveFallbackData
     }
 
+    if (requiresCanonicalGoldClose && !isFinitePositivePrice(finalPrice)) {
+      return []
+    }
+
     const preCloseData = data.filter((point) => {
       const timestamp = point.date.getTime()
       return Number.isFinite(timestamp) && timestamp <= endTimestamp
@@ -611,6 +624,7 @@ function EventLiveSeriesChartContent({
     isEventClosed,
     liveFallbackData,
     requiresCanonicalBinanceClose,
+    requiresCanonicalGoldClose,
   ])
 
   const renderData = useMemo(() => {

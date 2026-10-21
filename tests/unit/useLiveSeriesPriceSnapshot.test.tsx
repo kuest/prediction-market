@@ -173,4 +173,71 @@ describe('useLiveSeriesPriceSnapshot', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(result.current.referenceSnapshot?.opening_price).toBe(123)
   })
+
+  it('keeps checking a closed GOLD round until the canonical close arrives', async () => {
+    useFakeTimers()
+    const eventEndTimestamp = now + 10_000
+    const eventStartTimestamp = eventEndTimestamp - 450 * 60_000
+    function snapshot(closingPrice: number | null, isEventClosed: boolean) {
+      return {
+        series_slug: 'gold-daily-up-or-down',
+        instrument: 'XAUUSD',
+        interval: '1d',
+        source: 'pyth',
+        interval_ms: 86_400_000,
+        event_window_start_ms: eventStartTimestamp,
+        event_window_end_ms: eventEndTimestamp,
+        opening_price: 4100,
+        closing_price: closingPrice,
+        latest_price: closingPrice,
+        latest_window_end_ms: eventEndTimestamp,
+        latest_source_timestamp_ms: eventEndTimestamp,
+        is_event_closed: isEventClosed,
+      }
+    }
+    const fetchMock = mock()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null, false) })
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null, true) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot(4150, true) })
+    stubGlobal('fetch', fetchMock)
+
+    const config = {
+      series_slug: 'gold-daily-up-or-down',
+      topic: 'equity_prices',
+      active_window_minutes: 450,
+    } as EventLiveChartConfig
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config,
+        subscriptionSymbol: 'XAUUSD',
+        explicitEndTimestamp: eventEndTimestamp,
+        startTimestamp: eventStartTimestamp,
+      }),
+    )
+
+    await act(async () => {
+      await advanceTimersByTimeAsync(0)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    now = eventEndTimestamp + 65_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(75_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.referenceSnapshot?.closing_price).toBeNull()
+
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(result.current.referenceSnapshot?.closing_price).toBe(4150)
+
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
 })

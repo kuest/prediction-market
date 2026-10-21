@@ -9,6 +9,8 @@ import type {
 } from '../_utils/eventLiveSeriesChartUtils'
 
 import {
+  isCanonicalGoldDailyCloseSnapshot,
+  isGoldDailySeries,
   LIVE_DATA_RETENTION_MS,
   normalizeLiveChartPrice,
   readPersistedLivePrice,
@@ -57,6 +59,8 @@ const LIVE_SERIES_PRICE_SNAPSHOT_STORE_TTL_MS = 10 * 60 * 1000
 const BINANCE_CLOSE_FIRST_REFRESH_DELAY_MS = 65 * 1000
 const BINANCE_CLOSE_REFRESH_INTERVAL_MS = 10 * 1000
 const BINANCE_CLOSE_REFRESH_WINDOW_MS = 5 * 60 * 1000
+const GOLD_CLOSE_REFRESH_INTERVAL_MS = 60 * 1000
+const GOLD_CLOSE_REFRESH_WINDOW_MS = 30 * 60 * 1000
 const OPENING_PRICE_FIRST_REFRESH_DELAY_MS = 5 * 1000
 const OPENING_PRICE_REFRESH_INTERVAL_MS = 5 * 1000
 const OPENING_PRICE_REFRESH_WINDOW_MS = 2 * 60 * 1000
@@ -300,7 +304,7 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   const storeKey = buildLiveSeriesPriceSnapshotStoreKey(request)
   const entry = getLiveSeriesPriceSnapshotStoreEntry(storeKey)
   entry.listeners.add(onStoreChange)
-  let binanceCloseRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  let canonicalCloseRefreshTimer: ReturnType<typeof setTimeout> | null = null
   let openingPriceRefreshTimer: ReturnType<typeof setTimeout> | null = null
   let isSubscribed = true
 
@@ -309,7 +313,11 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   }
   void fetchLiveSeriesPriceSnapshot(storeKey, request)
 
-  async function refreshBinanceCloseUntilAvailable() {
+  const isGoldDaily = isGoldDailySeries(request.seriesSlug)
+  const closeRefreshWindowMs = isGoldDaily ? GOLD_CLOSE_REFRESH_WINDOW_MS : BINANCE_CLOSE_REFRESH_WINDOW_MS
+  const closeRefreshIntervalMs = isGoldDaily ? GOLD_CLOSE_REFRESH_INTERVAL_MS : BINANCE_CLOSE_REFRESH_INTERVAL_MS
+
+  async function refreshCanonicalCloseUntilAvailable() {
     if (!isSubscribed) {
       return
     }
@@ -317,24 +325,35 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
     await fetchLiveSeriesPriceSnapshot(storeKey, request)
     const snapshot = entry.snapshot.referenceSnapshot
     const eventEndTimestamp = request.explicitEndTimestamp
+    const hasClosingPrice = isGoldDaily
+      ? isCanonicalGoldDailyCloseSnapshot({
+          snapshot,
+          snapshotStatus: entry.snapshot.referenceSnapshotStatus,
+          eventWindowStartTimestamp: resolveRequestedWindowStart(request),
+          eventWindowEndTimestamp: eventEndTimestamp,
+        })
+      : snapshot?.closing_price != null
+    const hasExpectedSource = isGoldDaily
+      ? snapshot?.source === 'pyth' && snapshot.interval === '1d' && snapshot.instrument === 'XAUUSD'
+      : snapshot?.source === 'binance'
     if (
       !isSubscribed ||
-      (snapshot != null && snapshot.source !== 'binance') ||
-      snapshot?.closing_price != null ||
+      (snapshot != null && !hasExpectedSource) ||
+      hasClosingPrice ||
       eventEndTimestamp == null ||
-      Date.now() >= eventEndTimestamp + BINANCE_CLOSE_REFRESH_WINDOW_MS
+      Date.now() >= eventEndTimestamp + closeRefreshWindowMs
     ) {
       return
     }
 
-    binanceCloseRefreshTimer = setTimeout(refreshBinanceCloseUntilAvailable, BINANCE_CLOSE_REFRESH_INTERVAL_MS)
+    canonicalCloseRefreshTimer = setTimeout(refreshCanonicalCloseUntilAvailable, closeRefreshIntervalMs)
   }
 
   if (request.explicitEndTimestamp != null) {
     const firstRefreshAtMs = request.explicitEndTimestamp + BINANCE_CLOSE_FIRST_REFRESH_DELAY_MS
-    if (Date.now() < request.explicitEndTimestamp + BINANCE_CLOSE_REFRESH_WINDOW_MS) {
-      binanceCloseRefreshTimer = setTimeout(
-        refreshBinanceCloseUntilAvailable,
+    if (Date.now() < request.explicitEndTimestamp + closeRefreshWindowMs) {
+      canonicalCloseRefreshTimer = setTimeout(
+        refreshCanonicalCloseUntilAvailable,
         Math.max(0, firstRefreshAtMs - Date.now()),
       )
     }
@@ -411,8 +430,8 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
 
   return function unsubscribeFromLiveSeriesPriceSnapshot() {
     isSubscribed = false
-    if (binanceCloseRefreshTimer) {
-      clearTimeout(binanceCloseRefreshTimer)
+    if (canonicalCloseRefreshTimer) {
+      clearTimeout(canonicalCloseRefreshTimer)
     }
     if (openingPriceRefreshTimer) {
       clearTimeout(openingPriceRefreshTimer)
