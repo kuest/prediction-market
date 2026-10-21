@@ -240,4 +240,55 @@ describe('useLiveSeriesPriceSnapshot', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
+
+  it('keeps checking GOLD after a delayed close without an immediate duplicate request', async () => {
+    useFakeTimers()
+    const eventEndTimestamp = now - 60 * 60_000
+    const eventStartTimestamp = eventEndTimestamp - 450 * 60_000
+    function snapshot(closingPrice: number | null) {
+      return {
+        series_slug: 'gold-daily-up-or-down',
+        instrument: 'XAUUSD',
+        interval: '1d',
+        source: 'pyth',
+        interval_ms: 86_400_000,
+        event_window_start_ms: eventStartTimestamp,
+        event_window_end_ms: eventEndTimestamp,
+        opening_price: 4100,
+        closing_price: closingPrice,
+        is_event_closed: true,
+      }
+    }
+    const fetchMock = mock()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot(4150) })
+    stubGlobal('fetch', fetchMock)
+
+    const config = {
+      series_slug: 'gold-daily-up-or-down',
+      topic: 'equity_prices',
+      active_window_minutes: 450,
+    } as EventLiveChartConfig
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config,
+        subscriptionSymbol: 'XAUUSD',
+        explicitEndTimestamp: eventEndTimestamp,
+        startTimestamp: eventStartTimestamp,
+      }),
+    )
+
+    await act(async () => {
+      await advanceTimersByTimeAsync(0)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.current.referenceSnapshot?.closing_price).toBeNull()
+
+    now += 5 * 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(5 * 60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.referenceSnapshot?.closing_price).toBe(4150)
+  })
 })

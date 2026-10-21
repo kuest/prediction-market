@@ -60,7 +60,9 @@ const BINANCE_CLOSE_FIRST_REFRESH_DELAY_MS = 65 * 1000
 const BINANCE_CLOSE_REFRESH_INTERVAL_MS = 10 * 1000
 const BINANCE_CLOSE_REFRESH_WINDOW_MS = 5 * 60 * 1000
 const GOLD_CLOSE_REFRESH_INTERVAL_MS = 60 * 1000
-const GOLD_CLOSE_REFRESH_WINDOW_MS = 30 * 60 * 1000
+const GOLD_CLOSE_FAST_REFRESH_WINDOW_MS = 30 * 60 * 1000
+const GOLD_CLOSE_SLOW_REFRESH_INTERVAL_MS = 5 * 60 * 1000
+const GOLD_CLOSE_REFRESH_WINDOW_MS = 24 * 60 * 60 * 1000
 const OPENING_PRICE_FIRST_REFRESH_DELAY_MS = 5 * 1000
 const OPENING_PRICE_REFRESH_INTERVAL_MS = 5 * 1000
 const OPENING_PRICE_REFRESH_WINDOW_MS = 2 * 60 * 1000
@@ -317,6 +319,12 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   const closeRefreshWindowMs = isGoldDaily ? GOLD_CLOSE_REFRESH_WINDOW_MS : BINANCE_CLOSE_REFRESH_WINDOW_MS
   const closeRefreshIntervalMs = isGoldDaily ? GOLD_CLOSE_REFRESH_INTERVAL_MS : BINANCE_CLOSE_REFRESH_INTERVAL_MS
 
+  function getCloseRefreshIntervalMs(eventEndTimestamp: number) {
+    return isGoldDaily && Date.now() >= eventEndTimestamp + GOLD_CLOSE_FAST_REFRESH_WINDOW_MS
+      ? GOLD_CLOSE_SLOW_REFRESH_INTERVAL_MS
+      : closeRefreshIntervalMs
+  }
+
   async function refreshCanonicalCloseUntilAvailable() {
     if (!isSubscribed) {
       return
@@ -346,16 +354,20 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
       return
     }
 
-    canonicalCloseRefreshTimer = setTimeout(refreshCanonicalCloseUntilAvailable, closeRefreshIntervalMs)
+    canonicalCloseRefreshTimer = setTimeout(
+      refreshCanonicalCloseUntilAvailable,
+      getCloseRefreshIntervalMs(eventEndTimestamp),
+    )
   }
 
   if (request.explicitEndTimestamp != null) {
     const firstRefreshAtMs = request.explicitEndTimestamp + BINANCE_CLOSE_FIRST_REFRESH_DELAY_MS
     if (Date.now() < request.explicitEndTimestamp + closeRefreshWindowMs) {
-      canonicalCloseRefreshTimer = setTimeout(
-        refreshCanonicalCloseUntilAvailable,
-        Math.max(0, firstRefreshAtMs - Date.now()),
-      )
+      const firstRefreshDelayMs =
+        firstRefreshAtMs > Date.now()
+          ? firstRefreshAtMs - Date.now()
+          : getCloseRefreshIntervalMs(request.explicitEndTimestamp)
+      canonicalCloseRefreshTimer = setTimeout(refreshCanonicalCloseUntilAvailable, firstRefreshDelayMs)
     }
   }
 
