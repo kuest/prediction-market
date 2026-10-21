@@ -12,22 +12,19 @@ import { useExtracted, useLocale } from 'next-intl'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import type { ProfileForCards } from '@/app/[locale]/(platform)/_components/ProfileOverviewCard'
+import type { PnlPoint } from '@/lib/pnl-chart'
 import type { PortfolioSnapshot } from '@/lib/portfolio'
 
 import ProfileOverviewCard from '@/app/[locale]/(platform)/_components/ProfileOverviewCard'
+import PnlAnimatedCurrency from '@/app/[locale]/(platform)/profile/_components/PnlAnimatedCurrency'
 import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { Card, CardContent } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
-import { formatCurrency } from '@/lib/formatters'
+import { calculatePnlGainLossThroughTime, findNearestPnlPointByTime } from '@/lib/pnl-chart'
 import { cn } from '@/lib/utils'
 import { usePortfolioValueVisibility } from '@/stores/usePortfolioValueVisibility'
-
-interface PnlPoint {
-  date: Date
-  value: number
-}
 
 const PNL_TIMEFRAMES = ['1D', '1W', '1M', 'ALL'] as const
 
@@ -98,7 +95,7 @@ function usePnlSeries({
               date: typeof point.t === 'number' ? new Date(point.t * 1000) : null,
               value: typeof point.p === 'number' ? point.p : null,
             }))
-            .filter((point) => point.date && Number.isFinite(point.value))
+            .filter((point) => point.date && Number.isFinite(point.date.getTime()) && Number.isFinite(point.value))
             .map((point) => ({ date: point.date as Date, value: point.value as number }))
             .sort((a, b) => a.date.getTime() - b.date.getTime())
 
@@ -293,7 +290,6 @@ function usePnlCursorInteraction({
   innerWidth,
   innerHeight,
   chartData,
-  endDate,
   endValue,
   xScale,
   yScale,
@@ -301,7 +297,6 @@ function usePnlCursorInteraction({
   innerWidth: number
   innerHeight: number
   chartData: PnlPoint[]
-  endDate: Date
   endValue: number
   xScale: ReturnType<typeof scaleTime<number>>
   yScale: ReturnType<typeof scaleLinear<number>>
@@ -320,47 +315,15 @@ function usePnlCursorInteraction({
     setCursorX(null)
   }, [])
 
-  const clampedCursorX = cursorX == null ? null : Math.max(0, Math.min(cursorX, innerWidth))
-  const cursorDate = useMemo(
-    () => (clampedCursorX == null ? null : xScale.invert(clampedCursorX)),
-    [clampedCursorX, xScale],
+  const pointerX = cursorX == null ? null : Math.max(0, Math.min(cursorX, innerWidth))
+  const cursorPoint = useMemo(
+    () => (pointerX == null ? null : findNearestPnlPointByTime(chartData, xScale.invert(pointerX).getTime())),
+    [chartData, pointerX, xScale],
   )
-  const cursorValue = useMemo(() => {
-    if (clampedCursorX == null || !chartData.length) {
-      return endValue
-    }
-    if (chartData.length === 1) {
-      return chartData[0].value
-    }
-
-    const firstPoint = chartData[0]
-    const lastPoint = chartData.at(-1)
-    if (!firstPoint || !lastPoint) {
-      return endValue
-    }
-
-    const targetTime = cursorDate ? cursorDate.getTime() : endDate.getTime()
-    let left = firstPoint
-    let right = lastPoint
-
-    for (const point of chartData) {
-      if (point.date.getTime() <= targetTime) {
-        left = point
-      } else {
-        right = point
-        break
-      }
-    }
-
-    if (left === right) {
-      return left.value
-    }
-
-    const span = right.date.getTime() - left.date.getTime()
-    const ratio = span === 0 ? 0 : (targetTime - left.date.getTime()) / span
-    return left.value + (right.value - left.value) * ratio
-  }, [chartData, clampedCursorX, cursorDate, endDate, endValue])
-  const cursorY = clampedCursorX == null ? null : yScale(cursorValue)
+  const clampedCursorX = cursorPoint ? xScale(cursorPoint.date) : null
+  const cursorDate = cursorPoint?.date ?? null
+  const cursorValue = cursorPoint?.value ?? endValue
+  const cursorY = cursorPoint ? yScale(cursorPoint.value) : null
   const cursorDotPosition = useMemo(() => {
     if (clampedCursorX == null || cursorY == null || innerWidth === 0 || innerHeight === 0) {
       return null
@@ -394,62 +357,9 @@ function usePnlGainLoss({
   activeTimeframe: (typeof PNL_TIMEFRAMES)[number]
 }) {
   return useMemo(() => {
-    if (!chartData.length) {
-      return [0, 0] as const
-    }
-
     const targetTime = (cursorDate ?? endDate).getTime()
-    const firstPoint = chartData[0]
-    const firstTime = firstPoint.date.getTime()
-    const baseline = activeTimeframe === 'ALL' ? 0 : firstPoint.value
-
-    if (targetTime < firstTime) {
-      return [0, 0] as const
-    }
-
-    let gain = 0
-    let loss = 0
-    let prevValue = firstPoint.value
-    let prevTime = firstTime
-
-    const initialDelta = firstPoint.value - baseline
-    if (initialDelta >= 0) {
-      gain += initialDelta
-    } else {
-      loss += Math.abs(initialDelta)
-    }
-
-    for (let index = 1; index < chartData.length; index += 1) {
-      const point = chartData[index]
-      const pointTime = point.date.getTime()
-
-      if (pointTime <= targetTime) {
-        const delta = point.value - prevValue
-        if (delta >= 0) {
-          gain += delta
-        } else {
-          loss += Math.abs(delta)
-        }
-        prevValue = point.value
-        prevTime = pointTime
-        continue
-      }
-
-      if (targetTime > prevTime) {
-        const span = pointTime - prevTime
-        const ratio = span === 0 ? 0 : (targetTime - prevTime) / span
-        const interpolatedValue = prevValue + (point.value - prevValue) * ratio
-        const delta = interpolatedValue - prevValue
-        if (delta >= 0) {
-          gain += delta
-        } else {
-          loss += Math.abs(delta)
-        }
-      }
-      break
-    }
-
-    return [gain, loss] as const
+    const baseline = activeTimeframe === 'ALL' ? 0 : (chartData[0]?.value ?? 0)
+    return calculatePnlGainLossThroughTime(chartData, targetTime, baseline)
   }, [activeTimeframe, chartData, cursorDate, endDate])
 }
 
@@ -533,7 +443,6 @@ function ProfitLossCard({
       innerWidth,
       innerHeight,
       chartData,
-      endDate,
       endValue,
       xScale,
       yScale,
@@ -623,10 +532,11 @@ function ProfitLossCard({
                   {areValuesHidden ? (
                     '****'
                   ) : (
-                    <>
-                      {displayNetValue < 0 ? '-' : '+'}
-                      {formatCurrency(Math.abs(displayNetValue))}
-                    </>
+                    <PnlAnimatedCurrency
+                      magnitude={displayNetValue}
+                      sign={displayNetValue < 0 ? '-' : '+'}
+                      size="large"
+                    />
                   )}
                 </span>
                 <Popover>
@@ -649,11 +559,11 @@ function ProfitLossCard({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span>{t('Gain')}</span>
-                        <span>{areValuesHidden ? '****' : <>+{formatCurrency(Math.abs(gainTotal))}</>}</span>
+                        <span>{areValuesHidden ? '****' : <PnlAnimatedCurrency magnitude={gainTotal} sign="+" />}</span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span>{t('Loss')}</span>
-                        <span>{areValuesHidden ? '****' : <>-{formatCurrency(Math.abs(lossTotal))}</>}</span>
+                        <span>{areValuesHidden ? '****' : <PnlAnimatedCurrency magnitude={lossTotal} sign="-" />}</span>
                       </div>
                       <div className="h-px w-full bg-border/60" />
                       <div className="flex items-center justify-between">
@@ -662,10 +572,7 @@ function ProfitLossCard({
                           {areValuesHidden ? (
                             '****'
                           ) : (
-                            <>
-                              {displayNetValue < 0 ? '-' : '+'}
-                              {formatCurrency(Math.abs(displayNetValue))}
-                            </>
+                            <PnlAnimatedCurrency magnitude={displayNetValue} sign={displayNetValue < 0 ? '-' : '+'} />
                           )}
                         </span>
                       </div>
