@@ -322,10 +322,12 @@ export async function GET(request: Request) {
       seriesEntry.source,
     )
 
-    const openingRow =
-      openingHistoryRows.find((row) => row.window_end_ms === openingHistoryTargetMs) ??
-      openingFallbackRows.find((row) => row.window_end_ms === openingFallbackTargetMs) ??
-      null
+    const isGoldDailySeries = normalizedSeriesSlug === 'gold-daily-up-or-down'
+    const openingRow = isGoldDailySeries
+      ? (openingFallbackRows.find((row) => row.source_timestamp_ms < eventWindowStartMs) ?? null)
+      : (openingHistoryRows.find((row) => row.window_end_ms === openingHistoryTargetMs) ??
+        openingFallbackRows.find((row) => row.window_end_ms === openingFallbackTargetMs) ??
+        null)
     const windowRow = selectClosingRow(
       closingHistoryRows,
       closingHistoryTargetMs,
@@ -360,7 +362,9 @@ export async function GET(request: Request) {
       return null
     })()
 
-    const openingPrice = openingFromHistory ?? openingFromLatestPreferred ?? openingFromLatestFallback
+    const openingPrice = isGoldDailySeries
+      ? openingFromHistory
+      : (openingFromHistory ?? openingFromLatestPreferred ?? openingFromLatestFallback)
     const closingPrice = toFiniteNumber(windowRow?.settlement_price)
     const latestPrice = toFiniteNumber(latestMarket?.last_final?.price)
     const latestWindowEndMs = toFiniteNumber(latestMarket?.last_final?.window_end_ms)

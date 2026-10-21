@@ -22,6 +22,6 @@ VALUES (
   '/images/live-assets/gold-radio.svg',
   true,
   true,
-  1380
+  450
 )
 ON CONFLICT (series_slug) DO NOTHING;

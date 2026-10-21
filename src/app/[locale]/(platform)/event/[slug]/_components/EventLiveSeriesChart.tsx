@@ -27,7 +27,7 @@ import {
   inferIntervalMsFromSeriesSlug,
   isCanonicalBinanceDailySnapshot,
   isGoldDailySeries,
-  isGoldStandardSessionOpen,
+  isGoldMarketSessionOpen,
   isShortLiveSeriesCadence,
   isUsEquityMarketOpen,
   LIVE_CHART_HEIGHT,
@@ -390,7 +390,7 @@ function EventLiveSeriesChartContent({
       return false
     }
     if (isGoldDailySeries(config.series_slug)) {
-      return !isGoldStandardSessionOpen(nowMs)
+      return !isGoldMarketSessionOpen(nowMs)
     }
     return !isUsEquityMarketOpen(nowMs)
   }, [config.series_slug, nowMs, realtimeTopic])

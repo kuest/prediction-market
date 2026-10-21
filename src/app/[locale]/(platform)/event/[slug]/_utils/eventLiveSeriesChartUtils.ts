@@ -1026,7 +1026,7 @@ export function isUsEquityMarketOpen(timestamp: number) {
   return minutesOfDay >= 9 * 60 + 30 && minutesOfDay < 16 * 60
 }
 
-export function isGoldStandardSessionOpen(timestamp: number) {
+export function isGoldMarketSessionOpen(timestamp: number) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     weekday: 'short',
@@ -1038,17 +1038,5 @@ export function isGoldStandardSessionOpen(timestamp: number) {
   const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
   const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
   const minutesOfDay = hour * 60 + minute
-  const close = 17 * 60
-  const reopen = 18 * 60
-
-  if (weekday === 'Sat') {
-    return false
-  }
-  if (weekday === 'Sun') {
-    return minutesOfDay >= reopen
-  }
-  if (weekday === 'Fri') {
-    return minutesOfDay < close
-  }
-  return minutesOfDay < close || minutesOfDay >= reopen
+  return weekday !== 'Sat' && weekday !== 'Sun' && minutesOfDay >= 9 * 60 + 30 && minutesOfDay < 17 * 60
 }

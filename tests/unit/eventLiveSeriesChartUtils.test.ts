@@ -14,7 +14,7 @@ import {
   getVisibleCountdownUnits,
   isCanonicalBinanceDailySnapshot,
   isGoldDailySeries,
-  isGoldStandardSessionOpen,
+  isGoldMarketSessionOpen,
   LIVE_PRICE_TRANSITION_MS,
   MAX_POINTS,
   POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
@@ -31,7 +31,7 @@ import {
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
 
 describe('GOLD daily live session', () => {
-  it('uses the 23-hour metal session instead of the early event publication date', () => {
+  it('uses the 9:30–17:00 ET market window instead of the early event publication date', () => {
     const eventEndTimestamp = Date.parse('2026-10-21T21:00:00Z')
     expect(isGoldDailySeries('gold-daily-up-or-down')).toBe(true)
     expect(
@@ -39,9 +39,9 @@ describe('GOLD daily live session', () => {
         seriesSlug: 'gold-daily-up-or-down',
         eventStartTimestamp: Date.parse('2026-10-20T12:01:22Z'),
         eventEndTimestamp,
-        activeWindowMinutes: 1380,
+        activeWindowMinutes: 450,
       }),
-    ).toBe(Date.parse('2026-10-20T22:00:00Z'))
+    ).toBe(Date.parse('2026-10-21T13:30:00Z'))
     expect(
       resolveLiveSeriesStartTimestamp({
         seriesSlug: 'aapl-daily-up-down',
@@ -52,15 +52,16 @@ describe('GOLD daily live session', () => {
     ).toBe(123)
   })
 
-  it('honors the standard ET metal break, weekend, and daylight saving time', () => {
-    expect(isGoldStandardSessionOpen(Date.parse('2026-10-21T20:59:00Z'))).toBe(true)
-    expect(isGoldStandardSessionOpen(Date.parse('2026-10-21T21:00:00Z'))).toBe(false)
-    expect(isGoldStandardSessionOpen(Date.parse('2026-10-21T22:00:00Z'))).toBe(true)
-    expect(isGoldStandardSessionOpen(Date.parse('2026-10-23T21:00:00Z'))).toBe(false)
-    expect(isGoldStandardSessionOpen(Date.parse('2026-10-24T16:00:00Z'))).toBe(false)
-    expect(isGoldStandardSessionOpen(Date.parse('2026-10-25T22:00:00Z'))).toBe(true)
-    expect(isGoldStandardSessionOpen(Date.parse('2026-11-08T22:59:00Z'))).toBe(false)
-    expect(isGoldStandardSessionOpen(Date.parse('2026-11-08T23:00:00Z'))).toBe(true)
+  it('honors the GOLD event hours, weekend, and daylight saving time', () => {
+    expect(isGoldMarketSessionOpen(Date.parse('2026-10-21T13:29:00Z'))).toBe(false)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-10-21T13:30:00Z'))).toBe(true)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-10-21T20:59:00Z'))).toBe(true)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-10-21T21:00:00Z'))).toBe(false)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-10-23T20:59:00Z'))).toBe(true)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-10-24T16:00:00Z'))).toBe(false)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-10-26T13:30:00Z'))).toBe(true)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-11-09T14:29:00Z'))).toBe(false)
+    expect(isGoldMarketSessionOpen(Date.parse('2026-11-09T14:30:00Z'))).toBe(true)
   })
 
   it('selects the next GOLD round only when its trading session begins', () => {
@@ -69,8 +70,8 @@ describe('GOLD daily live session', () => {
       end_date: '2026-10-22T21:00:00Z',
     })
     const currentSlug = 'xauusd-up-or-down-on-october-21-2026'
-    expect(findLiveSeriesEvent([next], currentSlug, Date.parse('2026-10-21T21:30:00Z'), 1380 * 60_000)).toBeNull()
-    expect(findLiveSeriesEvent([next], currentSlug, Date.parse('2026-10-21T22:01:00Z'), 1380 * 60_000)).toEqual(next)
+    expect(findLiveSeriesEvent([next], currentSlug, Date.parse('2026-10-22T13:29:00Z'), 450 * 60_000)).toBeNull()
+    expect(findLiveSeriesEvent([next], currentSlug, Date.parse('2026-10-22T13:31:00Z'), 450 * 60_000)).toEqual(next)
   })
 })
 

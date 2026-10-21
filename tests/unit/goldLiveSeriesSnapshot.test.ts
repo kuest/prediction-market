@@ -13,7 +13,7 @@ describe('GOLD live-series snapshot', () => {
     const previousWindowEndMs = Date.parse('2026-10-19T00:00:00Z')
     const closingWindowEndMs = Date.parse('2026-10-20T00:00:00Z')
     const eventEndMs = Date.parse('2026-10-20T21:00:00Z')
-    const eventStartMs = Date.parse('2026-10-19T22:00:00Z')
+    const eventStartMs = Date.parse('2026-10-20T13:30:00Z')
     const rows = [
       {
         instrument: 'XAUUSD',
@@ -56,7 +56,7 @@ describe('GOLD live-series snapshot', () => {
     )
 
     const request = new Request(
-      `https://kuest.test/api/price-reference/live-series?seriesSlug=gold-daily-up-or-down&eventStartMs=${eventStartMs}&eventEndMs=${eventEndMs}&activeWindowMinutes=1380`,
+      `https://kuest.test/api/price-reference/live-series?seriesSlug=gold-daily-up-or-down&eventStartMs=${eventStartMs}&eventEndMs=${eventEndMs}&activeWindowMinutes=450`,
     )
     const beforeClose = await GET(request)
     expect(beforeClose.status).toBe(200)
