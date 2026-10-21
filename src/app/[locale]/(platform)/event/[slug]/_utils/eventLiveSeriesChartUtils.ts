@@ -669,6 +669,37 @@ export function normalizeSubscriptionSymbol(topic: string, symbol: string) {
   return trimmed.toLowerCase()
 }
 
+export const GOLD_DAILY_SERIES_SLUG = 'gold-daily-up-or-down'
+
+export function isGoldDailySeries(seriesSlug: string | null | undefined) {
+  return seriesSlug?.trim().toLowerCase() === GOLD_DAILY_SERIES_SLUG
+}
+
+export function resolveLiveSeriesStartTimestamp({
+  seriesSlug,
+  eventStartTimestamp,
+  eventEndTimestamp,
+  activeWindowMinutes,
+}: {
+  seriesSlug: string
+  eventStartTimestamp: number | null
+  eventEndTimestamp: number | null
+  activeWindowMinutes: number
+}) {
+  if (
+    isGoldDailySeries(seriesSlug) &&
+    eventEndTimestamp != null &&
+    Number.isFinite(eventEndTimestamp) &&
+    eventEndTimestamp > 0 &&
+    Number.isFinite(activeWindowMinutes) &&
+    activeWindowMinutes > 0
+  ) {
+    return eventEndTimestamp - activeWindowMinutes * 60 * 1000
+  }
+
+  return eventStartTimestamp
+}
+
 export function resolveLiveSeriesRealtimeTopic({
   configuredTopic,
   activeWindowMinutes,
@@ -993,4 +1024,31 @@ export function isUsEquityMarketOpen(timestamp: number) {
   }
 
   return minutesOfDay >= 9 * 60 + 30 && minutesOfDay < 16 * 60
+}
+
+export function isGoldStandardSessionOpen(timestamp: number) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(timestamp))
+  const weekday = parts.find((part) => part.type === 'weekday')?.value ?? ''
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
+  const minutesOfDay = hour * 60 + minute
+  const close = 17 * 60
+  const reopen = 18 * 60
+
+  if (weekday === 'Sat') {
+    return false
+  }
+  if (weekday === 'Sun') {
+    return minutesOfDay >= reopen
+  }
+  if (weekday === 'Fri') {
+    return minutesOfDay < close
+  }
+  return minutesOfDay < close || minutesOfDay >= reopen
 }

@@ -26,6 +26,8 @@ import {
   hexToRgba,
   inferIntervalMsFromSeriesSlug,
   isCanonicalBinanceDailySnapshot,
+  isGoldDailySeries,
+  isGoldStandardSessionOpen,
   isShortLiveSeriesCadence,
   isUsEquityMarketOpen,
   LIVE_CHART_HEIGHT,
@@ -51,6 +53,7 @@ import {
   resolveLiveSeriesCountdown,
   resolveLiveSeriesDisplayPrice,
   resolveLiveSeriesRealtimeTopic,
+  resolveLiveSeriesStartTimestamp,
   SERIES_KEY,
   toCountdownLeftLabel,
 } from '../_utils/eventLiveSeriesChartUtils'
@@ -312,15 +315,25 @@ function EventLiveSeriesChartContent({
     return timestamps.length > 0 ? Math.max(...timestamps) : resolvedEndTimestamp
   }, [event.end_date, event.markets, resolvedEndTimestamp])
   const explicitEndTimestamp = scheduledEndTimestamp
+  const liveSeriesStartTimestamp = useMemo(
+    () =>
+      resolveLiveSeriesStartTimestamp({
+        seriesSlug: config.series_slug,
+        eventStartTimestamp: startTimestamp,
+        eventEndTimestamp: scheduledEndTimestamp,
+        activeWindowMinutes: config.active_window_minutes,
+      }),
+    [config.active_window_minutes, config.series_slug, scheduledEndTimestamp, startTimestamp],
+  )
   const realtimeTopic = useMemo(
     () =>
       resolveLiveSeriesRealtimeTopic({
         configuredTopic: config.topic,
         activeWindowMinutes: config.active_window_minutes,
-        eventStartTimestamp: startTimestamp,
+        eventStartTimestamp: liveSeriesStartTimestamp,
         eventEndTimestamp: scheduledEndTimestamp,
       }),
-    [config.active_window_minutes, config.topic, scheduledEndTimestamp, startTimestamp],
+    [config.active_window_minutes, config.topic, liveSeriesStartTimestamp, scheduledEndTimestamp],
   )
   const realtimeConfig = useMemo(
     () => (realtimeTopic === config.topic ? config : { ...config, topic: realtimeTopic }),
@@ -346,7 +359,7 @@ function EventLiveSeriesChartContent({
     config: realtimeConfig,
     subscriptionSymbol,
     explicitEndTimestamp,
-    startTimestamp,
+    startTimestamp: liveSeriesStartTimestamp,
   })
   const isEventClosed =
     !preserveSeriesContinuity &&
@@ -376,8 +389,11 @@ function EventLiveSeriesChartContent({
     if (realtimeTopic.trim().toLowerCase() !== 'equity_prices') {
       return false
     }
+    if (isGoldDailySeries(config.series_slug)) {
+      return !isGoldStandardSessionOpen(nowMs)
+    }
     return !isUsEquityMarketOpen(nowMs)
-  }, [nowMs, realtimeTopic])
+  }, [config.series_slug, nowMs, realtimeTopic])
 
   const series = useMemo<SeriesConfig[]>(
     () => [
@@ -465,12 +481,15 @@ function EventLiveSeriesChartContent({
     snapshotStatus: referenceSnapshotStatus,
     seriesClassification: seriesReferenceClassification,
   })
+  const requiresCanonicalGoldClose = isGoldDailySeries(config.series_slug)
   const finalPrice = isEventClosed
-    ? requiresCanonicalBinanceClose
-      ? hasCanonicalBinanceDailySnapshot
-        ? referenceClosingPrice
-        : null
-      : (referenceClosingPrice ?? latestReferencePriceBeforeEnd ?? persistedFallbackPriceBeforeEnd)
+    ? requiresCanonicalGoldClose
+      ? referenceClosingPrice
+      : requiresCanonicalBinanceClose
+        ? hasCanonicalBinanceDailySnapshot
+          ? referenceClosingPrice
+          : null
+        : (referenceClosingPrice ?? latestReferencePriceBeforeEnd ?? persistedFallbackPriceBeforeEnd)
     : null
 
   const fallbackCurrentPrice = useMemo(() => {
@@ -515,8 +534,8 @@ function EventLiveSeriesChartContent({
       return endTimestamp - tradingWindowMs
     }
 
-    if (startTimestamp != null && startTimestamp > 0 && startTimestamp < endTimestamp) {
-      return startTimestamp
+    if (liveSeriesStartTimestamp != null && liveSeriesStartTimestamp > 0 && liveSeriesStartTimestamp < endTimestamp) {
+      return liveSeriesStartTimestamp
     }
 
     const snapshotStart = Number(referenceSnapshot?.event_window_start_ms)
@@ -525,7 +544,7 @@ function EventLiveSeriesChartContent({
     }
 
     return endTimestamp - tradingWindowMs
-  }, [endTimestamp, referenceSnapshot?.event_window_start_ms, startTimestamp, tradingWindowMs])
+  }, [endTimestamp, liveSeriesStartTimestamp, referenceSnapshot?.event_window_start_ms, tradingWindowMs])
 
   const isTradingWindowActive = !isEventClosed && nowMs >= tradingWindowStartMs
   const liveSeriesEvent = useMemo(
@@ -672,7 +691,7 @@ function EventLiveSeriesChartContent({
     finalPrice,
     renderedPrice,
     fallbackCurrentPrice,
-    requiresCanonicalClose: requiresCanonicalBinanceClose,
+    requiresCanonicalClose: requiresCanonicalBinanceClose || requiresCanonicalGoldClose,
   })
   const resolvedBaselinePrice = referenceOpeningPrice
   const displayedBaselinePrice = resolveDisplayedLiveSeriesBaselinePrice({
@@ -894,7 +913,7 @@ function EventLiveSeriesChartContent({
       showSeriesControls ? (
         <EventSeriesPills
           currentEventSlug={event.slug}
-          isDailySeries={tradingWindowMs === 24 * 60 * 60 * 1000}
+          isDailySeries={isGoldDailySeries(config.series_slug) || tradingWindowMs === 24 * 60 * 60 * 1000}
           tradingWindowMs={tradingWindowMs}
           seriesEvents={seriesEvents}
           variant="live"

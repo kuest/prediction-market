@@ -1,13 +1,13 @@
 'use client'
 
-import { ChartLineIcon } from 'lucide-react'
+import { ChartLineIcon, RadioIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 
 import type { EventLiveChartConfig } from '@/types'
 
 import { cn } from '@/lib/utils'
 
-import { hexToRgba } from '../_utils/eventLiveSeriesChartUtils'
+import { hexToRgba, isGoldDailySeries } from '../_utils/eventLiveSeriesChartUtils'
 
 interface EventLiveSeriesViewSwitchProps {
   activeView: 'live' | 'market'
@@ -71,7 +71,9 @@ export default function EventLiveSeriesViewSwitch({
         style={liveSwitchIconStyle}
         aria-label={t('Show live chart')}
       >
-        {config.icon_path ? (
+        {isGoldDailySeries(config.series_slug) ? (
+          <RadioIcon className="size-[18px]" aria-hidden />
+        ) : config.icon_path ? (
           <span
             className="block size-4 bg-current"
             aria-hidden

@@ -106,8 +106,14 @@ function selectMostRecentRowAtOrBefore(rows: PriceReferenceHistoryRow[], targetM
   return rows.find((row) => row.window_end_ms <= targetMs) ?? null
 }
 
-function selectClosingRow(rows: PriceReferenceHistoryRow[], targetMs: number, source: Source, interval: Interval) {
-  if (source === 'binance' && interval === '1d') {
+function selectClosingRow(
+  rows: PriceReferenceHistoryRow[],
+  targetMs: number,
+  source: Source,
+  interval: Interval,
+  seriesSlug: string,
+) {
+  if (interval === '1d' && (source === 'binance' || seriesSlug === 'gold-daily-up-or-down')) {
     return rows.find((row) => row.window_end_ms === targetMs) ?? null
   }
 
@@ -325,6 +331,7 @@ export async function GET(request: Request) {
       closingHistoryTargetMs,
       seriesEntry.source,
       seriesEntry.interval,
+      normalizedSeriesSlug,
     )
 
     const openingFromHistory = toFiniteNumber(openingRow?.settlement_price)
