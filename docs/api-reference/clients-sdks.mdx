@@ -16,103 +16,82 @@ lower-level control.
 
 ## Choose a client
 
-| Client              | Languages                | Best for                                                                |
-| ------------------- | ------------------------ | ----------------------------------------------------------------------- |
-| **CLOB**            | TypeScript, Python, Rust | Market data, authentication, signing, orders, cancellations, and trades |
-| **Builder Relayer** | TypeScript, Python, Rust | Deposit Wallet deployment and gasless onchain batches                   |
-| **REST API**        | Any                      | Raw JSON access and unsupported runtimes                                |
-| **WebSocket**       | Any                      | Order-book, order, trade, and live-data updates                         |
+| Client                                | Languages          | Best for                                                                     |
+| ------------------------------------- | ------------------ | ---------------------------------------------------------------------------- |
+| **Unified SDK**                       | TypeScript, Python | Market data, CLOB orders, and Deposit Wallet relayer actions in one client   |
+| **Separate CLOB and relayer clients** | Rust               | Market data, trading, and Deposit Wallet actions with separate Rust packages |
+| **REST API**                          | Any                | Raw JSON access and unsupported runtimes                                     |
+| **WebSocket**                         | Any                | Order-book, order, trade, and live-data updates                              |
 
-| Task                                        | Use                       |
-| ------------------------------------------- | ------------------------- |
-| Discover events and market metadata         | Gamma API                 |
-| Read books, prices, spreads, and tick sizes | CLOB client or REST       |
-| Create credentials and place orders         | Authenticated CLOB client |
-| Deploy a Deposit Wallet or batch approvals  | Builder Relayer client    |
-| Track live market changes                   | Market WebSocket          |
-| Track private order and trade changes       | User WebSocket            |
+| Task                                        | Use                                    |
+| ------------------------------------------- | -------------------------------------- |
+| Discover events and market metadata         | Gamma API                              |
+| Read books, prices, spreads, and tick sizes | Unified SDK, Rust CLOB client, or REST |
+| Create credentials and place orders         | Secure SDK client or Rust CLOB client  |
+| Deploy a Deposit Wallet or batch approvals  | SDK relayer or Rust relayer client     |
+| Track live market changes                   | Market WebSocket                       |
+| Track private order and trade changes       | User WebSocket                         |
 
-## CLOB quickstart
+## Unified TypeScript and Python quickstart
 
-Public methods need only the CLOB URL. Trading also needs a signer, L2 credentials,
-signature type `3`, and the Deposit Wallet funder address.
+For registry installs, the packages are `@kuest/sdk` (TypeScript) and `kuest-sdk`
+(Python, imported as `market_sdk`). Downloaded operator bundles use neutral package
+names: `@market-sdk/client` in the TypeScript workspace and `market-sdk` as the
+Python distribution. A bundle includes `.sdk/site-config.json` for its
+public builder attribution, market scope, and optional geoblock settings. Keep signing
+keys and API credentials outside that file. Supply approved service URLs and a Polygon
+RPC URL explicitly; the SDKs do not include live endpoint defaults.
+
+These examples only read an order book. TypeScript users working from a downloaded
+bundle should run `pnpm install --frozen-lockfile` and `pnpm build` first. Python users
+can run `python3 -m pip install -e .` from the extracted bundle.
 
 <Tabs items={['TypeScript', 'Python', 'Rust']}>
   <Tab>
     ```ts
-    import { ClobClient, OrderType, Side, SignatureType } from '@kuest/clob-client'
-    import { createWalletClient, http } from 'viem'
-    import { privateKeyToAccount } from 'viem/accounts'
-    import { polygonAmoy } from 'viem/chains'
+    import { createPublicClient, forkEnvironmentConfig } from '@market-sdk/client'
+    import { loadSiteConfig } from '@market-sdk/client/node'
 
-    const host = process.env.CLOB_URL!
-    const chainId = 80002
-    const tokenID = process.env.CLOB_TOKEN_ID!
-    const account = privateKeyToAccount(process.env.PRIVATE_KEY as `0x${string}`)
-    const signer = createWalletClient({
-      account,
-      chain: polygonAmoy,
-      transport: http(process.env.RPC_URL),
+    const environment = forkEnvironmentConfig({
+      name: 'operator',
+      clob: { rest: process.env.SDK_CLOB_URL! },
+      gamma: { rest: process.env.SDK_GAMMA_URL! },
+      data: { rest: process.env.SDK_DATA_URL! },
+      relayer: { rest: process.env.SDK_RELAYER_URL! },
+      rpc: process.env.SDK_RPC_URL!,
     })
-
-    const bootstrap = new ClobClient(host, chainId, signer)
-    const creds = await bootstrap.createOrDeriveApiKey()
-    const client = new ClobClient(
-      host,
-      chainId,
-      signer,
-      creds,
-      SignatureType.DEPOSIT_WALLET,
-      process.env.DEPOSIT_WALLET!,
-    )
-
-    const tickSize = await client.getTickSize(tokenID)
-    const negRisk = await client.getNegRisk(tokenID)
-    const result = await client.createAndPostOrder(
-      { tokenID, price: 0.42, size: 5, side: Side.BUY },
-      { tickSize, negRisk },
-      OrderType.GTC,
-      false,
-      true,
-    )
-
-    console.log(result)
+    const client = createPublicClient({ environment, siteConfig: loadSiteConfig() })
+    const book = await client.fetchOrderBook({ assetId: process.env.SDK_TOKEN_ID! })
+    console.log(book)
     ```
+
+    If installed from npm instead, use `@kuest/sdk` and `@kuest/sdk/node` for these imports.
 
   </Tab>
 
   <Tab>
     ```python
     import os
+    from market_sdk import PublicClient, configured_environment
 
-    from py_clob_client.client import ClobClient
-    from py_clob_client.clob_types import OrderArgs, OrderType, PartialCreateOrderOptions
-    from py_clob_client.order_builder.constants import BUY
-
-    client = ClobClient(
-        os.environ["CLOB_URL"],
-        chain_id=80002,
-        key=os.environ["PRIVATE_KEY"],
-        signature_type=3,
-        funder=os.environ["DEPOSIT_WALLET"],
-    )
-    client.set_api_creds(client.create_or_derive_api_creds())
-
-    token_id = os.environ["CLOB_TOKEN_ID"]
-    order = client.create_order(
-        OrderArgs(token_id=token_id, price=0.42, size=5, side=BUY),
-        options=PartialCreateOrderOptions(
-            tick_size=client.get_tick_size(token_id),
-            neg_risk=client.get_neg_risk(token_id),
-        ),
+    environment = configured_environment(
+        clob_url=os.environ["SDK_CLOB_URL"],
+        clob_ws_url=os.environ["SDK_CLOB_WS_URL"],
+        relayer_url=os.environ["SDK_RELAYER_URL"],
+        gamma_url=os.environ["SDK_GAMMA_URL"],
+        data_url=os.environ["SDK_DATA_URL"],
+        rpc_url=os.environ["SDK_RPC_URL"],
     )
 
-    print(client.post_order(order, OrderType.GTC))
+    with PublicClient(environment=environment) as client:
+        print(client.get_order_book(token_id=os.environ["SDK_TOKEN_ID"]))
     ```
 
   </Tab>
 
   <Tab>
+    The Rust example uses the separate CLOB package on Polygon. Rust does not have a unified SDK bundle.
+
     ```toml
     [dependencies]
     kuest-client-sdk = { version = "2", features = ["clob"] }
@@ -128,14 +107,14 @@ signature type `3`, and the Deposit Wallet funder address.
     use kuest_client_sdk::clob::types::{OrderType, Side, SignatureType};
     use kuest_client_sdk::clob::{Client, Config};
     use kuest_client_sdk::types::{Address, U256};
-    use kuest_client_sdk::AMOY;
+    use kuest_client_sdk::POLYGON;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
     #[tokio::main]
     async fn main() -> kuest_client_sdk::Result<()> {
         let signer = LocalSigner::from_str(&std::env::var("PRIVATE_KEY")?)?
-            .with_chain_id(Some(AMOY));
+            .with_chain_id(Some(POLYGON));
         let funder = Address::from_str(&std::env::var("DEPOSIT_WALLET")?)?;
         let token_id = U256::from_str(&std::env::var("CLOB_TOKEN_ID")?)?;
         let clob_url = std::env::var("CLOB_URL")?;
@@ -165,15 +144,22 @@ signature type `3`, and the Deposit Wallet funder address.
   </Tab>
 </Tabs>
 
+For trading, create a secure client with a signer and Deposit Wallet address. Orders
+use signature type `3` and require CLOB API credentials. Pass the downloaded
+`siteConfig` to the TypeScript secure client so its public `builder_code` and
+`order_metadata` enter the signed order. The Python bundle reads the same overlay
+from its extracted project. Neither bundle contains private keys or API secrets.
+
 <Callout type="warning" title="Keep signing server-side">
   Never place private keys, CLOB API secrets, relayer credentials, or builder credentials in browser-exposed code. The
   frontend should call a protected service when privileged signing is required.
 </Callout>
 
-## Builder Relayer workflow
+## Deposit Wallet relayer workflow
 
-Use the relayer for Deposit Wallet actions that should not require the end user to hold
-the network gas token.
+The unified TypeScript and Python SDKs include relayer methods. Rust uses its separate
+relayer client. These methods submit Deposit Wallet actions without requiring the end
+user to hold the network gas token.
 
 Required configuration:
 
@@ -194,12 +180,15 @@ A typical workflow is:
 5. Sign the Deposit Wallet batch with a short deadline.
 6. Submit through the relayer and wait for the transaction receipt.
 
-The downloaded bundle includes environment-specific relayer examples and contract
-addresses. Use those values instead of copying addresses from another deployment.
+Configure the relayer and Polygon RPC endpoints explicitly. Builder credentials stay
+on the server and are separate from the order's public `builder_code`.
 
 ## Market-maker workflow
 
-A market-making service usually:
+The TypeScript and Python market-maker downloads currently vendor the **older, separate
+CLOB clients**. Their bot code has not been migrated to the unified SDKs. The Rust
+example likewise uses its separate Rust CLOB client. Read each example's bundled
+README before running it. A market-making service usually:
 
 1. discovers active markets through Gamma;
 2. checks CLOB token IDs, tick size, negative-risk status, and trading state;
@@ -216,13 +205,15 @@ A market-making service usually:
 ## Authentication and updates
 
 - CLOB trading uses Deposit Wallet orders with signature type `3`.
-- The CLOB client derives L2 credentials from a wallet signature.
-- Relayer clients use `KUEST_BUILDER_*` credentials.
+- Secure SDK clients use L2 CLOB credentials derived from a wallet signature.
+- Relayer requests use separate `KUEST_BUILDER_*` credentials.
 - Server time should be synchronized before signing authenticated requests.
 
-Refresh a downloaded bundle in place from its directory:
+Check for updates from the extracted bundle directory. Back up local changes before
+applying an update, then reinstall dependencies for the downloaded project:
 
 ```bash
+./.sdk/update --check
 ./.sdk/update --latest
 ```
 

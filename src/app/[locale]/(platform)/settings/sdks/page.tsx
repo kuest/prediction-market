@@ -81,7 +81,7 @@ export default async function SdkDownloadsSettingsPage() {
         <h1 className="text-2xl font-semibold tracking-tight">{t('SDK Downloads')}</h1>
         <p className="text-muted-foreground">
           {t(
-            'Build trading bots and integrations with personalized SDK bundles. The CLOB client handles orderbook trading, while the Relayer client helps route and execute signed actions.',
+            'Build with a unified SDK for market data, CLOB trading, and Deposit Wallet actions in TypeScript or Python. Rust has separate CLOB and relayer clients.',
           )}
         </p>
       </div>
@@ -154,7 +154,9 @@ export default async function SdkDownloadsSettingsPage() {
           <div className="grid gap-1">
             <h2 className="text-base font-semibold tracking-tight">{t('Build with the SDKs')}</h2>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              {t('Read the SDK documentation for CLOB trading, relayer wallet actions, and market maker workflows.')}
+              {t(
+                'Read the SDK documentation for the unified TypeScript and Python clients, separate Rust clients, and market maker examples.',
+              )}
             </p>
           </div>
         </div>
@@ -178,7 +180,7 @@ export default async function SdkDownloadsSettingsPage() {
           <h2 className="text-xl font-semibold tracking-tight">{t('Market Maker Examples')}</h2>
           <p className="text-sm text-muted-foreground">
             {t(
-              'Use these market maker examples as practical references to understand SDK workflows and shape your own bots, logic, and strategies for new markets.',
+              'These market maker examples still bundle the separate CLOB clients. Read the included README before using a bot; unified SDK support is not yet available in these templates.',
             )}
           </p>
         </div>
