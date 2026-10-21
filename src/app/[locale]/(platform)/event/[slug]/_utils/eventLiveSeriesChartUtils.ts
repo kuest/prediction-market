@@ -669,7 +669,7 @@ export function normalizeSubscriptionSymbol(topic: string, symbol: string) {
   return trimmed.toLowerCase()
 }
 
-export const GOLD_DAILY_SERIES_SLUG = 'gold-daily-up-or-down'
+const GOLD_DAILY_SERIES_SLUG = 'gold-daily-up-or-down'
 
 export function isGoldDailySeries(seriesSlug: string | null | undefined) {
   return seriesSlug?.trim().toLowerCase() === GOLD_DAILY_SERIES_SLUG
