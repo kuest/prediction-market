@@ -2,7 +2,9 @@ import { connection, NextResponse } from 'next/server'
 
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n/locales'
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import { resolveCryptoCadenceRoute } from '@/lib/crypto-cadence-event'
 import { EventRepository } from '@/lib/db/queries/event'
+import { bucketRelatedEventsTimestamp } from '@/lib/event-related'
 
 export async function GET(request: Request, { params }: { params: Promise<{ slug: string }> }) {
   await connection()
@@ -14,7 +16,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const locale = SUPPORTED_LOCALES.includes(localeParam as (typeof SUPPORTED_LOCALES)[number])
     ? (localeParam as (typeof SUPPORTED_LOCALES)[number])
     : DEFAULT_LOCALE
-  const currentTimestamp = Date.now()
+  const currentTimestamp = bucketRelatedEventsTimestamp(Date.now(), Boolean(resolveCryptoCadenceRoute(cadenceSlug)))
 
   try {
     const { data: events, error } = await EventRepository.getRelatedEventsBySlug(slug, {
@@ -27,7 +29,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
       return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })
     }
 
-    return NextResponse.json(events)
+    const response = NextResponse.json(events)
+    response.headers.set('X-Related-Server-Time', String(Date.now()))
+    return response
   } catch (error) {
     console.error('API Error:', error)
     return NextResponse.json({ error: DEFAULT_ERROR_MESSAGE }, { status: 500 })

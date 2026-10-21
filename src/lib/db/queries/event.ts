@@ -18,7 +18,7 @@ import {
   or,
   sql,
 } from 'drizzle-orm'
-import { cacheTag } from 'next/cache'
+import { cacheLife, cacheTag } from 'next/cache'
 import { createHash } from 'node:crypto'
 
 import type { NonDefaultLocale, SupportedLocale } from '@/i18n/locales'
@@ -4324,6 +4324,13 @@ export const EventRepository = {
   },
 
   async getRelatedEventsBySlug(slug: string, options: RelatedEventOptions): Promise<QueryResult<RelatedEvent[]>> {
+    'use cache'
+    cacheLife(
+      options.cadenceSlug ? { stale: 5, revalidate: 5, expire: 15 } : { stale: 30, revalidate: 30, expire: 120 },
+    )
+    cacheTag(cacheTags.event(slug))
+    cacheTag(cacheTags.eventsList)
+
     return runQuery(async () => {
       const cadenceRoute = resolveCryptoCadenceRoute(options.cadenceSlug)
       const tagSlug = options.tagSlug?.toLowerCase()

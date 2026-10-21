@@ -1,11 +1,39 @@
 import { describe, expect, it } from 'bun:test'
 
 import {
+  bucketRelatedEventsTimestamp,
   buildRelatedEventPrimaryOutcomes,
   isCurrentCryptoRelatedRound,
+  resolveRelatedRoundRefreshDelay,
+  resolveRelatedServerClockOffset,
   selectCryptoRelatedEventCandidates,
   selectRelatedEventCandidates,
 } from '@/lib/event-related'
+
+describe('related round refresh timing', () => {
+  const boundary = Date.parse('2026-07-23T18:05:00.000Z')
+
+  it('changes the crypto cache key at a round boundary while retaining minute buckets for other events', () => {
+    expect(bucketRelatedEventsTimestamp(boundary - 1, true)).toBe(boundary - 5_000)
+    expect(bucketRelatedEventsTimestamp(boundary, true)).toBe(boundary)
+    expect(bucketRelatedEventsTimestamp(boundary - 1, false)).toBe(boundary - 60_000)
+    expect(bucketRelatedEventsTimestamp(boundary, false)).toBe(boundary)
+  })
+
+  it('uses server time when the browser clock is ahead and retries briefly after rollover', () => {
+    const offset = resolveRelatedServerClockOffset(String(boundary - 10_000), boundary)
+    expect(offset).toBe(-10_000)
+    expect(resolveRelatedRoundRefreshDelay([new Date(boundary).toISOString()], boundary + offset, null)).toBe(10_100)
+    expect(resolveRelatedRoundRefreshDelay([new Date(boundary).toISOString()], boundary + 100, boundary)).toBe(2_000)
+    expect(resolveRelatedRoundRefreshDelay([], boundary + 2_000, boundary)).toBe(2_000)
+    expect(resolveRelatedRoundRefreshDelay([], boundary + 15_000, boundary)).toBeNull()
+  })
+
+  it('falls back to the client clock when the server timestamp is missing', () => {
+    expect(resolveRelatedServerClockOffset(null, boundary)).toBe(0)
+    expect(resolveRelatedRoundRefreshDelay([], boundary, null)).toBeNull()
+  })
+})
 
 function createCandidate({
   id,

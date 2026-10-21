@@ -58,7 +58,10 @@ async function fetchLastTradesByMarket(targets: MarketTokenTarget[], clobUrl: st
   }, {})
 }
 
-export function useEventLastTrades(targets: MarketTokenTarget[]) {
+export function useEventLastTrades(
+  targets: MarketTokenTarget[],
+  refetchIntervalMs: number | false = LAST_TRADE_REFRESH_INTERVAL_MS,
+) {
   const { clobUrl } = usePublicRuntimeConfig()
   const tokenSignature = useMemo(
     () =>
@@ -75,8 +78,8 @@ export function useEventLastTrades(targets: MarketTokenTarget[]) {
     enabled: targets.length > 0 && Boolean(clobUrl),
     staleTime: 'static',
     gcTime: LAST_TRADE_REFRESH_INTERVAL_MS,
-    refetchInterval: LAST_TRADE_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
+    refetchInterval: refetchIntervalMs,
+    refetchIntervalInBackground: refetchIntervalMs !== false,
     placeholderData: keepPreviousData,
   })
 

@@ -25,6 +25,7 @@ import {
   resolveCryptoCadenceRelatedLabel,
   resolveCryptoCadenceRouteSlug,
 } from '@/lib/crypto-cadence-event'
+import { resolveRelatedRoundRefreshDelay, resolveRelatedServerClockOffset } from '@/lib/event-related'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { resolveHomeCardDisplayPrice } from '@/lib/market-chance'
 import { cn } from '@/lib/utils'
@@ -57,6 +58,12 @@ interface RelatedEvent {
   end_date: string | null
 }
 
+interface RelatedEventsResult {
+  events: RelatedEvent[]
+  receivedAt: number
+  serverClockOffsetMs: number
+}
+
 interface UseRelatedEventsParams {
   cadence?: string
   eventSlug: string
@@ -72,8 +79,9 @@ const INITIAL_BACKGROUND_STYLE: BackgroundStyle = {
   top: 0,
   isInitialized: false,
 }
+const EMPTY_RELATED_EVENTS: RelatedEvent[] = []
 
-async function fetchRelatedEvents(params: UseRelatedEventsParams): Promise<RelatedEvent[]> {
+async function fetchRelatedEvents(params: UseRelatedEventsParams): Promise<RelatedEventsResult> {
   const { cadence, eventSlug, tag, locale } = params
 
   const url = new URL(`/api/events/${eventSlug}/related`, window.location.origin)
@@ -93,7 +101,13 @@ async function fetchRelatedEvents(params: UseRelatedEventsParams): Promise<Relat
     throw new Error('Failed to fetch related events.')
   }
 
-  return response.json()
+  const events = (await response.json()) as RelatedEvent[]
+  const receivedAt = Date.now()
+  return {
+    events,
+    receivedAt,
+    serverClockOffsetMs: resolveRelatedServerClockOffset(response.headers.get('X-Related-Server-Time'), receivedAt),
+  }
 }
 
 function useRelatedEvents(params: UseRelatedEventsParams) {
@@ -105,10 +119,10 @@ function useRelatedEvents(params: UseRelatedEventsParams) {
     queryKey,
     queryFn: () => fetchRelatedEvents({ cadence, eventSlug, tag, locale }),
     enabled,
-    staleTime: 0,
+    staleTime: cadence ? 0 : 30_000,
     gcTime: 300_000,
-    refetchOnWindowFocus: true,
-    refetchInterval: (query) => (query.state.data?.length ? 60_000 : 15_000),
+    refetchOnWindowFocus: Boolean(cadence),
+    refetchInterval: cadence ? (query) => (query.state.data?.events.length ? 60_000 : 15_000) : false,
     retry: 3,
   })
 }
@@ -183,7 +197,7 @@ export default function EventRelated({ event }: EventRelatedProps) {
   const activeTag = activeTagByEvent[event.slug] ?? defaultActiveTag
 
   const {
-    data: events = [],
+    data: relatedEventsResult,
     isLoading: loading,
     error,
     refetch,
@@ -193,13 +207,19 @@ export default function EventRelated({ event }: EventRelatedProps) {
     tag: cryptoCadenceRouteSlug ? undefined : activeTag,
     locale,
   })
+  const events = relatedEventsResult?.events ?? EMPTY_RELATED_EVENTS
+  const relatedEventsReceivedAt = relatedEventsResult?.receivedAt ?? null
+  const serverClockOffsetMs = relatedEventsResult?.serverClockOffsetMs ?? 0
   const currentTimestamp = useCurrentTimestamp({ intervalMs: cryptoCadenceRouteSlug ? 1_000 : false })
   const visibleEvents = useMemo(
     () =>
       cryptoCadenceRouteSlug && currentTimestamp != null
-        ? events.filter((candidate) => candidate.end_date && Date.parse(candidate.end_date) > currentTimestamp)
+        ? events.filter(
+            (candidate) =>
+              candidate.end_date && Date.parse(candidate.end_date) > currentTimestamp + serverClockOffsetMs,
+          )
         : events,
-    [cryptoCadenceRouteSlug, currentTimestamp, events],
+    [cryptoCadenceRouteSlug, currentTimestamp, events, serverClockOffsetMs],
   )
   const marketTargets = useMemo(
     () =>
@@ -210,31 +230,45 @@ export default function EventRelated({ event }: EventRelatedProps) {
       ),
     [visibleEvents],
   )
-  const quotesByMarket = useEventMarketQuotes(marketTargets)
-  const lastTradesByMarket = useEventLastTrades(marketTargets)
+  const quotesByMarket = useEventMarketQuotes(marketTargets, {
+    refetchIntervalMs: cryptoCadenceRouteSlug ? undefined : false,
+  })
+  const lastTradesByMarket = useEventLastTrades(marketTargets, cryptoCadenceRouteSlug ? undefined : false)
+  const lastKnownExpiryRef = useRef<{ key: string; expiry: number } | null>(null)
 
   useEffect(() => {
     if (!cryptoCadenceRouteSlug) {
+      lastKnownExpiryRef.current = null
       return
     }
 
+    const refreshKey = `${event.slug}:${activeTag}`
+    if (lastKnownExpiryRef.current?.key !== refreshKey) {
+      lastKnownExpiryRef.current = null
+    }
+    const serverNow = Date.now() + serverClockOffsetMs
     const nextExpiry = Math.min(
       ...events
         .map((candidate) => (candidate.end_date ? Date.parse(candidate.end_date) : Number.POSITIVE_INFINITY))
-        .filter((timestamp) => timestamp > Date.now()),
+        .filter((timestamp) => timestamp > serverNow),
     )
-    if (!Number.isFinite(nextExpiry)) {
+    if (Number.isFinite(nextExpiry)) {
+      lastKnownExpiryRef.current = { key: refreshKey, expiry: nextExpiry }
+    }
+    const delay = resolveRelatedRoundRefreshDelay(
+      events.map((candidate) => candidate.end_date),
+      serverNow,
+      lastKnownExpiryRef.current?.expiry ?? null,
+    )
+    if (delay == null) {
       return
     }
 
-    const timeout = window.setTimeout(
-      () => {
-        void refetch()
-      },
-      Math.max(0, nextExpiry - Date.now() + 50),
-    )
+    const timeout = window.setTimeout(() => {
+      void refetch()
+    }, delay)
     return () => window.clearTimeout(timeout)
-  }, [cryptoCadenceRouteSlug, events, refetch])
+  }, [activeTag, cryptoCadenceRouteSlug, event.slug, events, refetch, relatedEventsReceivedAt, serverClockOffsetMs])
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const buttonsWrapperRef = useRef<HTMLDivElement>(null)

@@ -15,6 +15,44 @@ interface SelectRelatedEventCandidatesOptions {
   limit: number
 }
 
+// Share database reads within a short window without holding a round across its rollover.
+const CRYPTO_RELATED_TIME_BUCKET_MS = 5_000
+const OTHER_RELATED_TIME_BUCKET_MS = 60_000
+const POST_ROLLOVER_RETRY_MS = 2_000
+const POST_ROLLOVER_RETRY_WINDOW_MS = 15_000
+
+export function bucketRelatedEventsTimestamp(timestamp: number, isCryptoCadence: boolean) {
+  const bucketSize = isCryptoCadence ? CRYPTO_RELATED_TIME_BUCKET_MS : OTHER_RELATED_TIME_BUCKET_MS
+  return Math.floor(timestamp / bucketSize) * bucketSize
+}
+
+export function resolveRelatedServerClockOffset(serverTimeHeader: string | null, receivedAt: number) {
+  const serverTime = serverTimeHeader == null ? Number.NaN : Number(serverTimeHeader)
+  return Number.isFinite(serverTime) && serverTime > 0 ? serverTime - receivedAt : 0
+}
+
+export function resolveRelatedRoundRefreshDelay(
+  endDates: Array<string | null>,
+  serverNow: number,
+  lastKnownExpiry: number | null,
+) {
+  const expiries = endDates.map((endDate) => (endDate ? Date.parse(endDate) : Number.NaN)).filter(Number.isFinite)
+  const recentlyExpired = expiries.some(
+    (expiry) => expiry <= serverNow && serverNow - expiry < POST_ROLLOVER_RETRY_WINDOW_MS,
+  )
+  const previousRoundRecentlyExpired =
+    lastKnownExpiry != null &&
+    lastKnownExpiry <= serverNow &&
+    serverNow - lastKnownExpiry < POST_ROLLOVER_RETRY_WINDOW_MS
+
+  if (recentlyExpired || previousRoundRecentlyExpired) {
+    return POST_ROLLOVER_RETRY_MS
+  }
+
+  const nextExpiry = Math.min(...expiries.filter((expiry) => expiry > serverNow))
+  return Number.isFinite(nextExpiry) ? Math.max(100, nextExpiry - serverNow + 100) : null
+}
+
 interface CryptoRelatedSourceEvent {
   title: string
   end_date: string | null
