@@ -30,11 +30,3 @@ VALUES
   ('abnb-daily-up-or-down', 'equity_prices', 'update', 'ABNB', 'Airbnb', 'ABNB', '#FF5A5F', '/images/live-assets/abnb.svg', true, true, 390),
   ('gold-daily-up-or-down', 'equity_prices', 'update', 'XAUUSD', 'Gold', 'XAUUSD', '#FFD700', '/images/live-assets/gold-radio.svg', true, true, 450)
 ON CONFLICT (series_slug) DO NOTHING;
-
--- The Gold row may have been staged as disabled by migration 014.
--- Only enable a row that still points at the validated XAUUSD feed.
-UPDATE public.event_live_chart_configs
-SET enabled = true
-WHERE series_slug = 'gold-daily-up-or-down'
-  AND topic = 'equity_prices'
-  AND symbol = 'XAUUSD';
