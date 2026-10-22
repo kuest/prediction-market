@@ -1,14 +1,20 @@
-import { afterEach, expect, it, mock } from 'bun:test'
+import { afterEach, expect, it, jest, mock } from 'bun:test'
 
 import { GET } from '@/app/api/price-reference/live-series/route'
+
+import { useFakeTimers, useRealTimers } from '../bun-test-helpers'
 
 const originalFetch = globalThis.fetch
 
 afterEach(() => {
   globalThis.fetch = originalFetch
+  useRealTimers()
 })
 
 it('uses the current HOOD event reference and never promotes an older close into it', async () => {
+  useFakeTimers()
+  jest.setSystemTime(new Date('2026-10-22T19:00:00Z'))
+
   const eventSlug = 'hood-up-or-down-on-october-22-2026'
   const previousSlug = 'hood-up-or-down-on-october-21-2026'
   const start = Date.parse('2026-10-22T13:30:00Z')
