@@ -35,6 +35,11 @@ it('uses the current HOOD event reference and never promotes an older close into
     source_timestamp_ms: previousClose,
     source_ref: `polymarket-price-to-beat:${eventSlug}`,
   }
+  const nonPolymarketRow = {
+    ...currentRow,
+    settlement_price: 999,
+    source_ref: 'other-daily-settlement',
+  }
   globalThis.fetch = mock(async (input) => {
     const url = new URL(String(input))
     if (url.pathname === '/series-map') {
@@ -73,7 +78,11 @@ it('uses the current HOOD event reference and never promotes an older close into
     if (url.pathname === '/marks/history') {
       return Response.json({
         rows:
-          url.searchParams.get('interval') === '1d' ? (includeCurrentReference ? [currentRow, oldRow] : [oldRow]) : [],
+          url.searchParams.get('interval') === '1d'
+            ? includeCurrentReference
+              ? [nonPolymarketRow, currentRow, oldRow]
+              : [nonPolymarketRow, oldRow]
+            : [],
       })
     }
     throw new Error(`unexpected request ${url}`)

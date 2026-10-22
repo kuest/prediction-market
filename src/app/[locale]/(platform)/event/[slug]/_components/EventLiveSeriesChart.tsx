@@ -603,7 +603,7 @@ function EventLiveSeriesChartContent({
       return data.length > 0 ? data : liveFallbackData
     }
 
-    if (requiresCanonicalGoldClose && !isFinitePositivePrice(finalPrice)) {
+    if ((requiresCanonicalGoldClose || requiresCanonicalEquityClose) && !isFinitePositivePrice(finalPrice)) {
       return []
     }
 
@@ -635,6 +635,7 @@ function EventLiveSeriesChartContent({
     isEventClosed,
     liveFallbackData,
     requiresCanonicalBinanceClose,
+    requiresCanonicalEquityClose,
     requiresCanonicalGoldClose,
   ])
 
@@ -716,7 +717,7 @@ function EventLiveSeriesChartContent({
     finalPrice,
     renderedPrice,
     fallbackCurrentPrice,
-    requiresCanonicalClose: requiresCanonicalBinanceClose || requiresCanonicalGoldClose,
+    requiresCanonicalClose: requiresCanonicalBinanceClose || requiresCanonicalGoldClose || requiresCanonicalEquityClose,
   })
   const resolvedBaselinePrice = referenceOpeningPrice
   const displayedBaselinePrice = resolveDisplayedLiveSeriesBaselinePrice({

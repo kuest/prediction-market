@@ -334,8 +334,11 @@ export async function GET(request: Request) {
           openingFallbackRows.find((row) => row.window_end_ms === openingFallbackTargetMs) ??
           null)
     const windowRow = isEventBoundEquity
-      ? (closingHistoryRows.find((row) => Math.abs(row.source_timestamp_ms - eventWindowEndMs) <= 5 * 60 * 1000) ??
-        null)
+      ? (closingHistoryRows.find(
+          (row) =>
+            row.source_ref?.startsWith('polymarket-price-to-beat:') &&
+            Math.abs(row.source_timestamp_ms - eventWindowEndMs) <= 5 * 60 * 1000,
+        ) ?? null)
       : selectClosingRow(
           closingHistoryRows,
           closingHistoryTargetMs,

@@ -9,6 +9,7 @@ import type {
 } from '../_utils/eventLiveSeriesChartUtils'
 
 import {
+  isCanonicalEventBoundEquityCloseSnapshot,
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
   LIVE_DATA_RETENTION_MS,
@@ -354,7 +355,15 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
           eventWindowStartTimestamp: resolveRequestedWindowStart(request),
           eventWindowEndTimestamp: eventEndTimestamp,
         })
-      : snapshot?.closing_price != null
+      : isEventBoundEquity
+        ? isCanonicalEventBoundEquityCloseSnapshot({
+            snapshot,
+            snapshotStatus: entry.snapshot.referenceSnapshotStatus,
+            eventWindowStartTimestamp: resolveRequestedWindowStart(request),
+            eventWindowEndTimestamp: eventEndTimestamp,
+            expectedInstrument: request.subscriptionSymbol.toUpperCase(),
+          })
+        : snapshot?.closing_price != null
     const hasExpectedSource = isGoldDaily
       ? snapshot?.source === 'pyth' && snapshot.interval === '1d' && snapshot.instrument === 'XAUUSD'
       : isEventBoundEquity
