@@ -13,6 +13,7 @@ import {
   formatTimeAtTimezone,
   getVisibleCountdownUnits,
   isCanonicalBinanceDailySnapshot,
+  isCanonicalEventBoundEquityCloseSnapshot,
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
   isGoldMarketSessionOpen,
@@ -30,6 +31,46 @@ import {
   resolveLiveSeriesStartTimestamp,
   SERIES_KEY,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
+
+describe('event-bound equity close', () => {
+  it('requires the exact closed HOOD event window and a confirmed close', () => {
+    const eventWindowStartTimestamp = Date.parse('2026-10-21T13:30:00Z')
+    const eventWindowEndTimestamp = Date.parse('2026-10-21T20:00:00Z')
+    const snapshot = {
+      series_slug: 'hood-daily-up-or-down',
+      instrument: 'HOOD',
+      interval: '1d' as const,
+      source: 'pyth' as const,
+      interval_ms: 86_400_000,
+      event_window_start_ms: eventWindowStartTimestamp,
+      event_window_end_ms: eventWindowEndTimestamp,
+      opening_price: 98.22531,
+      closing_price: 101.94,
+      latest_price: null,
+      latest_window_end_ms: null,
+      latest_source_timestamp_ms: null,
+      is_event_closed: true,
+    }
+    const request = {
+      snapshot,
+      snapshotStatus: 'ready' as const,
+      eventWindowStartTimestamp,
+      eventWindowEndTimestamp,
+      expectedInstrument: 'HOOD',
+    }
+    expect(isCanonicalEventBoundEquityCloseSnapshot(request)).toBe(true)
+    expect(
+      isCanonicalEventBoundEquityCloseSnapshot({ ...request, snapshot: { ...snapshot, closing_price: null } }),
+    ).toBe(false)
+    expect(
+      isCanonicalEventBoundEquityCloseSnapshot({
+        ...request,
+        snapshot: { ...snapshot, event_window_end_ms: eventWindowEndTimestamp + 1 },
+      }),
+    ).toBe(false)
+    expect(isCanonicalEventBoundEquityCloseSnapshot({ ...request, expectedInstrument: 'COIN' })).toBe(false)
+  })
+})
 
 describe('GOLD daily live session', () => {
   it('accepts a final price only from the matching closed Pyth XAUUSD window', () => {

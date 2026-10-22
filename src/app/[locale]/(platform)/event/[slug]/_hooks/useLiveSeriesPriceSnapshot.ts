@@ -19,6 +19,7 @@ import {
 
 interface UseLiveSeriesPriceSnapshotOptions {
   config: EventLiveChartConfig
+  eventSlug?: string
   subscriptionSymbol: string
   explicitEndTimestamp: number | null
   startTimestamp: number | null
@@ -46,6 +47,7 @@ interface LiveSeriesPriceSnapshotStoreEntry {
 
 interface LiveSeriesPriceSnapshotRequest {
   seriesSlug: string
+  eventSlug?: string
   topic: string
   subscriptionSymbol: string
   activeWindowMinutes: number
@@ -66,6 +68,7 @@ const GOLD_CLOSE_REFRESH_WINDOW_MS = 24 * 60 * 60 * 1000
 const OPENING_PRICE_FIRST_REFRESH_DELAY_MS = 5 * 1000
 const OPENING_PRICE_REFRESH_INTERVAL_MS = 5 * 1000
 const OPENING_PRICE_REFRESH_WINDOW_MS = 2 * 60 * 1000
+const EQUITY_REFERENCE_REFRESH_INTERVAL_MS = 60 * 1000
 const EMPTY_LIVE_SERIES_PRICE_SNAPSHOT: LiveSeriesPriceSnapshotStoreSnapshot = {
   referenceSnapshot: null,
   referenceSnapshotStatus: 'loading',
@@ -74,6 +77,7 @@ const EMPTY_LIVE_SERIES_PRICE_SNAPSHOT: LiveSeriesPriceSnapshotStoreSnapshot = {
 
 function buildLiveSeriesPriceSnapshotStoreKey({
   seriesSlug,
+  eventSlug,
   topic,
   subscriptionSymbol,
   activeWindowMinutes,
@@ -82,6 +86,7 @@ function buildLiveSeriesPriceSnapshotStoreKey({
 }: LiveSeriesPriceSnapshotRequest) {
   return [
     seriesSlug,
+    eventSlug ?? '',
     topic.trim().toLowerCase(),
     subscriptionSymbol.trim().toLowerCase(),
     activeWindowMinutes,
@@ -92,6 +97,7 @@ function buildLiveSeriesPriceSnapshotStoreKey({
 
 function buildLiveSeriesPriceSnapshotQuery({
   seriesSlug,
+  eventSlug,
   activeWindowMinutes,
   explicitEndTimestamp,
   startTimestamp,
@@ -102,6 +108,10 @@ function buildLiveSeriesPriceSnapshotQuery({
     eventEndMs: String(eventEndTimestamp),
     activeWindowMinutes: String(activeWindowMinutes),
   })
+
+  if (eventSlug) {
+    query.set('eventSlug', eventSlug)
+  }
 
   if (startTimestamp != null && startTimestamp > 0 && startTimestamp < eventEndTimestamp) {
     query.set('eventStartMs', String(startTimestamp))
@@ -316,11 +326,15 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   void fetchLiveSeriesPriceSnapshot(storeKey, request)
 
   const isGoldDaily = isGoldDailySeries(request.seriesSlug)
-  const closeRefreshWindowMs = isGoldDaily ? GOLD_CLOSE_REFRESH_WINDOW_MS : BINANCE_CLOSE_REFRESH_WINDOW_MS
-  const closeRefreshIntervalMs = isGoldDaily ? GOLD_CLOSE_REFRESH_INTERVAL_MS : BINANCE_CLOSE_REFRESH_INTERVAL_MS
+  const isEventBoundEquity =
+    request.seriesSlug === 'hood-daily-up-or-down' || request.seriesSlug === 'coin-daily-up-or-down'
+  const closeRefreshWindowMs =
+    isGoldDaily || isEventBoundEquity ? GOLD_CLOSE_REFRESH_WINDOW_MS : BINANCE_CLOSE_REFRESH_WINDOW_MS
+  const closeRefreshIntervalMs =
+    isGoldDaily || isEventBoundEquity ? GOLD_CLOSE_REFRESH_INTERVAL_MS : BINANCE_CLOSE_REFRESH_INTERVAL_MS
 
   function getCloseRefreshIntervalMs(eventEndTimestamp: number) {
-    return isGoldDaily && Date.now() >= eventEndTimestamp + GOLD_CLOSE_FAST_REFRESH_WINDOW_MS
+    return (isGoldDaily || isEventBoundEquity) && Date.now() >= eventEndTimestamp + GOLD_CLOSE_FAST_REFRESH_WINDOW_MS
       ? GOLD_CLOSE_SLOW_REFRESH_INTERVAL_MS
       : closeRefreshIntervalMs
   }
@@ -343,7 +357,11 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
       : snapshot?.closing_price != null
     const hasExpectedSource = isGoldDaily
       ? snapshot?.source === 'pyth' && snapshot.interval === '1d' && snapshot.instrument === 'XAUUSD'
-      : snapshot?.source === 'binance'
+      : isEventBoundEquity
+        ? snapshot?.source === 'pyth' &&
+          snapshot.interval === '1d' &&
+          snapshot.instrument === request.subscriptionSymbol.toUpperCase()
+        : snapshot?.source === 'binance'
     if (
       !isSubscribed ||
       (snapshot != null && !hasExpectedSource) ||
@@ -378,22 +396,33 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
 
     await fetchLiveSeriesPriceSnapshot(storeKey, request)
     const requestedWindowStart = resolveRequestedWindowStart(request)
+    const openingRefreshWindowMs =
+      isEventBoundEquity && request.explicitEndTimestamp != null && requestedWindowStart != null
+        ? Math.max(0, request.explicitEndTimestamp - requestedWindowStart)
+        : OPENING_PRICE_REFRESH_WINDOW_MS
     if (
       !isSubscribed ||
       hasRequestedOpeningPrice(entry.snapshot.referenceSnapshot, request) ||
       requestedWindowStart == null ||
-      Date.now() >= requestedWindowStart + OPENING_PRICE_REFRESH_WINDOW_MS
+      Date.now() >= requestedWindowStart + openingRefreshWindowMs
     ) {
       return
     }
 
-    openingPriceRefreshTimer = setTimeout(refreshOpeningPriceUntilAvailable, OPENING_PRICE_REFRESH_INTERVAL_MS)
+    openingPriceRefreshTimer = setTimeout(
+      refreshOpeningPriceUntilAvailable,
+      isEventBoundEquity ? EQUITY_REFERENCE_REFRESH_INTERVAL_MS : OPENING_PRICE_REFRESH_INTERVAL_MS,
+    )
   }
 
   const requestedWindowStart = resolveRequestedWindowStart(request)
+  const openingRefreshWindowMs =
+    isEventBoundEquity && request.explicitEndTimestamp != null && requestedWindowStart != null
+      ? Math.max(0, request.explicitEndTimestamp - requestedWindowStart)
+      : OPENING_PRICE_REFRESH_WINDOW_MS
   if (
     requestedWindowStart != null &&
-    Date.now() < requestedWindowStart + OPENING_PRICE_REFRESH_WINDOW_MS &&
+    Date.now() < requestedWindowStart + openingRefreshWindowMs &&
     !hasRequestedOpeningPrice(entry.snapshot.referenceSnapshot, request)
   ) {
     const firstRefreshAtMs = requestedWindowStart + OPENING_PRICE_FIRST_REFRESH_DELAY_MS
@@ -477,6 +506,7 @@ function getLiveSeriesPriceSnapshotSnapshot(
 
 export function useLiveSeriesPriceSnapshot({
   config,
+  eventSlug,
   subscriptionSymbol,
   explicitEndTimestamp,
   startTimestamp,
@@ -493,13 +523,22 @@ export function useLiveSeriesPriceSnapshot({
 
     return {
       seriesSlug,
+      eventSlug,
       topic: config.topic,
       subscriptionSymbol,
       activeWindowMinutes: config.active_window_minutes,
       explicitEndTimestamp,
       startTimestamp,
     }
-  }, [config.active_window_minutes, config.topic, explicitEndTimestamp, seriesSlug, startTimestamp, subscriptionSymbol])
+  }, [
+    config.active_window_minutes,
+    config.topic,
+    eventSlug,
+    explicitEndTimestamp,
+    seriesSlug,
+    startTimestamp,
+    subscriptionSymbol,
+  ])
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {

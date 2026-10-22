@@ -248,6 +248,38 @@ export function isCanonicalGoldDailyCloseSnapshot({
   )
 }
 
+export function isCanonicalEventBoundEquityCloseSnapshot({
+  snapshot,
+  snapshotStatus,
+  eventWindowStartTimestamp,
+  eventWindowEndTimestamp,
+  expectedInstrument,
+}: {
+  snapshot: LiveSeriesPriceSnapshot | null
+  snapshotStatus: LiveSeriesPriceSnapshotStatus
+  eventWindowStartTimestamp: number | null
+  eventWindowEndTimestamp: number | null
+  expectedInstrument: string
+}) {
+  return (
+    snapshotStatus === 'ready' &&
+    snapshot != null &&
+    (snapshot.series_slug === 'hood-daily-up-or-down' || snapshot.series_slug === 'coin-daily-up-or-down') &&
+    snapshot.instrument === expectedInstrument &&
+    snapshot.source === 'pyth' &&
+    snapshot.interval === '1d' &&
+    snapshot.interval_ms === 24 * 60 * 60 * 1000 &&
+    snapshot.is_event_closed &&
+    eventWindowStartTimestamp != null &&
+    snapshot.event_window_start_ms === eventWindowStartTimestamp &&
+    eventWindowEndTimestamp != null &&
+    snapshot.event_window_end_ms === eventWindowEndTimestamp &&
+    snapshot.closing_price != null &&
+    Number.isFinite(snapshot.closing_price) &&
+    snapshot.closing_price > 0
+  )
+}
+
 export function requiresCanonicalBinanceDailyClose({
   snapshot,
   snapshotStatus,

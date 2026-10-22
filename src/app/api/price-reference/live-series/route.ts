@@ -179,6 +179,7 @@ async function getSeriesMapBySlug() {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const seriesSlugParam = searchParams.get('seriesSlug')?.trim() ?? ''
+  const eventSlugParam = searchParams.get('eventSlug')?.trim().toLowerCase() ?? ''
   const eventStartMsParam = searchParams.get('eventStartMs')?.trim() ?? ''
   const eventEndMsParam = searchParams.get('eventEndMs')?.trim() ?? ''
   const activeWindowMinutesParam = searchParams.get('activeWindowMinutes')?.trim() ?? ''
@@ -323,18 +324,25 @@ export async function GET(request: Request) {
     )
 
     const isGoldDailySeries = normalizedSeriesSlug === 'gold-daily-up-or-down'
-    const openingRow = isGoldDailySeries
-      ? (openingFallbackRows.find((row) => row.source_timestamp_ms < eventWindowStartMs) ?? null)
-      : (openingHistoryRows.find((row) => row.window_end_ms === openingHistoryTargetMs) ??
-        openingFallbackRows.find((row) => row.window_end_ms === openingFallbackTargetMs) ??
+    const isEventBoundEquity =
+      normalizedSeriesSlug === 'hood-daily-up-or-down' || normalizedSeriesSlug === 'coin-daily-up-or-down'
+    const openingRow = isEventBoundEquity
+      ? (openingFallbackRows.find((row) => row.source_ref === `polymarket-price-to-beat:${eventSlugParam}`) ?? null)
+      : isGoldDailySeries
+        ? (openingFallbackRows.find((row) => row.source_timestamp_ms < eventWindowStartMs) ?? null)
+        : (openingHistoryRows.find((row) => row.window_end_ms === openingHistoryTargetMs) ??
+          openingFallbackRows.find((row) => row.window_end_ms === openingFallbackTargetMs) ??
+          null)
+    const windowRow = isEventBoundEquity
+      ? (closingHistoryRows.find((row) => Math.abs(row.source_timestamp_ms - eventWindowEndMs) <= 5 * 60 * 1000) ??
         null)
-    const windowRow = selectClosingRow(
-      closingHistoryRows,
-      closingHistoryTargetMs,
-      seriesEntry.source,
-      seriesEntry.interval,
-      normalizedSeriesSlug,
-    )
+      : selectClosingRow(
+          closingHistoryRows,
+          closingHistoryTargetMs,
+          seriesEntry.source,
+          seriesEntry.interval,
+          normalizedSeriesSlug,
+        )
 
     const openingFromHistory = toFiniteNumber(openingRow?.settlement_price)
     const openingFromLatestPreferred = (() => {
@@ -362,13 +370,18 @@ export async function GET(request: Request) {
       return null
     })()
 
-    const openingPrice = isGoldDailySeries
-      ? openingFromHistory
-      : (openingFromHistory ?? openingFromLatestPreferred ?? openingFromLatestFallback)
+    const openingPrice =
+      isGoldDailySeries || isEventBoundEquity
+        ? openingFromHistory
+        : (openingFromHistory ?? openingFromLatestPreferred ?? openingFromLatestFallback)
     const closingPrice = toFiniteNumber(windowRow?.settlement_price)
-    const latestPrice = toFiniteNumber(latestMarket?.last_final?.price)
-    const latestWindowEndMs = toFiniteNumber(latestMarket?.last_final?.window_end_ms)
-    const latestSourceTimestampMs = toFiniteNumber(latestMarket?.last_final?.source_timestamp_ms)
+    const latestRow =
+      isEventBoundEquity && (isEventClosed || latestMarket?.last_final?.source_ref !== openingRow?.source_ref)
+        ? null
+        : latestMarket?.last_final
+    const latestPrice = toFiniteNumber(latestRow?.price)
+    const latestWindowEndMs = toFiniteNumber(latestRow?.window_end_ms)
+    const latestSourceTimestampMs = toFiniteNumber(latestRow?.source_timestamp_ms)
     const priceHistory = chartHistoryRows
       .filter((row) => row.window_end_ms > eventWindowStartMs && row.window_end_ms < eventWindowEndMs)
       .map((row) => ({

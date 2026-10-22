@@ -174,6 +174,60 @@ describe('useLiveSeriesPriceSnapshot', () => {
     expect(result.current.referenceSnapshot?.opening_price).toBe(123)
   })
 
+  it('keeps checking a delayed HOOD event reference after the usual two-minute window', async () => {
+    useFakeTimers()
+    const eventStartTimestamp = now - 3 * 60_000
+    const eventEndTimestamp = now + 6 * 60 * 60_000
+    function snapshot(openingPrice: number | null) {
+      return {
+        instrument: 'HOOD',
+        interval: '1d',
+        source: 'pyth',
+        opening_price: openingPrice,
+        event_window_start_ms: eventStartTimestamp,
+        event_window_end_ms: eventEndTimestamp,
+      }
+    }
+    const fetchMock = mock()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot(101.94) })
+    stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config: {
+          series_slug: 'hood-daily-up-or-down',
+          topic: 'equity_prices',
+          active_window_minutes: 390,
+        } as EventLiveChartConfig,
+        eventSlug: 'hood-up-or-down-on-october-22-2026',
+        subscriptionSymbol: 'HOOD',
+        explicitEndTimestamp: eventEndTimestamp,
+        startTimestamp: eventStartTimestamp,
+      }),
+    )
+    await act(async () => {
+      await advanceTimersByTimeAsync(0)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(
+      new URL(getRequestUrl(fetchMock.mock.calls[0]?.[0]), 'https://kuest.test').searchParams.get('eventSlug'),
+    ).toBe('hood-up-or-down-on-october-22-2026')
+
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(result.current.referenceSnapshot?.opening_price).toBe(101.94)
+  })
+
   it('keeps checking a closed GOLD round until the canonical close arrives', async () => {
     useFakeTimers()
     const eventEndTimestamp = now + 10_000

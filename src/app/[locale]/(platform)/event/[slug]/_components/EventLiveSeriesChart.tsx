@@ -26,6 +26,7 @@ import {
   hexToRgba,
   inferIntervalMsFromSeriesSlug,
   isCanonicalBinanceDailySnapshot,
+  isCanonicalEventBoundEquityCloseSnapshot,
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
   isGoldMarketSessionOpen,
@@ -358,6 +359,7 @@ function EventLiveSeriesChartContent({
     persistedFallbackPrice: snapshotFallbackPrice,
   } = useLiveSeriesPriceSnapshot({
     config: realtimeConfig,
+    eventSlug: event.slug,
     subscriptionSymbol,
     explicitEndTimestamp,
     startTimestamp: liveSeriesStartTimestamp,
@@ -483,15 +485,24 @@ function EventLiveSeriesChartContent({
     seriesClassification: seriesReferenceClassification,
   })
   const requiresCanonicalGoldClose = isGoldDailySeries(config.series_slug)
+  const requiresCanonicalEquityClose =
+    config.series_slug === 'hood-daily-up-or-down' || config.series_slug === 'coin-daily-up-or-down'
   const hasCanonicalGoldDailyClose = isCanonicalGoldDailyCloseSnapshot({
     snapshot: referenceSnapshot,
     snapshotStatus: referenceSnapshotStatus,
     eventWindowStartTimestamp: liveSeriesStartTimestamp,
     eventWindowEndTimestamp: explicitEndTimestamp,
   })
+  const hasCanonicalEquityDailyClose = isCanonicalEventBoundEquityCloseSnapshot({
+    snapshot: referenceSnapshot,
+    snapshotStatus: referenceSnapshotStatus,
+    eventWindowStartTimestamp: liveSeriesStartTimestamp,
+    eventWindowEndTimestamp: explicitEndTimestamp,
+    expectedInstrument: subscriptionSymbol.toUpperCase(),
+  })
   const finalPrice = isEventClosed
-    ? requiresCanonicalGoldClose
-      ? hasCanonicalGoldDailyClose
+    ? requiresCanonicalGoldClose || requiresCanonicalEquityClose
+      ? (requiresCanonicalGoldClose ? hasCanonicalGoldDailyClose : hasCanonicalEquityDailyClose)
         ? referenceClosingPrice
         : null
       : requiresCanonicalBinanceClose
