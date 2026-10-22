@@ -9,15 +9,11 @@ export function getDataApiUrl() {
   return dataApiUrl
 }
 
-export function buildDataApiUrl(pathname: string, searchParams?: URLSearchParams | string) {
+export function buildDataApiUrl(pathname: string, searchParams?: URLSearchParams | string, baseUrl = getDataApiUrl()) {
   const normalizedPath = pathname.startsWith('/') ? pathname : `/${pathname}`
   const query = typeof searchParams === 'string' ? searchParams : (searchParams?.toString() ?? '')
 
-  return `${getDataApiUrl()}${normalizedPath}${query ? `?${query}` : ''}`
-}
-
-export function buildUserPnlUrl(baseUrl: string, searchParams: URLSearchParams) {
-  return `${baseUrl.replace(/\/+$/, '')}/user-pnl?${searchParams.toString()}`
+  return `${baseUrl.replace(/\/+$/, '')}${normalizedPath}${query ? `?${query}` : ''}`
 }
 
 export function normalizeDataApiAddress(value: string) {

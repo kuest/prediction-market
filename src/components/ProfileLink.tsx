@@ -55,7 +55,7 @@ function useAvatarFallbackStyle(showPlaceholder: boolean, avatarSeed: string) {
 }
 
 function useProfileTooltipStats(user: ProfileLinkProps['user']) {
-  const { dataUrl, userPnlUrl } = usePublicRuntimeConfig()
+  const { dataUrl } = usePublicRuntimeConfig()
   const [shouldLoad, setShouldLoad] = useState(false)
   const statsAddress = useMemo(
     () => user.deposit_wallet_address ?? user.address,
@@ -63,14 +63,13 @@ function useProfileTooltipStats(user: ProfileLinkProps['user']) {
   )
   const normalizedStatsAddress = statsAddress?.trim().toLowerCase() ?? ''
   const statsQuery = useQuery({
-    queryKey: ['profile-link-stats', dataUrl, userPnlUrl, normalizedStatsAddress],
+    queryKey: ['profile-link-stats', dataUrl, normalizedStatsAddress],
     queryFn: ({ signal }) =>
       fetchProfileLinkStats(normalizedStatsAddress, {
         dataApiUrl: dataUrl,
-        userPnlUrl,
         signal,
       }),
-    enabled: shouldLoad && Boolean(normalizedStatsAddress && dataUrl && userPnlUrl),
+    enabled: shouldLoad && Boolean(normalizedStatsAddress && dataUrl),
     staleTime: 2_000,
     gcTime: 15 * 60 * 1_000,
     retry: 1,

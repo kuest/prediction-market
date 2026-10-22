@@ -48,7 +48,6 @@ describe('profileLinkStats', () => {
     })
     const stats = await fetchProfileLinkStats(address, {
       dataApiUrl: config.dataUrl,
-      userPnlUrl: config.userPnlUrl,
     })
 
     expect(stats).toEqual({
@@ -85,7 +84,6 @@ describe('profileLinkStats', () => {
 
     const options = {
       dataApiUrl: 'https://data-api-delayed.test',
-      userPnlUrl: 'https://user-pnl-delayed.test',
     }
     const firstRequest = fetchProfileLinkStats(address, options)
     await Promise.resolve()

@@ -6,7 +6,6 @@ import { stubGlobal, unstubAllGlobals } from '../bun-test-helpers'
 
 describe('fetchPortfolioSnapshot', () => {
   const originalDataUrl = process.env.DATA_URL
-  const originalUserPnlUrl = process.env.USER_PNL_URL
 
   afterEach(() => {
     unstubAllGlobals()
@@ -15,16 +14,10 @@ describe('fetchPortfolioSnapshot', () => {
     } else {
       process.env.DATA_URL = originalDataUrl
     }
-    if (originalUserPnlUrl === undefined) {
-      delete process.env.USER_PNL_URL
-    } else {
-      process.env.USER_PNL_URL = originalUserPnlUrl
-    }
   })
 
   it('uses the one-day PnL change and requests only the biggest closed position', async () => {
     process.env.DATA_URL = 'https://data-api.test'
-    process.env.USER_PNL_URL = 'https://user-pnl.test'
 
     const fetchMock = mock(async (input: RequestInfo | URL) => {
       const url = new URL(input instanceof Request ? input.url : input instanceof URL ? input.toString() : input)
@@ -75,7 +68,6 @@ describe('fetchPortfolioSnapshot', () => {
 
   it('discards malformed PnL points before calculating the one-day change', async () => {
     process.env.DATA_URL = 'https://data-api.test'
-    process.env.USER_PNL_URL = 'https://user-pnl.test'
 
     const fetchMock = mock(async (input: RequestInfo | URL) => {
       const url = new URL(input instanceof Request ? input.url : input instanceof URL ? input.toString() : input)

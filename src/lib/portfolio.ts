@@ -1,5 +1,4 @@
-import { buildUserPnlUrl, getDataApiUrl } from '@/lib/data-api/client'
-import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
+import { buildDataApiUrl, getDataApiUrl } from '@/lib/data-api/client'
 import { normalizeAddress } from '@/lib/wallet'
 
 export interface PortfolioSnapshot {
@@ -132,16 +131,16 @@ export async function fetchPortfolioSnapshot(userAddress?: string | null): Promi
 
   try {
     const dataApiUrl = getDataApiUrl()
-    const userPnlUrl = resolvePublicRuntimeEnv(process.env).userPnlUrl
     const valueUrl = `${dataApiUrl}/value?user=${encodeURIComponent(address)}`
     const tradedUrl = `${dataApiUrl}/traded?user=${encodeURIComponent(address)}`
-    const pnlUrl = buildUserPnlUrl(
-      userPnlUrl,
+    const pnlUrl = buildDataApiUrl(
+      '/user-pnl',
       new URLSearchParams({
         user_address: address,
         interval: '1d',
         fidelity: '1h',
       }),
+      dataApiUrl,
     )
 
     const [valueResult, biggestClosedPositionResult, tradedResult, pnlResult] = await Promise.allSettled([

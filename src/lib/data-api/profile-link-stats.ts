@@ -1,4 +1,4 @@
-import { buildUserPnlUrl, normalizeDataApiAddress } from '@/lib/data-api/client'
+import { buildDataApiUrl, normalizeDataApiAddress } from '@/lib/data-api/client'
 import { normalizeAddress } from '@/lib/wallet'
 
 export interface ProfileLinkStats {
@@ -13,7 +13,6 @@ const CACHE_MAX_ENTRIES = 200
 interface ProfileLinkStatsRequestOptions {
   dataApiUrl: string
   signal?: AbortSignal
-  userPnlUrl: string
 }
 
 interface CacheEntry {
@@ -137,33 +136,28 @@ function parseUserPnl(body: unknown): number | null {
   return points.at(-1)?.value ?? null
 }
 
-function buildApiUrl(baseUrl: string, pathname: string, searchParams: URLSearchParams) {
-  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '')
-  const normalizedPathname = pathname.startsWith('/') ? pathname : `/${pathname}`
-  return `${normalizedBaseUrl}${normalizedPathname}?${searchParams.toString()}`
-}
-
-function resolveCacheKey(dataApiUrl: string, userPnlUrl: string, address: string) {
-  return `${dataApiUrl.replace(/\/+$/, '')}:${userPnlUrl.replace(/\/+$/, '')}:${address}`
+function resolveCacheKey(dataApiUrl: string, address: string) {
+  return `${dataApiUrl.replace(/\/+$/, '')}:${address}`
 }
 
 function hasConfiguredStatsServices(options: ProfileLinkStatsRequestOptions) {
-  return Boolean(options.dataApiUrl.trim() && options.userPnlUrl.trim())
+  return Boolean(options.dataApiUrl.trim())
 }
 
-function buildStatsUrls(dataApiUrl: string, userPnlUrl: string, normalizedAddress: string) {
+function buildStatsUrls(dataApiUrl: string, normalizedAddress: string) {
   const userParams = new URLSearchParams({ user: normalizedAddress })
 
   return {
-    valueUrl: buildApiUrl(dataApiUrl, '/value', userParams),
-    volumeUrl: buildApiUrl(dataApiUrl, '/volume', userParams),
-    pnlUrl: buildUserPnlUrl(
-      userPnlUrl,
+    valueUrl: buildDataApiUrl('/value', userParams, dataApiUrl),
+    volumeUrl: buildDataApiUrl('/volume', userParams, dataApiUrl),
+    pnlUrl: buildDataApiUrl(
+      '/user-pnl',
       new URLSearchParams({
         user_address: normalizedAddress,
         interval: 'all',
         fidelity: '12h',
       }),
+      dataApiUrl,
     ),
   }
 }
@@ -172,7 +166,7 @@ async function loadProfileLinkStats(
   normalizedAddress: string,
   options: ProfileLinkStatsRequestOptions,
 ): Promise<ProfileLinkStats | null> {
-  const { valueUrl, volumeUrl, pnlUrl } = buildStatsUrls(options.dataApiUrl, options.userPnlUrl, normalizedAddress)
+  const { valueUrl, volumeUrl, pnlUrl } = buildStatsUrls(options.dataApiUrl, normalizedAddress)
 
   try {
     const [valueResult, volumeResult, pnlResult] = await Promise.allSettled([
@@ -218,7 +212,7 @@ export async function fetchProfileLinkStats(
   }
 
   const normalizedAddress = normalizeDataApiAddress(address)
-  const cacheKey = resolveCacheKey(options.dataApiUrl, options.userPnlUrl, normalizedAddress)
+  const cacheKey = resolveCacheKey(options.dataApiUrl, normalizedAddress)
   const now = Date.now()
   pruneCache(now)
   const cached = statsCache.get(cacheKey)

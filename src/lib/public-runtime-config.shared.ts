@@ -23,7 +23,6 @@ export interface PublicRuntimeConfig {
   sentryDsn: string
   subgraphsUrl: string
   siteUrl: string
-  userPnlUrl: string
   wsClobUrl: string
   wsLiveDataUrl: string
 }
@@ -79,7 +78,6 @@ export const defaultPublicRuntimeConfig: PublicRuntimeConfig = {
   sentryDsn: '',
   siteUrl: 'http://localhost:3000',
   subgraphsUrl: DEFAULT_AMOY_SERVICE_URLS.subgraphsUrl,
-  userPnlUrl: DEFAULT_AMOY_SERVICE_URLS.dataUrl,
   wsClobUrl: DEFAULT_AMOY_SERVICE_URLS.wsClobUrl,
   wsLiveDataUrl: DEFAULT_AMOY_SERVICE_URLS.wsLiveDataUrl,
 }
@@ -94,13 +92,11 @@ export function resolvePublicRuntimeEnv(
 ): Omit<PublicRuntimeConfig, 'commitSha' | 'siteUrl'> {
   const chainId = parseNetworkChainId(env.CHAIN_ID, defaultPublicRuntimeConfig.chainId)
   const networkServiceUrls = getNetworkServiceUrls(chainId)
-  const dataUrl = normalizePublicRuntimeEnvValue(env.DATA_URL, networkServiceUrls.dataUrl)
-
   return {
     clobUrl: normalizePublicRuntimeEnvValue(env.CLOB_URL, networkServiceUrls.clobUrl),
     communityUrl: normalizePublicRuntimeEnvValue(env.COMMUNITY_URL, networkServiceUrls.communityUrl),
     createMarketUrl: normalizePublicRuntimeEnvValue(env.CREATE_MARKET_URL, defaultPublicRuntimeConfig.createMarketUrl),
-    dataUrl,
+    dataUrl: normalizePublicRuntimeEnvValue(env.DATA_URL, networkServiceUrls.dataUrl),
     escrowUrl: normalizePublicRuntimeEnvValue(env.ESCROW_URL, defaultPublicRuntimeConfig.escrowUrl),
     gammaUrl: normalizePublicRuntimeEnvValue(env.GAMMA_URL, networkServiceUrls.gammaUrl),
     geoblockUrl: normalizePublicRuntimeEnvValue(env.GEOBLOCK_URL, defaultPublicRuntimeConfig.geoblockUrl),
@@ -125,8 +121,6 @@ export function resolvePublicRuntimeEnv(
     sdkDownloadUrl: normalizePublicRuntimeEnvValue(env.SDK_DOWNLOAD_URL, defaultPublicRuntimeConfig.sdkDownloadUrl),
     sentryDsn: normalizePublicRuntimeEnvValue(env.SENTRY_DSN),
     subgraphsUrl: networkServiceUrls.subgraphsUrl,
-    // Keep the field for existing consumers; /user-pnl now lives on Data API.
-    userPnlUrl: dataUrl,
     wsClobUrl: normalizePublicRuntimeEnvValue(env.WS_CLOB_URL, networkServiceUrls.wsClobUrl),
     wsLiveDataUrl: normalizePublicRuntimeEnvValue(env.WS_LIVE_DATA_URL, networkServiceUrls.wsLiveDataUrl),
   }
