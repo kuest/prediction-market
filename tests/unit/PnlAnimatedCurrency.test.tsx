@@ -13,14 +13,14 @@ void mock.module('react-animated-counter', () => ({
 }))
 
 describe('P&L animated currency', () => {
-  it('keeps its real value and sign accessible while animating both responsive sizes', () => {
+  it('keeps its real value and sign accessible with one responsive animated counter', () => {
     const view = render(<PnlAnimatedCurrency magnitude={0} sign="+" size="large" />)
     expect(screen.getByText('+$0.00')).toBeInTheDocument()
 
     view.rerender(<PnlAnimatedCurrency magnitude={0.8} sign="+" size="large" />)
     expect(screen.getByText('+$0.80')).toBeInTheDocument()
-    expect(received.at(-1)).toMatchObject({ value: 0.8, fontSize: '30px', includeDecimals: true, decimalPrecision: 2 })
-    expect(received.at(-2)).toMatchObject({ value: 0.8, fontSize: '24px', includeDecimals: true, decimalPrecision: 2 })
+    expect(received).toHaveLength(2)
+    expect(received.at(-1)).toMatchObject({ value: 0.8, fontSize: '1em', includeDecimals: true, decimalPrecision: 2 })
 
     view.rerender(<PnlAnimatedCurrency magnitude={0.8} sign="-" />)
     expect(screen.getByText('-$0.80')).toBeInTheDocument()

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import 'react-animated-counter/dist/esm/styles.css'
+
 import { PlatformLayoutFooter } from '@/app/[locale]/(platform)/(home)/_components/PlatformFooter'
 import AffiliateQueryHandler from '@/app/[locale]/(platform)/_components/AffiliateQueryHandler'
 import Header from '@/app/[locale]/(platform)/_components/Header'
