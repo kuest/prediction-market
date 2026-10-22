@@ -33,7 +33,6 @@ const RUNTIME_ENV_KEYS_BY_CONFIG_KEY = {
   reownAppKitProjectId: 'REOWN_APPKIT_PROJECT_ID',
   sdkDownloadUrl: 'SDK_DOWNLOAD_URL',
   sentryDsn: 'SENTRY_DSN',
-  userPnlUrl: 'USER_PNL_URL',
   wsClobUrl: 'WS_CLOB_URL',
   wsLiveDataUrl: 'WS_LIVE_DATA_URL',
 } as const
@@ -77,6 +76,16 @@ describe('public runtime config resolution', () => {
     for (const key of KUEST_DEFAULT_CONFIG_KEYS) {
       expect(config[key]).toBe(`https://override.example/${key}`)
     }
+    expect(config.userPnlUrl).toBe(config.dataUrl)
+  })
+
+  it('routes legacy User PNL consumers through the configured Data API', () => {
+    const config = resolvePublicRuntimeEnv({
+      CHAIN_ID: '137',
+      DATA_URL: 'https://data-api.example',
+      USER_PNL_URL: 'https://user-pnl-api.kuest.com',
+    })
+    expect(config.userPnlUrl).toBe('https://data-api.example')
   })
 
   it('parses CHAIN_ID from the environment', () => {
@@ -97,6 +106,7 @@ describe('public runtime config resolution', () => {
     expect(config.communityUrl).toBe('https://community.kuest.com')
     expect(config.createMarketUrl).toBe('https://create-market.kuest.com')
     expect(config.dataUrl).toBe('https://data-api.kuest.com')
+    expect(config.userPnlUrl).toBe(config.dataUrl)
     expect(config.subgraphsUrl).toBe('https://subgraphs.kuest.com')
     expect(config.wsClobUrl).toBe('wss://ws-subscriptions-clob.kuest.com')
   })
@@ -108,6 +118,7 @@ describe('public runtime config resolution', () => {
     expect(config.communityUrl).toBe('https://community-staging.kuest.com')
     expect(config.createMarketUrl).toBe('https://create-market.kuest.com')
     expect(config.dataUrl).toBe('https://data-api-staging.kuest.com')
+    expect(config.userPnlUrl).toBe(config.dataUrl)
     expect(config.subgraphsUrl).toBe('https://subgraphs-staging.kuest.com')
     expect(config.wsClobUrl).toBe('wss://ws-subscriptions-clob-staging.kuest.com')
   })

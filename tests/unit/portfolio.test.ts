@@ -67,6 +67,8 @@ describe('fetchPortfolioSnapshot', () => {
       user: `0x${'a'.repeat(40)}`,
     })
     const pnlUrl = urls.find((url) => url.pathname === '/user-pnl')
+    expect(pnlUrl?.origin).toBe('https://data-api.test')
+    expect(pnlUrl?.searchParams.get('user_address')).toBe(`0x${'a'.repeat(40)}`)
     expect(pnlUrl?.searchParams.get('interval')).toBe('1d')
     expect(pnlUrl?.searchParams.get('fidelity')).toBe('1h')
   })
@@ -105,5 +107,10 @@ describe('fetchPortfolioSnapshot', () => {
     await expect(fetchPortfolioSnapshot(`0x${'b'.repeat(40)}`)).resolves.toMatchObject({
       profitLoss: 20,
     })
+    const pnlUrl = fetchMock.mock.calls
+      .map(([input]) => new URL(input instanceof Request ? input.url : input instanceof URL ? input.toString() : input))
+      .find((url) => url.pathname === '/user-pnl')
+    expect(pnlUrl?.origin).toBe('https://data-api.test')
+    expect(pnlUrl?.searchParams.get('user_address')).toBe(`0x${'b'.repeat(40)}`)
   })
 })
