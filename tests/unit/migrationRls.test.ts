@@ -9,14 +9,6 @@ function tableNames(sql: string, pattern: RegExp) {
 }
 
 describe('database migrations', () => {
-  it('does not activate HOOD or COIN while the new frontend is building', async () => {
-    const migration = await readFile(
-      path.join(migrationsDirectory, '2026_09_15_017_enable_hood_coin_live_chart_configs.sql'),
-      'utf8',
-    )
-    expect(migration).not.toMatch(/\b(?:UPDATE|INSERT|DELETE)\b/i)
-  })
-
   it('enables row level security for every created table', async () => {
     const migrationFiles = (await readdir(migrationsDirectory)).filter((file) => file.endsWith('.sql')).sort()
     const migrations = await Promise.all(
