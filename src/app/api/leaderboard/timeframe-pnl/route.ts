@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { DEFAULT_ERROR_MESSAGE } from '@/lib/constants'
+import { buildUserPnlUrl } from '@/lib/data-api/client'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { normalizeAddress } from '@/lib/wallet'
 
@@ -224,8 +225,7 @@ async function fetchUserTimeframePnl(period: TimePeriod, address: string, signal
       fidelity,
     })
 
-    const endpoint = new URL('/user-pnl', userPnlUrl)
-    const response = await fetch(`${endpoint.toString()}?${params.toString()}`, {
+    const response = await fetch(buildUserPnlUrl(userPnlUrl, params), {
       signal: controller.signal,
       cache: 'no-store',
     })

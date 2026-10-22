@@ -1,4 +1,4 @@
-import { getDataApiUrl } from '@/lib/data-api/client'
+import { buildUserPnlUrl, getDataApiUrl } from '@/lib/data-api/client'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { normalizeAddress } from '@/lib/wallet'
 
@@ -135,18 +135,20 @@ export async function fetchPortfolioSnapshot(userAddress?: string | null): Promi
     const userPnlUrl = resolvePublicRuntimeEnv(process.env).userPnlUrl
     const valueUrl = `${dataApiUrl}/value?user=${encodeURIComponent(address)}`
     const tradedUrl = `${dataApiUrl}/traded?user=${encodeURIComponent(address)}`
-    const pnlEndpoint = new URL('/user-pnl', userPnlUrl)
-    pnlEndpoint.search = new URLSearchParams({
-      user_address: address,
-      interval: '1d',
-      fidelity: '1h',
-    }).toString()
+    const pnlUrl = buildUserPnlUrl(
+      userPnlUrl,
+      new URLSearchParams({
+        user_address: address,
+        interval: '1d',
+        fidelity: '1h',
+      }),
+    )
 
     const [valueResult, biggestClosedPositionResult, tradedResult, pnlResult] = await Promise.allSettled([
       fetchJson(valueUrl),
       fetchBiggestClosedPosition(dataApiUrl, address),
       fetchJson(tradedUrl),
-      fetchJson(pnlEndpoint.toString()),
+      fetchJson(pnlUrl),
     ])
 
     const positionsValue = valueResult.status === 'fulfilled' ? parsePortfolioValue(valueResult.value) : 0

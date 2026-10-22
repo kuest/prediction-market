@@ -22,6 +22,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from '@/components/ui/popover'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { buildUserPnlUrl } from '@/lib/data-api/client'
 import { calculatePnlGainLossThroughTime, findNearestPnlPointByTime } from '@/lib/pnl-chart'
 import { cn } from '@/lib/utils'
 import { usePortfolioValueVisibility } from '@/stores/usePortfolioValueVisibility'
@@ -73,9 +74,7 @@ function usePnlSeries({
         interval,
         fidelity,
       })
-      const endpoint = new URL('/user-pnl', pnlBaseUrl)
-
-      fetch(`${endpoint.toString()}?${params.toString()}`, {
+      fetch(buildUserPnlUrl(pnlBaseUrl, params), {
         signal: controller.signal,
       })
         .then(async (response) => {

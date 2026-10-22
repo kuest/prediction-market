@@ -16,6 +16,10 @@ export function buildDataApiUrl(pathname: string, searchParams?: URLSearchParams
   return `${getDataApiUrl()}${normalizedPath}${query ? `?${query}` : ''}`
 }
 
+export function buildUserPnlUrl(baseUrl: string, searchParams: URLSearchParams) {
+  return `${baseUrl.replace(/\/+$/, '')}/user-pnl?${searchParams.toString()}`
+}
+
 export function normalizeDataApiAddress(value: string) {
   return value.trim().toLowerCase()
 }

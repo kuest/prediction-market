@@ -24,11 +24,11 @@ describe('profileLinkStats', () => {
       const url = new URL(requestUrl)
       let body: unknown
 
-      if (url.pathname === '/value') {
+      if (url.pathname === '/gateway/value') {
         body = [{ value: 24.50555514 }]
-      } else if (url.pathname === '/volume') {
+      } else if (url.pathname === '/gateway/volume') {
         body = { volume: '103.792597' }
-      } else if (url.pathname === '/user-pnl') {
+      } else if (url.pathname === '/gateway/user-pnl') {
         body = [
           { t: 200, p: 4.69 },
           { t: 100, p: 0 },
@@ -43,7 +43,7 @@ describe('profileLinkStats', () => {
 
     const config = resolvePublicRuntimeEnv({
       CHAIN_ID: '137',
-      DATA_URL: 'https://data-api.test',
+      DATA_URL: 'https://data-api.test/gateway/',
       USER_PNL_URL: 'https://user-pnl.test',
     })
     const stats = await fetchProfileLinkStats(address, {
@@ -61,8 +61,9 @@ describe('profileLinkStats', () => {
       .map(
         ([input]) => new URL(typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url),
       )
-      .find((url) => url.pathname === '/user-pnl')
+      .find((url) => url.pathname === '/gateway/user-pnl')
     expect(pnlUrl?.origin).toBe('https://data-api.test')
+    expect(pnlUrl?.pathname).toBe('/gateway/user-pnl')
     expect(Object.fromEntries(pnlUrl?.searchParams ?? [])).toEqual({
       user_address: address,
       interval: 'all',

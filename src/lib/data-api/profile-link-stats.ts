@@ -1,4 +1,4 @@
-import { normalizeDataApiAddress } from '@/lib/data-api/client'
+import { buildUserPnlUrl, normalizeDataApiAddress } from '@/lib/data-api/client'
 import { normalizeAddress } from '@/lib/wallet'
 
 export interface ProfileLinkStats {
@@ -143,16 +143,6 @@ function buildApiUrl(baseUrl: string, pathname: string, searchParams: URLSearchP
   return `${normalizedBaseUrl}${normalizedPathname}?${searchParams.toString()}`
 }
 
-function buildUserPnlUrl(baseUrl: string, address: string) {
-  const endpoint = new URL('/user-pnl', baseUrl)
-  endpoint.search = new URLSearchParams({
-    user_address: address,
-    interval: 'all',
-    fidelity: '12h',
-  }).toString()
-  return endpoint.toString()
-}
-
 function resolveCacheKey(dataApiUrl: string, userPnlUrl: string, address: string) {
   return `${dataApiUrl.replace(/\/+$/, '')}:${userPnlUrl.replace(/\/+$/, '')}:${address}`
 }
@@ -167,7 +157,14 @@ function buildStatsUrls(dataApiUrl: string, userPnlUrl: string, normalizedAddres
   return {
     valueUrl: buildApiUrl(dataApiUrl, '/value', userParams),
     volumeUrl: buildApiUrl(dataApiUrl, '/volume', userParams),
-    pnlUrl: buildUserPnlUrl(userPnlUrl, normalizedAddress),
+    pnlUrl: buildUserPnlUrl(
+      userPnlUrl,
+      new URLSearchParams({
+        user_address: normalizedAddress,
+        interval: 'all',
+        fidelity: '12h',
+      }),
+    ),
   }
 }
 
