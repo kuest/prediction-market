@@ -126,4 +126,24 @@ describe('platform layout navigation', () => {
     expect(mocks.io).not.toHaveBeenCalled()
     expect(result.tags.map((tag) => tag.slug)).toEqual(['trending', 'new', 'crypto'])
   })
+
+  it('loads main tags while translations are pending', async () => {
+    stubEnv('BUILD_PRERENDER_PUBLIC_SHELL', 'true')
+    stubEnv('POSTGRES_URL', 'postgres://user:pass@localhost:5432/app')
+
+    const translations = Promise.withResolvers<(message: string) => string>()
+    const translationStarted = Promise.withResolvers<void>()
+    mocks.getExtracted.mockImplementation(() => {
+      translationStarted.resolve()
+      return translations.promise
+    })
+
+    const navigation = loadPlatformLayoutNavigation()
+    await translationStarted.promise
+
+    expect(mocks.getMainTags).toHaveBeenCalledOnce()
+
+    translations.resolve((message) => message)
+    expect((await navigation).tags.map((tag) => tag.slug)).toEqual(['trending', 'new', 'crypto'])
+  })
 })

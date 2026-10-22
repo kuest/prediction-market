@@ -11,8 +11,10 @@ import { deferPublicShellPrerenderIfNeeded } from '@/lib/public-shell-rendering'
 async function loadCachedPlatformLayoutNavigation(locale: SupportedLocale) {
   'use cache'
 
-  const t = await getExtracted({ locale })
-  const { data: mainTags, globalChilds } = await loadPlatformMainTags(locale)
+  const [t, { data: mainTags, globalChilds }] = await Promise.all([
+    getExtracted({ locale }),
+    loadPlatformMainTags(locale),
+  ])
 
   return {
     tags: buildPlatformNavigationTags({

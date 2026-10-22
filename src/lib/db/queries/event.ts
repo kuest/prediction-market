@@ -1796,8 +1796,10 @@ async function hydrateEventListResults({
     ),
   )
   const eventIds = eventsData.map((event) => event.id)
-  const sportsVolumeGroupKeyByEventId = await getSportsVolumeGroupKeysByEventId(eventIds)
-  const sportsVolumeGroupKeysForAggregation = Array.from(new Set(sportsVolumeGroupKeyByEventId.values()))
+  const sportsVolumeGroupKeysPromise = getSportsVolumeGroupKeysByEventId(eventIds)
+  const groupedSportsVolumesPromise = sportsVolumeGroupKeysPromise.then((groupKeysByEventId) =>
+    getSportsAggregatedVolumesByGroupKey(Array.from(new Set(groupKeysByEventId.values()))),
+  )
   const [
     priceMap,
     lastTradeMap,
@@ -1805,7 +1807,9 @@ async function hydrateEventListResults({
     localizedEventTitlesById,
     localizedEventAdditionalContextsById,
     localizedEventRulesById,
+    sportsVolumeGroupKeyByEventId,
     groupedSportsVolumesByGroupKey,
+    liveChartSeriesSlugs,
   ] = await Promise.all([
     skipLivePricing ? Promise.resolve(new Map<string, OutcomePrices>()) : fetchOutcomePrices(tokensForPricing),
     skipLivePricing ? Promise.resolve(new Map<string, number>()) : fetchLastTradePrices(tokensForPricing),
@@ -1813,9 +1817,10 @@ async function hydrateEventListResults({
     getLocalizedEventTitlesById(eventIds, locale),
     getLocalizedEventAdditionalContextsById(eventIds, locale),
     getLocalizedEventRulesById(eventIds, locale),
-    getSportsAggregatedVolumesByGroupKey(sportsVolumeGroupKeysForAggregation),
+    sportsVolumeGroupKeysPromise,
+    groupedSportsVolumesPromise,
+    getEnabledLiveChartSeriesSlugs(),
   ])
-  const liveChartSeriesSlugs = await getEnabledLiveChartSeriesSlugs()
 
   return eventsData
     .filter((event) => event.markets?.length > 0)
@@ -3980,16 +3985,27 @@ export const EventRepository = {
     slugs: string[],
     userId: string = '',
     locale: SupportedLocale = DEFAULT_LOCALE,
+    listFilters?: ListEventsProps,
   ): Promise<QueryResult<Event[]>> {
     return runQuery(async () => {
       const normalizedSlugs = Array.from(new Set(slugs.map((slug) => slug.trim()).filter(Boolean)))
       if (normalizedSlugs.length === 0) {
         return { data: [], error: null }
       }
+      const listContext = listFilters ? await buildEventListQueryContext({ ...listFilters, userId, locale }) : null
+      if (listContext?.empty) {
+        return { data: [], error: null }
+      }
 
       const eventResults = (await db.query.events.findMany({
         where: {
-          RAW: (table) => and(inArray(table.slug, normalizedSlugs), eq(table.is_hidden, false))!,
+          RAW: (table) =>
+            listContext
+              ? mapEventColumnsToRelationAlias(
+                  and(listContext.baseWhere, inArray(events.slug, normalizedSlugs))!,
+                  table,
+                )
+              : and(inArray(table.slug, normalizedSlugs), eq(table.is_hidden, false))!,
         },
         with: {
           markets: {
@@ -4017,7 +4033,7 @@ export const EventRepository = {
       }
 
       const hydratedEventResults = await Promise.all(eventResults.map(hydrateSportsAuxiliaryEventContext))
-      const sportsSlugResolver = await getSportsSlugResolverFromDb()
+      const sportsSlugResolver = listContext?.sportsSlugResolver ?? (await getSportsSlugResolverFromDb())
       const eventsWithMarkets = await hydrateEventListResults({
         eventsData: hydratedEventResults,
         locale,

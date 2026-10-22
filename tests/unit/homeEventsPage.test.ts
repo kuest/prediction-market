@@ -7,6 +7,7 @@ import { hoisted } from '../bun-test-helpers'
 const mocks = hoisted(() => ({
   cacheTag: mock(),
   filterHomeEvents: mock(),
+  getEventsBySlugs: mock(),
   listEvents: mock(),
 }))
 
@@ -16,6 +17,7 @@ void mock.module('next/cache', () => ({
 
 void mock.module('@/lib/db/queries/event', () => ({
   EventRepository: {
+    getEventsBySlugs: (...args: any[]) => mocks.getEventsBySlugs(...args),
     listEvents: (...args: any[]) => mocks.listEvents(...args),
   },
 }))
@@ -35,6 +37,11 @@ describe('listHomeEventsPage', () => {
     mocks.cacheTag.mockReset()
     mocks.listEvents.mockReset()
     mocks.filterHomeEvents.mockReset()
+    mocks.getEventsBySlugs.mockReset()
+    mocks.getEventsBySlugs.mockImplementation(async (slugs: string[]) => ({
+      data: slugs.map((slug) => ({ id: slug, slug })),
+      error: null,
+    }))
   })
 
   it('queries one SQL-filtered page for resolved pages without home visibility filters', async () => {
@@ -298,9 +305,13 @@ describe('listHomeEventsPage', () => {
   it('keeps scanning active pages when recurring series can replace earlier events', async () => {
     const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
       id: `page-1-${index}`,
+      slug: `page-1-${index}`,
       ...(index === 0 ? { series_slug: 'series-1' } : {}),
     }))
-    const secondBatch = Array.from({ length: queryBatchSize }, (_, index) => ({ id: `batch-2-${index}` }))
+    const secondBatch = Array.from({ length: queryBatchSize }, (_, index) => ({
+      id: `batch-2-${index}`,
+      slug: `batch-2-${index}`,
+    }))
     const thirdBatch: any[] = []
     const visibleAfterAllBatches = [...secondBatch.slice(0, 8), ...firstPage.slice(8)]
 
@@ -337,6 +348,7 @@ describe('listHomeEventsPage', () => {
         excludeSportsAuxiliary: true,
         limit: queryBatchSize,
         offset: initialPageSize,
+        skipLivePricing: true,
       }),
     )
     expect(mocks.listEvents).toHaveBeenNthCalledWith(
@@ -345,7 +357,14 @@ describe('listHomeEventsPage', () => {
         excludeSportsAuxiliary: true,
         limit: queryBatchSize,
         offset: initialPageSize + queryBatchSize,
+        skipLivePricing: true,
       }),
+    )
+    expect(mocks.getEventsBySlugs).toHaveBeenCalledWith(
+      secondBatch.slice(0, 8).map((event) => event.slug),
+      '',
+      'en',
+      expect.objectContaining({ status: 'active', tag: 'trending', excludeSportsAuxiliary: true }),
     )
     expect(result).toEqual({
       data: visibleAfterAllBatches.slice(0, 32),
@@ -353,6 +372,160 @@ describe('listHomeEventsPage', () => {
       currentTimestamp: null,
       hasMore: true,
     })
+  })
+
+  it('refreshes only selected crypto cards with live prices after scanning a recurring series', async () => {
+    const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
+      id: `crypto-${index}`,
+      slug: `crypto-${index}`,
+      ...(index === 0 ? { series_slug: 'btc-15m' } : {}),
+      price: 0.4,
+    }))
+    const laterEvent = { id: 'btc-next', slug: 'btc-next', series_slug: 'btc-15m', price: 0.4 }
+    const selected = [laterEvent, firstPage[1]]
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: [laterEvent], error: null })
+    mocks.filterHomeEvents.mockReturnValueOnce(selected)
+    mocks.getEventsBySlugs.mockResolvedValueOnce({
+      data: [{ ...laterEvent, price: 0.6 }],
+      error: null,
+    })
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      locale: 'en',
+      mainTag: 'crypto',
+      status: 'active',
+      tag: 'crypto',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenNthCalledWith(2, expect.objectContaining({ skipLivePricing: true }))
+    expect(mocks.getEventsBySlugs).toHaveBeenCalledWith(
+      ['btc-next'],
+      '',
+      'en',
+      expect.objectContaining({ status: 'active', tag: 'crypto', excludeSportsAuxiliary: true }),
+    )
+    expect(result.data.map((event: { id: string; price: number }) => [event.id, event.price])).toEqual([
+      ['btc-next', 0.6],
+      ['crypto-1', 0.4],
+    ])
+  })
+
+  it('does not refetch prices when all selected cards came from the priced first page', async () => {
+    const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
+      id: `first-${index}`,
+      slug: `first-${index}`,
+      ...(index === 0 ? { series_slug: 'btc-15m' } : {}),
+      price: 0.4,
+    }))
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+    mocks.filterHomeEvents.mockReturnValueOnce(firstPage.slice(0, 32))
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      locale: 'en',
+      mainTag: 'crypto',
+      status: 'active',
+      tag: 'crypto',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenNthCalledWith(2, expect.objectContaining({ skipLivePricing: true }))
+    expect(mocks.getEventsBySlugs).not.toHaveBeenCalled()
+    expect(result.data).toEqual(firstPage.slice(0, 32))
+  })
+
+  it('keeps private recurring-series listings on the existing pricing path', async () => {
+    const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
+      id: `private-${index}`,
+      slug: `private-${index}`,
+      ...(index === 0 ? { series_slug: 'private-series' } : {}),
+    }))
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+    mocks.filterHomeEvents.mockReturnValueOnce(firstPage)
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    await listHomeEventsPage({
+      bookmarked: true,
+      locale: 'en',
+      mainTag: 'crypto',
+      status: 'active',
+      tag: 'crypto',
+      userId: 'user-1',
+    })
+
+    expect(mocks.listEvents).toHaveBeenNthCalledWith(2, expect.objectContaining({ skipLivePricing: false }))
+    expect(mocks.getEventsBySlugs).not.toHaveBeenCalled()
+  })
+
+  it.each(['draft', 'hidden'])('omits a selected card that became %s before hydration', async () => {
+    const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
+      id: `event-${index}`,
+      slug: `event-${index}`,
+      ...(index === 0 ? { series_slug: 'btc-15m' } : {}),
+    }))
+    const laterEvent = { id: 'btc-next', slug: 'btc-next', series_slug: 'btc-15m' }
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: [laterEvent], error: null })
+    mocks.filterHomeEvents.mockReturnValueOnce([laterEvent, firstPage[1]])
+    mocks.getEventsBySlugs.mockResolvedValueOnce({ data: [], error: null })
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      locale: 'en',
+      mainTag: 'trending',
+      status: 'active',
+      tag: 'trending',
+      userId: '',
+    })
+
+    expect(mocks.getEventsBySlugs).toHaveBeenCalledWith(
+      ['btc-next'],
+      '',
+      'en',
+      expect.objectContaining({ status: 'active', tag: 'trending', excludeSportsAuxiliary: true }),
+    )
+    expect(result.data).toEqual([firstPage[1]])
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not restore unpriced cards from a cached scan if hydration fails', async () => {
+    const firstPage = Array.from({ length: initialPageSize }, (_, index) => ({
+      id: `event-${index}`,
+      slug: `event-${index}`,
+      ...(index === 0 ? { series_slug: 'btc-15m' } : {}),
+    }))
+    const laterEvent = { id: 'btc-next', slug: 'btc-next', series_slug: 'btc-15m' }
+    const selected = [laterEvent, firstPage[1]]
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstPage, error: null })
+      .mockResolvedValueOnce({ data: [laterEvent], error: null })
+    mocks.filterHomeEvents.mockReturnValueOnce(selected)
+    mocks.getEventsBySlugs.mockResolvedValueOnce({ data: null, error: 'refresh failed' })
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      locale: 'en',
+      mainTag: 'trending',
+      status: 'active',
+      tag: 'trending',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2)
+    expect(result.data).toEqual([firstPage[1]])
   })
 
   it('forwards sortBy to the events repository', async () => {
