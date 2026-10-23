@@ -52,7 +52,7 @@ For code contributions:
 ### Code Quality
 
 - `bun run lint` applies safe lint fixes.
-- `bun run fmt` formats supported files with Oxfmt.
+- `bun run fmt` formats supported files with Bun's built-in formatter.
 
 ## License
 

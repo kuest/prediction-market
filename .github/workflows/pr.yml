@@ -26,7 +26,7 @@ jobs:
       - run: bunx --no-install --bun next typegen
       - run: bunx --no-install oxlint . --ignore-pattern 'tests/**'
       - run: bunx --no-install oxlint --config .oxlintrc.tests.json tests
-      - run: bunx --no-install oxfmt --check
+      - run: bun fmt --check
 
   unit:
     runs-on: ubuntu-24.04
