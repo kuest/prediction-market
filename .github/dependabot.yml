@@ -19,9 +19,6 @@ updates:
       - dependency-name: 'wagmi'
         versions:
           - '3.x'
-      - dependency-name: '@types/node'
-        versions:
-          - '26.x'
     groups:
       bun-dependencies:
         patterns:
