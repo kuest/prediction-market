@@ -1,6 +1,6 @@
 [install]
 minimumReleaseAge = 86400
-minimumReleaseAgeExcludes = ["elliptic", "ws", "uuid", "axios", "nanoid"]
+minimumReleaseAgeExcludes = ["elliptic", "ws", "uuid", "axios", "nanoid", "@types/bun"]
 linker = "hoisted"
 
 [test]

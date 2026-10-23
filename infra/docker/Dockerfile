@@ -1,4 +1,4 @@
-FROM oven/bun:1.4.3 AS build
+FROM oven/bun:1.4.4 AS build
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -15,7 +15,7 @@ ARG COMMIT_SHA=unknown
 ENV COMMIT_SHA=$COMMIT_SHA
 RUN bun run build
 
-FROM oven/bun:1.4.3 AS runner
+FROM oven/bun:1.4.4 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

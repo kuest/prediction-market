@@ -92,7 +92,7 @@
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.8",
-    "@types/bun": "1.4.3",
+    "@types/bun": "1.4.4",
     "@types/canvas-confetti": "1.9.0",
     "@types/mdx": "2.0.14",
     "@types/node": "26.6.5",
@@ -126,7 +126,7 @@
     ]
   },
   "engines": {
-    "bun": "1.4.3"
+    "bun": "1.4.4"
   },
   "trustedDependencies": [
     "@sentry/cli",
