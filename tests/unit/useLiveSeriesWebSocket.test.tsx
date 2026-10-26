@@ -493,6 +493,102 @@ describe('useLiveSeriesWebSocket', () => {
     hiddenSpy.mockRestore()
   })
 
+  it('restores an equal-watermark snapshot after a second return without regressing the saved price', () => {
+    useFakeTimers()
+    let isHidden = false
+    const hiddenSpy = spyOnAccessor(document, 'hidden', 'get').mockImplementation(() => isHidden)
+    const { result, socket, unmount } = mountHook()
+    act(() => socket.emitMessage({ type: 'subscribe', data: [{ symbol: 'BTC', value: 100, timestamp: now - 1_000 }] }))
+
+    act(() => {
+      isHidden = true
+      document.dispatchEvent(new Event('visibilitychange'))
+      now += 2_000
+      isHidden = false
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    const firstResumedSocket = MockWebSocket.instances.at(-1)!
+    const latestTimestamp = now
+    act(() => {
+      firstResumedSocket.emitOpen()
+      firstResumedSocket.emitMessage({
+        type: 'subscribe',
+        data: [
+          { symbol: 'BTC', value: 101, timestamp: now - 1_000 },
+          { symbol: 'BTC', value: 102, timestamp: latestTimestamp },
+        ],
+      })
+      now += 1_250
+      jest.advanceTimersByTime(1_250)
+    })
+
+    act(() => {
+      isHidden = true
+      document.dispatchEvent(new Event('visibilitychange'))
+      now += 2_000
+      isHidden = false
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(result.current.data).toEqual([])
+
+    const secondResumedSocket = MockWebSocket.instances.at(-1)!
+    act(() => {
+      secondResumedSocket.emitOpen()
+      secondResumedSocket.emitMessage({
+        type: 'subscribe',
+        data: [
+          { symbol: 'BTC', value: 101, timestamp: latestTimestamp - 1_000 },
+          { symbol: 'BTC', value: 102.5, timestamp: latestTimestamp },
+        ],
+      })
+    })
+    expect(result.current.data.map((point) => [point.date.getTime(), point[SERIES_KEY]])).toEqual([
+      [latestTimestamp - 1_000, 101],
+      [latestTimestamp, 102.5],
+    ])
+    expect(JSON.parse(window.localStorage.getItem('kuest-live-last-price:crypto_prices:BTC')!)).toEqual({
+      price: 102,
+      timestamp: latestTimestamp,
+    })
+
+    const restoredData = result.current.data
+    act(() =>
+      secondResumedSocket.emitMessage({
+        type: 'update',
+        symbol: 'BTC',
+        value: 1,
+        timestamp: latestTimestamp - 1,
+      }),
+    )
+    expect(result.current.data).toBe(restoredData)
+
+    act(() =>
+      secondResumedSocket.emitMessage({
+        type: 'update',
+        symbol: 'BTC',
+        value: 103,
+        timestamp: now,
+      }),
+    )
+    const newerData = result.current.data
+    act(() =>
+      secondResumedSocket.emitMessage({
+        type: 'update',
+        symbol: 'BTC',
+        value: 1,
+        timestamp: latestTimestamp + 1,
+      }),
+    )
+    expect(result.current.data).toBe(newerData)
+    expect(JSON.parse(window.localStorage.getItem('kuest-live-last-price:crypto_prices:BTC')!)).toEqual({
+      price: 103,
+      timestamp: now,
+    })
+    unmount()
+    hiddenSpy.mockRestore()
+    useRealTimers()
+  })
+
   it('coalesces resumed ticks on repeated returns without replaying hidden prices', () => {
     useFakeTimers()
     let isHidden = false

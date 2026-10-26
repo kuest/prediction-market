@@ -204,11 +204,35 @@ export function useLiveSeriesWebSocket({
         if (!latest) {
           return
         }
+        const restoresClearedWindow =
+          idleRecoveryRequested && messageIsSnapshot && latest.timestamp === lastRecoveredSourceTimestamp
         if (lastRecoveredSourceTimestamp != null) {
-          if (latest.timestamp <= lastRecoveredSourceTimestamp) {
+          if (
+            latest.timestamp < lastRecoveredSourceTimestamp ||
+            (latest.timestamp === lastRecoveredSourceTimestamp && !restoresClearedWindow)
+          ) {
             return
           }
-          lastRecoveredSourceTimestamp = latest.timestamp
+          if (!restoresClearedWindow) {
+            lastRecoveredSourceTimestamp = latest.timestamp
+          }
+        }
+
+        function currentWindowPoints() {
+          return wsUpdatesForRender
+            .filter(
+              (update) => update.timestamp > arrivalTimestamp - LIVE_WINDOW_MS && update.timestamp <= arrivalTimestamp,
+            )
+            .map((update) => ({ date: new Date(update.timestamp), [SERIES_KEY]: update.price }))
+            .slice(-MAX_POINTS)
+        }
+
+        if (restoresClearedWindow) {
+          idleRecoveryRequested = false
+          lastMessageArrivalTimestamp = arrivalTimestamp
+          setStatus('live')
+          setData(currentWindowPoints)
+          return
         }
 
         const idleGapDetected = shouldResetLiveSeriesAfterIdle(
@@ -264,13 +288,7 @@ export function useLiveSeriesWebSocket({
           if (shouldReanchorAfterIdle) {
             // A fresh subscription carries actual timestamped prices. Replace the
             // whole visible window; do not draw a flat history across the gap.
-            return wsUpdatesForRender
-              .filter(
-                (update) =>
-                  update.timestamp > arrivalTimestamp - LIVE_WINDOW_MS && update.timestamp <= arrivalTimestamp,
-              )
-              .map((update) => ({ date: new Date(update.timestamp), [SERIES_KEY]: update.price }))
-              .slice(-MAX_POINTS)
+            return currentWindowPoints()
           }
 
           if (messageIsSnapshot) {
