@@ -449,6 +449,54 @@ describe('useLiveSeriesWebSocket', () => {
     hiddenSpy.mockRestore()
   })
 
+  it('coalesces resumed ticks on repeated returns without replaying hidden prices', () => {
+    useFakeTimers()
+    let isHidden = false
+    const hiddenSpy = spyOnAccessor(document, 'hidden', 'get').mockImplementation(() => isHidden)
+    const { result, socket, unmount } = mountHook()
+
+    act(() => socket.emitMessage({ type: 'subscribe', data: [{ symbol: 'BTC', value: 100, timestamp: now }] }))
+
+    for (const [hiddenPrice, firstPrice, lastPrice] of [
+      [110, 120, 130],
+      [140, 150, 160],
+    ]) {
+      act(() => {
+        isHidden = true
+        document.dispatchEvent(new Event('visibilitychange'))
+        now += 2_000
+        socket.emitMessage({ type: 'update', symbol: 'BTC', value: hiddenPrice, timestamp: now })
+      })
+      expect(result.current.data.at(-1)?.[SERIES_KEY]).not.toBe(hiddenPrice)
+
+      act(() => {
+        isHidden = false
+        document.dispatchEvent(new Event('visibilitychange'))
+        socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice, timestamp: now })
+        socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice + 1, timestamp: now + 1 })
+        socket.emitMessage({ type: 'update', symbol: 'BTC', value: lastPrice, timestamp: now + 2 })
+      })
+
+      expect(result.current.data).toHaveLength(2)
+      expect(result.current.data.every((point) => point[SERIES_KEY] === firstPrice)).toBe(true)
+
+      act(() => {
+        now += 1_250
+        jest.advanceTimersByTime(1_250)
+      })
+      expect(result.current.data.at(-1)?.[SERIES_KEY]).toBe(lastPrice)
+      expect(result.current.data.some((point) => point[SERIES_KEY] === firstPrice + 1)).toBe(false)
+      const resumedData = result.current.data
+      act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice + 1, timestamp: now - 1_249 }))
+      expect(result.current.data).toBe(resumedData)
+    }
+
+    expect(result.current.idleRecoveryVersion).toBe(2)
+    unmount()
+    hiddenSpy.mockRestore()
+    useRealTimers()
+  })
+
   it('clears idle recovery state when the websocket effect is recreated', () => {
     const view = renderHook(
       ({ subscriptionSymbol }) =>
@@ -488,6 +536,16 @@ describe('useLiveSeriesWebSocket', () => {
 
     expect(view.result.current.idleRecovery).toBeNull()
     expect(view.result.current.idleRecoveryVersion).toBe(0)
+    expect(view.result.current.data).toEqual([])
+    const nextSocket = MockWebSocket.instances.at(-1)!
+    act(() => nextSocket.emitOpen())
+    act(() =>
+      nextSocket.emitMessage({
+        type: 'subscribe',
+        data: [{ symbol: 'ETH', value: 200, timestamp: now }],
+      }),
+    )
+    expect(view.result.current.data.at(-1)?.[SERIES_KEY]).toBe(200)
     view.unmount()
   })
 })
