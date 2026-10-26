@@ -64,10 +64,6 @@ export function buildLiveSeriesFallbackData(
   ] satisfies DataPoint[]
 }
 
-export function buildLiveSeriesIdleResetData(price: number | null, chartEndTimestamp: number) {
-  return buildLiveSeriesFallbackData(price, chartEndTimestamp, LIVE_WINDOW_MS)
-}
-
 export function shouldResetLiveSeriesAfterIdle(
   previousArrivalTimestamp: number | null,
   currentArrivalTimestamp: number,
