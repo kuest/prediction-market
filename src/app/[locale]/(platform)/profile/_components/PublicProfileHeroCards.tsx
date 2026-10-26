@@ -50,10 +50,16 @@ function usePnlSeries({
   activeTimeframe: (typeof PNL_TIMEFRAMES)[number]
   pnlSeriesKey: string
 }) {
-  const [pnlSeriesState, setPnlSeriesState] = useState<{ key: string; series: PnlPoint[] }>({
-    key: pnlSeriesKey,
-    series: [],
-  })
+  const sourceKey = `${pnlAddress ?? ''}:${pnlBaseUrl}`
+  const currentRequestKey = useRef(pnlSeriesKey)
+  useLayoutEffect(() => {
+    currentRequestKey.current = pnlSeriesKey
+  }, [pnlSeriesKey])
+  const [pnlSeriesState, setPnlSeriesState] = useState<{
+    sourceKey: string
+    timeframe: (typeof PNL_TIMEFRAMES)[number]
+    series: PnlPoint[]
+  } | null>(null)
 
   useEffect(
     function fetchPnlSeriesEffect() {
@@ -84,8 +90,7 @@ function usePnlSeries({
           return await response.json()
         })
         .then((data) => {
-          if (!Array.isArray(data)) {
-            setPnlSeriesState({ key: pnlSeriesKey, series: [] })
+          if (controller.signal.aborted || currentRequestKey.current !== pnlSeriesKey || !Array.isArray(data)) {
             return
           }
 
@@ -99,27 +104,23 @@ function usePnlSeries({
             .sort((a, b) => a.date.getTime() - b.date.getTime())
 
           if (normalized.length === 0) {
-            setPnlSeriesState({ key: pnlSeriesKey, series: [] })
             return
           }
 
-          setPnlSeriesState({ key: pnlSeriesKey, series: normalized })
+          setPnlSeriesState({ sourceKey, timeframe: activeTimeframe, series: normalized })
         })
-        .catch((error) => {
-          if (error?.name !== 'AbortError') {
-            setPnlSeriesState({ key: pnlSeriesKey, series: [] })
-          }
+        .catch(() => {
+          // Keep the last observed value when this period cannot be loaded.
         })
 
       return function abortPnlFetch() {
         controller.abort()
       }
     },
-    [activeTimeframe, pnlAddress, pnlBaseUrl, pnlSeriesKey],
+    [activeTimeframe, pnlAddress, pnlBaseUrl, pnlSeriesKey, sourceKey],
   )
 
-  const pnlSeries = pnlSeriesState.key === pnlSeriesKey ? pnlSeriesState.series : []
-  return { pnlSeries }
+  return { pnlSeries: pnlSeriesState?.sourceKey === sourceKey ? pnlSeriesState : null }
 }
 
 function usePnlTimeframeIndicator(activeTimeframe: (typeof PNL_TIMEFRAMES)[number]) {
@@ -197,7 +198,6 @@ function usePnlChartFallbackData({
   fallbackChartEndDate: string | undefined
   activeTimeframe: (typeof PNL_TIMEFRAMES)[number]
 }) {
-  const fallbackRange = useMemo(() => ({ startValue: 0, endValue: 0 }), [])
   const fallbackDurationMs = useMemo(() => {
     const ranges = {
       '1D': 1000 * 60 * 60 * 24,
@@ -215,18 +215,7 @@ function usePnlChartFallbackData({
     () => new Date(fallbackEndDate.getTime() - fallbackDurationMs),
     [fallbackDurationMs, fallbackEndDate],
   )
-  const fallbackData = useMemo(() => {
-    const points = 24
-    return Array.from({ length: points }, (_, index) => {
-      const t = points <= 1 ? 0 : index / (points - 1)
-      return {
-        date: new Date(fallbackStartDate.getTime() + (fallbackEndDate.getTime() - fallbackStartDate.getTime()) * t),
-        value: fallbackRange.startValue + (fallbackRange.endValue - fallbackRange.startValue) * t,
-      }
-    })
-  }, [fallbackEndDate, fallbackRange, fallbackStartDate])
-
-  return { fallbackRange, fallbackEndDate, fallbackStartDate, fallbackData }
+  return { fallbackEndDate, fallbackStartDate }
 }
 
 function usePnlChartDomain(chartData: PnlPoint[]) {
@@ -402,17 +391,18 @@ function ProfitLossCard({
   const { timeRangeContainerRef, timeRangeRef, timeRangeIndicator, timeRangeIndicatorReady } =
     usePnlTimeframeIndicator(activeTimeframe)
 
-  const { fallbackRange, fallbackEndDate, fallbackStartDate, fallbackData } = usePnlChartFallbackData({
+  const { fallbackEndDate, fallbackStartDate } = usePnlChartFallbackData({
     fallbackChartEndDate,
     activeTimeframe,
   })
 
-  const hasPnlSeries = pnlSeries.length > 0
-  const chartData = hasPnlSeries ? pnlSeries : fallbackData
+  const hasPnlSeries = pnlSeries !== null
+  const chartData = pnlSeries?.series ?? []
+  const displayedTimeframe = pnlSeries?.timeframe ?? activeTimeframe
   const startDate = chartData[0]?.date ?? fallbackStartDate
   const endDate = chartData.at(-1)?.date ?? fallbackEndDate
-  const startValue = chartData[0]?.value ?? fallbackRange.startValue
-  const endValue = chartData.at(-1)?.value ?? fallbackRange.endValue
+  const startValue = chartData[0]?.value ?? 0
+  const endValue = chartData.at(-1)?.value ?? 0
 
   const chartWidth = 360
   const chartHeight = 80
@@ -448,12 +438,17 @@ function ProfitLossCard({
     })
 
   const displayAbsoluteValue = clampedCursorX == null ? endValue : cursorValue
-  const displayBaselineValue = activeTimeframe === 'ALL' ? 0 : startValue
+  const displayBaselineValue = displayedTimeframe === 'ALL' ? 0 : startValue
   const displayNetValue = displayAbsoluteValue - displayBaselineValue
-  const isDeltaPositive = displayNetValue > 0
-  const isDeltaNegative = displayNetValue < 0
+  const isDeltaPositive = hasPnlSeries && displayNetValue > 0
+  const isDeltaNegative = hasPnlSeries && displayNetValue < 0
   const areValuesHidden = usePortfolioValueVisibility((state) => state.isHidden)
-  const [gainTotal, lossTotal] = usePnlGainLoss({ chartData, cursorDate, endDate, activeTimeframe })
+  const [gainTotal, lossTotal] = usePnlGainLoss({
+    chartData,
+    cursorDate,
+    endDate,
+    activeTimeframe: displayedTimeframe,
+  })
   const timeframeLabel =
     (
       {
@@ -530,12 +525,14 @@ function ProfitLossCard({
                 <span>
                   {areValuesHidden ? (
                     '****'
-                  ) : (
+                  ) : hasPnlSeries ? (
                     <PnlAnimatedCurrency
                       magnitude={displayNetValue}
                       sign={displayNetValue < 0 ? '-' : '+'}
                       size="large"
                     />
+                  ) : (
+                    '—'
                   )}
                 </span>
                 <Popover>
@@ -558,11 +555,27 @@ function ProfitLossCard({
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span>{t('Gain')}</span>
-                        <span>{areValuesHidden ? '****' : <PnlAnimatedCurrency magnitude={gainTotal} sign="+" />}</span>
+                        <span>
+                          {areValuesHidden ? (
+                            '****'
+                          ) : hasPnlSeries ? (
+                            <PnlAnimatedCurrency magnitude={gainTotal} sign="+" />
+                          ) : (
+                            '—'
+                          )}
+                        </span>
                       </div>
                       <div className="flex items-center justify-between">
                         <span>{t('Loss')}</span>
-                        <span>{areValuesHidden ? '****' : <PnlAnimatedCurrency magnitude={lossTotal} sign="-" />}</span>
+                        <span>
+                          {areValuesHidden ? (
+                            '****'
+                          ) : hasPnlSeries ? (
+                            <PnlAnimatedCurrency magnitude={lossTotal} sign="-" />
+                          ) : (
+                            '—'
+                          )}
+                        </span>
                       </div>
                       <div className="h-px w-full bg-border/60" />
                       <div className="flex items-center justify-between">
@@ -570,8 +583,10 @@ function ProfitLossCard({
                         <span>
                           {areValuesHidden ? (
                             '****'
-                          ) : (
+                          ) : hasPnlSeries ? (
                             <PnlAnimatedCurrency magnitude={displayNetValue} sign={displayNetValue < 0 ? '-' : '+'} />
+                          ) : (
+                            '—'
                           )}
                         </span>
                       </div>
