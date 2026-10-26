@@ -980,7 +980,7 @@ export default function ActivityFeed() {
                       href={eventHref}
                       onClick={(event) => event.stopPropagation()}
                       className={cn(
-                        `block min-w-0 max-w-[64ch] truncate text-sm text-muted-foreground underline-offset-2 hover:underline`,
+                        `block max-w-[64ch] min-w-0 truncate text-sm text-muted-foreground underline-offset-2 hover:underline`,
                       )}
                       title={activity.market.title}
                     >
@@ -1016,10 +1016,12 @@ export default function ActivityFeed() {
                             <span className="text-muted-foreground">
                               {activity.side === 'sell' ? t('sold') : t('bought')}
                             </span>
-                            <span className={cn('max-w-full font-semibold [overflow-wrap:anywhere]', outcomeColorClass)}>
+                            <span
+                              className={cn('max-w-full font-semibold [overflow-wrap:anywhere]', outcomeColorClass)}
+                            >
                               {outcomeText}
                             </span>
-                            <span className="max-w-full text-muted-foreground [overflow-wrap:anywhere]">
+                            <span className="max-w-full [overflow-wrap:anywhere] text-muted-foreground">
                               {t('at')}
                               {`\u00a0${priceLabel}`}
                               {totalValueLabel && `\u00a0(${totalValueLabel})`}
@@ -1033,7 +1035,7 @@ export default function ActivityFeed() {
 
                 <div
                   className={cn(
-                    `col-start-3 row-start-1 flex shrink-0 items-center justify-end gap-1.5 whitespace-nowrap text-xs text-muted-foreground sm:col-auto sm:row-auto`,
+                    `col-start-3 row-start-1 flex shrink-0 items-center justify-end gap-1.5 text-xs whitespace-nowrap text-muted-foreground sm:col-auto sm:row-auto`,
                   )}
                 >
                   {txUrl ? (
