@@ -3781,8 +3781,8 @@ export const EventRepository = {
 
       const normalizedSportsTags = toOptionalStringArray(eventRow.sports_tags)
       const hasSportsSlugInputs =
-        Boolean(eventRow.sports_sport_slug) ||
-        Boolean(eventRow.sports_series_slug) ||
+        Boolean(eventRow.sports_sport_slug?.trim()) ||
+        Boolean(eventRow.sports_series_slug?.trim()) ||
         Boolean(normalizedSportsTags?.length)
       const sportsSlugResolver = hasSportsSlugInputs ? await getSportsSlugResolverFromDb() : null
 
@@ -4224,8 +4224,8 @@ export const EventRepository = {
 
       const hasSportsSlugInputs = rows.some(
         (row) =>
-          Boolean(row.sports_sport_slug) ||
-          Boolean(row.sports_series_slug) ||
+          Boolean(row.sports_sport_slug?.trim()) ||
+          Boolean(row.sports_series_slug?.trim()) ||
           Boolean(toOptionalStringArray(row.sports_tags)?.length),
       )
       const sportsSlugResolver = hasSportsSlugInputs ? await getSportsSlugResolverFromDb() : null
