@@ -230,6 +230,7 @@ export function useLiveSeriesWebSocket({
         if (restoresClearedWindow) {
           idleRecoveryRequested = false
           lastMessageArrivalTimestamp = arrivalTimestamp
+          latestKnownPrice = latest.price
           setStatus('live')
           setData(currentWindowPoints)
           return

@@ -584,6 +584,35 @@ describe('useLiveSeriesWebSocket', () => {
       price: 103,
       timestamp: now,
     })
+
+    const acceptedTimestamp = now
+    act(() => {
+      isHidden = true
+      document.dispatchEvent(new Event('visibilitychange'))
+      now += 2_000
+      isHidden = false
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    const thirdResumedSocket = MockWebSocket.instances.at(-1)!
+    act(() => {
+      thirdResumedSocket.emitOpen()
+      thirdResumedSocket.emitMessage({
+        type: 'subscribe',
+        data: [{ symbol: 'BTC', value: 103.5, timestamp: acceptedTimestamp }],
+      })
+    })
+    expect(result.current.data.at(-1)?.[SERIES_KEY]).toBe(103.5)
+
+    now += LIVE_DATA_RETENTION_MS + 1_000
+    act(() =>
+      thirdResumedSocket.emitMessage({
+        type: 'update',
+        symbol: 'BTC',
+        value: 105,
+        timestamp: now,
+      }),
+    )
+    expect(result.current.idleRecovery?.priceSpan).toBeCloseTo(1.5)
     unmount()
     hiddenSpy.mockRestore()
     useRealTimers()
