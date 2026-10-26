@@ -380,7 +380,7 @@ function EventLiveSeriesChartContent({
     [config.active_window_minutes, realtimeTopic],
   )
 
-  const { data, idleRecovery, idleRecoveryVersion, status } = useLiveSeriesWebSocket({
+  const { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status } = useLiveSeriesWebSocket({
     topic: realtimeTopic,
     eventType: config.event_type,
     eventEndTimestamp: explicitEndTimestamp,
@@ -600,7 +600,7 @@ function EventLiveSeriesChartContent({
   )
   const dataSource = useMemo(() => {
     if (!isEventClosed) {
-      return data.length > 0 ? data : liveFallbackData
+      return data.length > 0 ? data : resumedAtTimestamp == null ? liveFallbackData : []
     }
 
     if ((requiresCanonicalGoldClose || requiresCanonicalEquityClose) && !isFinitePositivePrice(finalPrice)) {
@@ -634,6 +634,7 @@ function EventLiveSeriesChartContent({
     finalPrice,
     isEventClosed,
     liveFallbackData,
+    resumedAtTimestamp,
     requiresCanonicalBinanceClose,
     requiresCanonicalEquityClose,
     requiresCanonicalGoldClose,
@@ -675,7 +676,11 @@ function EventLiveSeriesChartContent({
       const firstPoint = pointsWithinDomain[0]
       const firstPrice = firstPoint?.[SERIES_KEY]
 
-      if (typeof firstPrice === 'number' && Number.isFinite(firstPrice)) {
+      if (
+        typeof firstPrice === 'number' &&
+        Number.isFinite(firstPrice) &&
+        (resumedAtTimestamp == null || firstPoint.date.getTime() - domainStart <= 2_000)
+      ) {
         next = [
           {
             date: new Date(domainStart),
@@ -694,7 +699,8 @@ function EventLiveSeriesChartContent({
       typeof lastPrice === 'number' &&
       Number.isFinite(lastPrice) &&
       Number.isFinite(lastTimestamp) &&
-      chartNowMs > lastTimestamp
+      chartNowMs > lastTimestamp &&
+      (resumedAtTimestamp == null || chartNowMs - lastTimestamp <= 2_000)
     ) {
       next = [
         ...next,
@@ -706,7 +712,7 @@ function EventLiveSeriesChartContent({
     }
 
     return next
-  }, [chartNowMs, dataSource, isEventClosed, liveWindowMs, tradingWindowStartMs])
+  }, [chartNowMs, dataSource, isEventClosed, liveWindowMs, resumedAtTimestamp, tradingWindowStartMs])
 
   const lastPoint = renderData.at(-1)
   const rawRenderedPrice = lastPoint?.[SERIES_KEY]

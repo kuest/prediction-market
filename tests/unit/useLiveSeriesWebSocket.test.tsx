@@ -375,7 +375,7 @@ describe('useLiveSeriesWebSocket', () => {
     hiddenSpy.mockRestore()
   })
 
-  it('reanchors to the latest price instead of rendering a long-idle snapshot backlog', () => {
+  it('replaces a long-idle window with actual points from the current snapshot', () => {
     const { result, socket } = mountHook()
 
     act(() =>
@@ -399,8 +399,12 @@ describe('useLiveSeriesWebSocket', () => {
       }),
     )
 
-    expect(result.current.data).toHaveLength(2)
-    expect(result.current.data.every((point) => point[SERIES_KEY] === 102.99)).toBe(true)
+    expect(result.current.data).toHaveLength(300)
+    expect(result.current.data[0]).toEqual({ date: new Date(snapshot[0]!.timestamp), [SERIES_KEY]: 100 })
+    expect(result.current.data.at(-1)).toEqual({
+      date: new Date(snapshot.at(-1)!.timestamp),
+      [SERIES_KEY]: 102.99,
+    })
     expect(result.current.idleRecoveryVersion).toBe(1)
     expect(result.current.idleRecovery?.priceSpan).toBeCloseTo(2.99)
   })
@@ -431,8 +435,11 @@ describe('useLiveSeriesWebSocket', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
 
+    const resumedSocket = MockWebSocket.instances.at(-1)!
+    expect(resumedSocket).not.toBe(socket)
+    act(() => resumedSocket.emitOpen())
     act(() =>
-      socket.emitMessage({
+      resumedSocket.emitMessage({
         type: 'subscribe',
         payload: {
           data: [
@@ -444,8 +451,45 @@ describe('useLiveSeriesWebSocket', () => {
     )
 
     expect(result.current.data).toHaveLength(2)
-    expect(result.current.data.every((point) => point[SERIES_KEY] === 151)).toBe(true)
+    expect(result.current.data.map((point) => point[SERIES_KEY])).toEqual([150, 151])
     expect(result.current.idleRecoveryVersion).toBe(1)
+    hiddenSpy.mockRestore()
+  })
+
+  it('leaves a missing part of the resumed window empty when the snapshot lacks those points', () => {
+    let isHidden = false
+    const hiddenSpy = spyOnAccessor(document, 'hidden', 'get').mockImplementation(() => isHidden)
+    const { result, socket } = mountHook()
+    act(() => socket.emitMessage({ type: 'subscribe', data: [{ symbol: 'BTC', value: 100, timestamp: now }] }))
+
+    act(() => {
+      isHidden = true
+      document.dispatchEvent(new Event('visibilitychange'))
+      now += LIVE_DATA_RETENTION_MS + 1_000
+      isHidden = false
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+
+    expect(result.current.data).toEqual([])
+    expect(result.current.resumedAtTimestamp).toBe(now)
+    const resumedSocket = MockWebSocket.instances.at(-1)!
+    expect(resumedSocket).not.toBe(socket)
+    act(() => {
+      resumedSocket.emitOpen()
+      resumedSocket.emitMessage({
+        type: 'subscribe',
+        data: [
+          { symbol: 'BTC', value: 110, timestamp: now - 45_000 },
+          { symbol: 'BTC', value: 120, timestamp: now - 20_000 },
+          { symbol: 'BTC', value: 121, timestamp: now - 1_000 },
+        ],
+      })
+    })
+
+    expect(result.current.data.map((point) => [point.date.getTime(), point[SERIES_KEY]])).toEqual([
+      [now - 20_000, 120],
+      [now - 1_000, 121],
+    ])
     hiddenSpy.mockRestore()
   })
 
@@ -453,13 +497,14 @@ describe('useLiveSeriesWebSocket', () => {
     useFakeTimers()
     let isHidden = false
     const hiddenSpy = spyOnAccessor(document, 'hidden', 'get').mockImplementation(() => isHidden)
-    const { result, socket, unmount } = mountHook()
+    const { result, socket: initialSocket, unmount } = mountHook()
+    let socket = initialSocket
 
     act(() => socket.emitMessage({ type: 'subscribe', data: [{ symbol: 'BTC', value: 100, timestamp: now }] }))
 
     for (const [hiddenPrice, firstPrice, lastPrice] of [
       [110, 120, 130],
-      [140, 150, 160],
+      [145, 150, 160],
     ]) {
       act(() => {
         isHidden = true
@@ -472,13 +517,25 @@ describe('useLiveSeriesWebSocket', () => {
       act(() => {
         isHidden = false
         document.dispatchEvent(new Event('visibilitychange'))
-        socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice, timestamp: now })
+      })
+      const resumedSocket = MockWebSocket.instances.at(-1)!
+      expect(resumedSocket).not.toBe(socket)
+      socket = resumedSocket
+      const snapshot = Array.from({ length: 40 }, (_, index) => ({
+        symbol: 'BTC',
+        value: firstPrice - 1 + index / 100,
+        timestamp: now - 39_000 + index * 1_000,
+      }))
+      act(() => {
+        socket.emitOpen()
+        socket.emitMessage({ type: 'subscribe', data: snapshot })
         socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice + 1, timestamp: now + 1 })
         socket.emitMessage({ type: 'update', symbol: 'BTC', value: lastPrice, timestamp: now + 2 })
       })
 
-      expect(result.current.data).toHaveLength(2)
-      expect(result.current.data.every((point) => point[SERIES_KEY] === firstPrice)).toBe(true)
+      expect(result.current.data).toHaveLength(40)
+      expect(result.current.data[0]?.date.getTime()).toBe(now - 39_000)
+      expect(result.current.data.at(-1)?.[SERIES_KEY]).toBe(snapshot.at(-1)?.value)
 
       act(() => {
         now += 1_250
@@ -489,6 +546,16 @@ describe('useLiveSeriesWebSocket', () => {
       const resumedData = result.current.data
       act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice + 1, timestamp: now - 1_249 }))
       expect(result.current.data).toBe(resumedData)
+
+      act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: lastPrice + 10, timestamp: now }))
+      const newerData = result.current.data
+      expect(newerData.at(-1)?.[SERIES_KEY]).toBe(lastPrice + 10)
+      act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: 1, timestamp: now - 500 }))
+      expect(result.current.data).toBe(newerData)
+      expect(JSON.parse(window.localStorage.getItem('kuest-live-last-price:crypto_prices:BTC')!)).toEqual({
+        price: lastPrice + 10,
+        timestamp: now,
+      })
     }
 
     expect(result.current.idleRecoveryVersion).toBe(2)

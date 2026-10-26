@@ -12,13 +12,13 @@ import {
 
 import {
   appendLivePriceTransition,
-  buildLiveSeriesIdleResetData,
   extractLivePriceUpdates,
   isSnapshotMessage,
   keepWithinLiveWindow,
   LIVE_IDLE_RECOVERY_DISPLAY_MS,
   LIVE_DATA_RETENTION_MS,
   LIVE_PRICE_TRANSITION_MS,
+  LIVE_WINDOW_MS,
   MAX_POINTS,
   normalizeLiveChartPrice,
   resolveLiveSeriesIdleRecoverySpan,
@@ -54,6 +54,7 @@ export function useLiveSeriesWebSocket({
   const [data, setData] = useState<DataPoint[]>([])
   const [idleRecovery, setIdleRecovery] = useState<LiveSeriesIdleRecovery | null>(null)
   const [idleRecoveryVersion, setIdleRecoveryVersion] = useState(0)
+  const [resumedAtTimestamp, setResumedAtTimestamp] = useState<number | null>(null)
   const [status, setStatus] = useState<'connecting' | 'live' | 'offline'>(() => (wsUrl ? 'connecting' : 'offline'))
 
   useEffect(
@@ -122,8 +123,8 @@ export function useLiveSeriesWebSocket({
               ),
             )
             writePersistedLivePrice(topic, subscriptionSymbol, update.price, update.timestamp)
-            lastRecoveredSourceTimestamp = update.timestamp
           }
+          lastRecoveredSourceTimestamp = recoveryLatestSourceTimestamp
           recoveryLatestSourceTimestamp = null
           setIdleRecovery(null)
         }, LIVE_IDLE_RECOVERY_DISPLAY_MS)
@@ -207,7 +208,7 @@ export function useLiveSeriesWebSocket({
           if (latest.timestamp <= lastRecoveredSourceTimestamp) {
             return
           }
-          lastRecoveredSourceTimestamp = null
+          lastRecoveredSourceTimestamp = latest.timestamp
         }
 
         const idleGapDetected = shouldResetLiveSeriesAfterIdle(
@@ -229,13 +230,17 @@ export function useLiveSeriesWebSocket({
         lastMessageArrivalTimestamp = arrivalTimestamp
         latestKnownPrice = latest.price
 
-        if (idleRecoveryIsActive) {
+        if (idleRecoveryIsActive && !messageIsSnapshot) {
           // Collapse queued ticks to the newest source value during the resume window.
           if (recoveryLatestSourceTimestamp == null || latest.timestamp >= recoveryLatestSourceTimestamp) {
             pendingRecoveryUpdate = latest
             recoveryLatestSourceTimestamp = latest.timestamp
           }
           return
+        }
+        if (idleRecoveryIsActive) {
+          pendingRecoveryUpdate = null
+          recoveryLatestSourceTimestamp = latest.timestamp
         }
 
         const cadenceTransitionDurationMs = resolveLivePriceTransitionDuration(
@@ -257,10 +262,15 @@ export function useLiveSeriesWebSocket({
           const cutoff = arrivalTimestamp - LIVE_DATA_RETENTION_MS
 
           if (shouldReanchorAfterIdle) {
-            // A resumed connection may deliver a large historical snapshot or a
-            // backlog of updates. Keep only the current value and let the next
-            // live update continue from this fresh 40-second window.
-            return buildLiveSeriesIdleResetData(latest.price, transitionStartTimestamp)
+            // A fresh subscription carries actual timestamped prices. Replace the
+            // whole visible window; do not draw a flat history across the gap.
+            return wsUpdatesForRender
+              .filter(
+                (update) =>
+                  update.timestamp > arrivalTimestamp - LIVE_WINDOW_MS && update.timestamp <= arrivalTimestamp,
+              )
+              .map((update) => ({ date: new Date(update.timestamp), [SERIES_KEY]: update.price }))
+              .slice(-MAX_POINTS)
           }
 
           if (messageIsSnapshot) {
@@ -335,8 +345,18 @@ export function useLiveSeriesWebSocket({
           setIdleRecovery(null)
         } else {
           const hiddenDuration = hiddenAtTimestamp == null ? 0 : visibilityTimestamp - hiddenAtTimestamp
-          if (hiddenDuration >= LIVE_PRICE_TRANSITION_MS) {
+          if (hiddenDuration >= LIVE_PRICE_TRANSITION_MS || idleRecoveryRequested) {
             idleRecoveryRequested = true
+            setResumedAtTimestamp(visibilityTimestamp)
+            setData([])
+            const previousSocket = ws
+            if (previousSocket) {
+              heartbeatController?.clear()
+              clearReconnect()
+              ws = null
+              closeWebSocketWhenReady(previousSocket)
+              connect()
+            }
           }
           hiddenAtTimestamp = null
           previousPriceMessageTimestamp = null
@@ -409,6 +429,7 @@ export function useLiveSeriesWebSocket({
         setData([])
         setIdleRecovery(null)
         setIdleRecoveryVersion(0)
+        setResumedAtTimestamp(null)
         heartbeatController.clear()
         clearReconnect()
         document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -428,5 +449,5 @@ export function useLiveSeriesWebSocket({
     [eventType, topic, isLiveView, wsUrl, subscriptionSymbol],
   )
 
-  return { data, idleRecovery, idleRecoveryVersion, status }
+  return { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status }
 }
