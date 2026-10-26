@@ -425,6 +425,7 @@ export default function EventSeriesPills({
                               render={
                                 <Link
                                   href={resolveEventPagePath(event)}
+                                  prefetch={hoveredPastBadgeId === event.id ? 'auto' : false}
                                   aria-label={resultLabel}
                                   className={cn(
                                     `inline-flex size-4 items-center justify-center rounded-full transition-transform duration-150`,
@@ -434,6 +435,8 @@ export default function EventSeriesPills({
                                   )}
                                   onMouseEnter={() => setHoveredPastBadgeId(event.id)}
                                   onMouseLeave={() => setHoveredPastBadgeId(null)}
+                                  onFocus={() => setHoveredPastBadgeId(event.id)}
+                                  onBlur={() => setHoveredPastBadgeId(null)}
                                 >
                                   <TriangleIcon
                                     className={cn('size-2.5 text-white', !isUp && 'rotate-180')}
@@ -531,6 +534,7 @@ export default function EventSeriesPills({
                     render={
                       <Link
                         href={resolveEventPagePath(event)}
+                        prefetch={isCurrentEvent ? false : 'auto'}
                         className={cn(
                           `inline-flex h-[34px] cursor-pointer items-center rounded-full px-3 text-xs leading-none font-semibold transition-colors`,
                           isCurrentEvent
@@ -691,6 +695,7 @@ export default function EventSeriesPills({
               <Link
                 key={event.id}
                 href={resolveEventPagePath(event)}
+                prefetch={isCurrent ? false : 'auto'}
                 className={cn(
                   `inline-flex h-8 items-center rounded-full px-3 text-xs leading-none font-semibold transition-colors`,
                   isCurrent
