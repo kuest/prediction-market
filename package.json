@@ -1,5 +1,6 @@
 {
   "name": "kuest-prediction-market",
+  "version": "1.0.0",
   "private": true,
   "description": "Launch Your Own Decentralized Prediction Market in Minutes.",
   "repository": {
@@ -132,6 +133,5 @@
     "@swc/core",
     "esbuild",
     "sharp"
-  ],
-  "version": "1.0.0"
+  ]
 }
