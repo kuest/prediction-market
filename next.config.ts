@@ -16,7 +16,7 @@ const config: NextConfig = {
   distDir: instantNavigationTest ? '.next/instant-test' : undefined,
   deploymentId: process.env.VERCEL_ENV ? undefined : commitSha,
   cacheComponents: true,
-  partialPrefetching: true,
+  partialPrefetching: false,
   typedRoutes: true,
   reactStrictMode: false,
   reactCompiler: true,

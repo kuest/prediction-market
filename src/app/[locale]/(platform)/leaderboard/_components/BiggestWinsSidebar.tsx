@@ -147,7 +147,7 @@ function BiggestWinRow({ entry, index }: { entry: BiggestWinEntry; index: number
           layout="stacked"
           tooltipTrigger="avatar-username"
           containerClassName="items-center gap-3 [&_[data-avatar]]:h-8 [&_[data-avatar]]:w-8"
-          avatarSize={40}
+          avatarSize={32}
           usernameClassName="text-sm font-medium text-foreground underline-offset-2 hover:underline"
           usernameMaxWidthClassName="max-w-[9ch]"
           usernameAddon={
