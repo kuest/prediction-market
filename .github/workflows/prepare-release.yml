@@ -51,6 +51,9 @@ jobs:
             const tags = execFileSync('git', ['tag', '--list', 'v*', '--sort=version:refname'], { encoding: 'utf8' })
               .trim().split('\n').filter(tag => stableVersion.test(tag))
             const latest = tags.at(-1)
+            if (!latest && bump !== 'patch') {
+              throw new Error('The first release is v1.0.0. Choose patch to prepare it.')
+            }
             const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
             const changelog = fs.readFileSync('CHANGELOG.md', 'utf8')
             if (packageJson.version && !tags.includes(`v${packageJson.version}`)) {

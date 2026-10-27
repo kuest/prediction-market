@@ -38,9 +38,17 @@ jobs:
               return
             }
             const before = context.payload.before
-            const previous = before && !/^0+$/.test(before)
-              ? JSON.parse(execFileSync('git', ['show', `${before}:package.json`], { encoding: 'utf8' })).version
-              : undefined
+            let previous
+            if (before && !/^0+$/.test(before)) {
+              try {
+                previous = JSON.parse(execFileSync('git', ['show', `${before}:package.json`], {
+                  encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+                })).version
+              } catch {
+                core.warning(`Previous package version at ${before} is unavailable; publishing development images only.`)
+                return
+              }
+            }
             if (packageJson.version === previous) {
               return
             }
