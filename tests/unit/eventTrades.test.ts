@@ -65,6 +65,7 @@ describe('fetchEventTrades', () => {
   })
 
   it('forwards the complete cursor through the event activity proxy', async () => {
+    stubGlobal('window', undefined)
     process.env.DATA_URL = 'https://data-api.test'
     const fetchMock = mock().mockResolvedValue(
       new Response(JSON.stringify([]), {

@@ -1,7 +1,14 @@
-import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
+import {
+  defaultPublicRuntimeConfig,
+  normalizePublicRuntimeEnvValue,
+  resolvePublicRuntimeEnv,
+} from '@/lib/public-runtime-config.shared'
 
 export function getDataApiUrl() {
-  const dataApiUrl = resolvePublicRuntimeEnv(process.env).dataUrl
+  const dataApiUrl =
+    typeof window !== 'undefined'
+      ? normalizePublicRuntimeEnvValue(window.__PUBLIC_RUNTIME_CONFIG__?.dataUrl, defaultPublicRuntimeConfig.dataUrl)
+      : resolvePublicRuntimeEnv(process.env).dataUrl
   if (!dataApiUrl) {
     throw new Error('DATA_URL environment variable is not configured.')
   }

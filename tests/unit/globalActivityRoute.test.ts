@@ -41,6 +41,7 @@ describe('global activity route', () => {
   })
 
   beforeEach(() => {
+    stubGlobal('window', undefined)
     process.env.DATA_URL = 'https://data-api.test'
     mocks.findEvents.mockReset()
     mocks.findMarkets.mockReset()

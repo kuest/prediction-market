@@ -17,6 +17,7 @@ describe('fetchPortfolioSnapshot', () => {
   })
 
   it('uses the one-day PnL change and requests only the biggest closed position', async () => {
+    stubGlobal('window', undefined)
     process.env.DATA_URL = 'https://data-api.test'
 
     const fetchMock = mock(async (input: RequestInfo | URL) => {
@@ -67,6 +68,7 @@ describe('fetchPortfolioSnapshot', () => {
   })
 
   it('discards malformed PnL points before calculating the one-day change', async () => {
+    stubGlobal('window', undefined)
     process.env.DATA_URL = 'https://data-api.test'
 
     const fetchMock = mock(async (input: RequestInfo | URL) => {
