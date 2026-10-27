@@ -1,24 +1,81 @@
-name: Build and Publish Docker Image
+name: Docker Images
 
 on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
 
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  prepare:
+    name: Prepare image version
+    if: github.repository == 'kuest/prediction-market'
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.version.outputs.sha }}
+      notes: ${{ steps.version.outputs.notes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Read approved release
+        id: version
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const fs = require('node:fs')
+            const { execFileSync } = require('node:child_process')
+            const sha = context.sha
+            core.setOutput('sha', sha)
+            core.setOutput('version', '')
+            const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+            if (!packageJson.version) {
+              return
+            }
+            const before = context.payload.before
+            const previous = before && !/^0+$/.test(before)
+              ? JSON.parse(execFileSync('git', ['show', `${before}:package.json`], { encoding: 'utf8' })).version
+              : undefined
+            if (packageJson.version === previous) {
+              return
+            }
+
+            const version = `v${packageJson.version}`
+            const stableVersion = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+            if (!stableVersion.test(version)) {
+              throw new Error('package.json must contain a stable X.Y.Z version.')
+            }
+            const tags = execFileSync('git', ['tag', '--list', 'v*', '--sort=version:refname'], { encoding: 'utf8' })
+              .trim().split('\n').filter(tag => stableVersion.test(tag))
+            const latest = tags.at(-1)
+            if (tags.includes(version) || (latest && version.localeCompare(latest, 'en', { numeric: true }) <= 0)) {
+              throw new Error(`${version} must be newer than all existing stable tags.`)
+            }
+
+            const lines = fs.readFileSync('CHANGELOG.md', 'utf8').split('\n')
+            const releaseHeading = /^## \[v\d+\.\d+\.\d+\]\(/
+            const firstRelease = lines.findIndex(line => releaseHeading.test(line))
+            if (firstRelease === -1 || !lines[firstRelease].startsWith(`## [${version}](`)) {
+              throw new Error('The newest changelog entry must match the package.json version.')
+            }
+            const nextRelease = lines.findIndex((line, index) => index > firstRelease && releaseHeading.test(line))
+            const notes = lines.slice(firstRelease + 1, nextRelease === -1 ? undefined : nextRelease).join('\n').trim()
+            core.setOutput('version', version)
+            core.setOutput('notes', notes)
+
   build-image:
     name: Build ${{ matrix.platform }} image
+    needs: prepare
     if: github.repository == 'kuest/prediction-market'
     runs-on: ${{ matrix.runner }}
+    concurrency:
+      group: docker-build-${{ needs.prepare.outputs.version || 'main' }}-${{ matrix.artifact }}
+      cancel-in-progress: ${{ needs.prepare.outputs.version == '' }}
     permissions:
       contents: read
       packages: write
@@ -35,6 +92,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           persist-credentials: false
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -52,9 +110,11 @@ jobs:
           flavor: |
             latest=auto
           tags: |
-            type=sha,format=long,prefix=
-            type=ref,event=branch
-            type=ref,event=tag
+            type=raw,value=${{ needs.prepare.outputs.sha }}
+            type=ref,event=branch,enable=${{ github.event_name == 'push' }}
+            type=semver,pattern=v{{version}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.version != '' }}
+            type=semver,pattern=v{{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.version != '' }}
+            type=semver,pattern=v{{major}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.version != '' }}
 
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
@@ -66,9 +126,46 @@ jobs:
           tags: ghcr.io/kuest/prediction-market
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            COMMIT_SHA=${{ github.sha }}
+            COMMIT_SHA=${{ needs.prepare.outputs.sha }}
           cache-from: type=registry,ref=ghcr.io/kuest/prediction-market:main
           cache-to: type=inline
+
+      - name: Smoke test image
+        timeout-minutes: 3
+        shell: bash
+        env:
+          IMAGE: ghcr.io/kuest/prediction-market@${{ steps.build.outputs.digest }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          container="image-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          function cleanup() {
+            smoke_status=$?
+            if [ "$smoke_status" -ne 0 ]; then
+              docker logs "$container" || true
+            fi
+            docker rm -f "$container" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker run --detach --name "$container" --platform "$PLATFORM" \
+            --env SITE_URL=http://localhost:3000 \
+            "$IMAGE"
+
+          for attempt in {1..30}; do
+            if docker exec "$container" bun -e '
+              const response = await fetch("http://127.0.0.1:3000/robots.txt", { signal: AbortSignal.timeout(3000) })
+              if (!response.ok || !(await response.text()).includes("Sitemap: http://localhost:3000/sitemap.xml")) process.exit(1)
+            ' >/dev/null 2>&1; then
+              exit 0
+            fi
+            if [ "$(docker inspect --format '{{.State.Running}}' "$container")" != 'true' ]; then
+              echo '::error::The application container stopped during the smoke test.'
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::The application did not pass the smoke test after $attempt attempts."
+          exit 1
 
       - name: Export image digest
         shell: bash
@@ -92,7 +189,7 @@ jobs:
 
   publish-image:
     name: Publish image manifest
-    needs: build-image
+    needs: [prepare, build-image]
     if: github.repository == 'kuest/prediction-market'
     runs-on: ubuntu-24.04
     permissions:
@@ -113,6 +210,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check current main commit
+        id: main
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            const { data } = await github.rest.git.getRef({ ...context.repo, ref: 'heads/main' })
+            core.setOutput('current', data.object.sha === context.sha)
+
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
@@ -120,9 +225,11 @@ jobs:
           flavor: |
             latest=auto
           tags: |
-            type=sha,format=long,prefix=
-            type=ref,event=branch
-            type=ref,event=tag
+            type=raw,value=${{ needs.prepare.outputs.sha }}
+            type=ref,event=branch,enable=${{ steps.main.outputs.current == 'true' }}
+            type=semver,pattern=v{{version}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.version != '' }}
+            type=semver,pattern=v{{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.version != '' }}
+            type=semver,pattern=v{{major}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.version != '' }}
 
       - name: Publish multi-platform manifest
         shell: bash
@@ -147,3 +254,26 @@ jobs:
           fi
 
           docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"
+
+  create-release:
+    name: Create GitHub Release
+    needs: [prepare, publish-image]
+    if: needs.prepare.outputs.version != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create version tag and reviewed release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.sha }}
+          RELEASE_NOTES: ${{ needs.prepare.outputs.notes }}
+        run: |
+          printf '%s\n' "$RELEASE_NOTES" > "$RUNNER_TEMP/release-notes.md"
+          gh release create "$RELEASE_VERSION" \
+            --target "$RELEASE_SHA" \
+            --title "$RELEASE_VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest

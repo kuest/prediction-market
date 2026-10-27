@@ -1,0 +1,115 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'kuest/prediction-market' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Prepare version and changelog
+        id: release
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          RELEASE_BUMP: ${{ inputs.bump }}
+        with:
+          script: |
+            const fs = require('node:fs')
+            const { execFileSync } = require('node:child_process')
+            const bump = process.env.RELEASE_BUMP
+            if (!['patch', 'minor', 'major'].includes(bump)) {
+              throw new Error('Choose patch, minor, or major.')
+            }
+
+            const stableVersion = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
+            const tags = execFileSync('git', ['tag', '--list', 'v*', '--sort=version:refname'], { encoding: 'utf8' })
+              .trim().split('\n').filter(tag => stableVersion.test(tag))
+            const latest = tags.at(-1)
+            const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+            const changelog = fs.readFileSync('CHANGELOG.md', 'utf8')
+            if (packageJson.version && !tags.includes(`v${packageJson.version}`)) {
+              throw new Error('Finish publishing the merged release before preparing another one.')
+            }
+            if (latest) {
+              const changes = execFileSync('git', [
+                'diff', '--name-only', latest, 'HEAD', '--', '.',
+                ':(exclude)CHANGELOG.md',
+              ], { encoding: 'utf8' }).trim()
+              if (!changes) {
+                throw new Error(`No changes since ${latest} outside CHANGELOG.md.`)
+              }
+            }
+
+            let version = 'v1.0.0'
+            if (latest) {
+              const parts = latest.slice(1).split('.').map(Number)
+              const index = { major: 0, minor: 1, patch: 2 }[bump]
+              parts[index] += 1
+              parts.fill(0, index + 1)
+              version = `v${parts.join('.')}`
+            }
+
+            const { owner, repo } = context.repo
+            const { data: notes } = await github.rest.repos.generateReleaseNotes({
+              owner, repo, tag_name: version, target_commitish: context.sha,
+              ...(latest ? { previous_tag_name: latest } : {}),
+            })
+            const repositoryUrl = `${context.serverUrl}/${owner}/${repo}`
+            const history = changelog
+              .replace(/^# Release Notes\s*/, '')
+              .replace(/^## (?:Unreleased|\[Unreleased\]\([^\n]*\))\s*/, '')
+            const date = new Date().toISOString().slice(0, 10)
+            const body = notes.body.trim().replace(/^## /gm, '### ')
+            const updatedChangelog = [
+              '# Release Notes',
+              `## [Unreleased](${repositoryUrl}/compare/${version}...main)`,
+              `## [${version}](${repositoryUrl}/releases/tag/${version}) - ${date}`,
+              body,
+              history.trim(),
+            ].filter(Boolean).join('\n\n') + '\n'
+
+            packageJson.version = version.slice(1)
+            fs.writeFileSync('package.json', JSON.stringify(packageJson, null, 2) + '\n')
+            fs.writeFileSync('CHANGELOG.md', updatedChangelog)
+            core.setOutput('version', version)
+
+      - name: Open or update release PR
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          base: main
+          branch: release/next
+          add-paths: |
+            package.json
+            CHANGELOG.md
+          commit-message: 'chore: prepare release ${{ steps.release.outputs.version }}'
+          title: 'chore: release ${{ steps.release.outputs.version }}'
+          body: |
+            Review package.json and the changelog for ${{ steps.release.outputs.version }}. Merging this PR publishes the
+            AMD64 and ARM64 Docker images, version tag, and GitHub Release using the reviewed notes.
