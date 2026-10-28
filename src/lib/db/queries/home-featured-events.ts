@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, exists, gt, inArray, isNotNull, isNull, lte, not, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, exists, gt, inArray, isNotNull, isNull, lte, ne, not, or, sql } from 'drizzle-orm'
 import { alias } from 'drizzle-orm/pg-core'
 import { cacheTag, revalidateTag } from 'next/cache'
 
@@ -648,6 +648,41 @@ function resolveAdminFeaturedEventTarget(row: AdminFeaturedEventRow, seriesTarge
 }
 
 export const HomeFeaturedEventsRepository = {
+  async findNextSeriesRolloverEvent(
+    seriesSlug: string,
+    currentEventId: string,
+    after: Date,
+  ): Promise<QueryResult<{ id: string; slug: string } | null>> {
+    return runQuery(async () => {
+      const rows = await db
+        .select({ id: events.id, slug: events.slug })
+        .from(events)
+        .where(
+          and(
+            eq(events.series_slug, seriesSlug),
+            ne(events.id, currentEventId),
+            eq(events.status, 'active'),
+            eq(events.is_hidden, false),
+            gt(events.end_date, after),
+            buildPublicEventListVisibilityCondition(events.id),
+            or(
+              not(exists(db.select({ id: markets.condition_id }).from(markets).where(eq(markets.event_id, events.id)))),
+              exists(
+                db
+                  .select({ id: markets.condition_id })
+                  .from(markets)
+                  .where(and(eq(markets.event_id, events.id), eq(markets.is_resolved, false))),
+              ),
+            ),
+          ),
+        )
+        .orderBy(asc(events.end_date), desc(events.created_at), desc(events.id))
+        .limit(1)
+
+      return { data: rows[0] ?? null, error: null }
+    })
+  },
+
   async resolveLiveSeriesDestination(
     seriesSlug: string,
     selectedMarketSlug: string | null,

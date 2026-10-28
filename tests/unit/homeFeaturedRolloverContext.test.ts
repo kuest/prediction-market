@@ -8,6 +8,7 @@ const mocks = hoisted(() => ({
   getSettings: mock(),
   getEventBySlug: mock(),
   getSeriesEventsBySeriesSlug: mock(),
+  findNextSeriesRolloverEvent: mock(),
   resolvePublicTargets: mock(),
   loadHomeFeaturedNews: mock(),
   fetchComments: mock(),
@@ -22,7 +23,10 @@ void mock.module('@/lib/db/queries/event', () => ({
   },
 }))
 void mock.module('@/lib/db/queries/home-featured-events', () => ({
-  HomeFeaturedEventsRepository: { resolvePublicTargets: mocks.resolvePublicTargets },
+  HomeFeaturedEventsRepository: {
+    resolvePublicTargets: mocks.resolvePublicTargets,
+    findNextSeriesRolloverEvent: mocks.findNextSeriesRolloverEvent,
+  },
 }))
 void mock.module('@/lib/home-featured-news', () => ({ loadHomeFeaturedNews: mocks.loadHomeFeaturedNews }))
 
@@ -68,6 +72,10 @@ describe('featured series rollover context', () => {
       error: null,
     }))
     mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [currentEvent, nextEvent], error: null })
+    mocks.findNextSeriesRolloverEvent.mockResolvedValue({
+      data: { id: nextEvent.id, slug: nextEvent.slug },
+      error: null,
+    })
     mocks.loadHomeFeaturedNews.mockImplementation(async (_featuredId: string, event: Event) => [
       { id: `news:${event.id}`, type: 'news', title: `News for ${event.title}` },
     ])
@@ -85,10 +93,16 @@ describe('featured series rollover context', () => {
     expect(result?.contextItems[0]?.id).toBe('news:current')
     expect(result?.nextEvent?.event.id).toBe(nextEvent.id)
     expect(result?.nextEvent?.contextItems[0]?.id).toBe('news:next')
+    expect(mocks.findNextSeriesRolloverEvent).toHaveBeenCalledWith(
+      currentEvent.series_slug,
+      currentEvent.id,
+      new Date(currentEvent.end_date!),
+    )
+    expect(mocks.getSeriesEventsBySeriesSlug).not.toHaveBeenCalled()
   })
 
   it('refreshes the current event even when a successor is not available yet', async () => {
-    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [currentEvent], error: null })
+    mocks.findNextSeriesRolloverEvent.mockResolvedValue({ data: null, error: null })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
     const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
 
@@ -148,7 +162,6 @@ describe('featured series rollover context', () => {
       data: slug === currentEvent.slug ? endedEvent : nextEvent,
       error: null,
     }))
-    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [endedEvent, nextEvent], error: null })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
     const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
 
@@ -168,7 +181,6 @@ describe('featured series rollover context', () => {
         data: slug === currentEvent.slug ? endedEvent : nextEvent,
         error: null,
       }))
-      mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [endedEvent, nextEvent], error: null })
       const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
       const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
 
@@ -178,6 +190,24 @@ describe('featured series rollover context', () => {
       expect(mocks.loadHomeFeaturedNews.mock.calls[0]?.[1].id).toBe(nextEvent.id)
     },
   )
+
+  it('looks after now when the configured current event resolves before its scheduled end', async () => {
+    const endedEvent = { ...currentEvent, status: 'resolved' as const }
+    mocks.getEventBySlug.mockImplementation(async (slug: string) => ({
+      data: slug === currentEvent.slug ? endedEvent : nextEvent,
+      error: null,
+    }))
+    const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
+    const beforeRequest = Date.now()
+    const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
+    const afterRequest = Date.now()
+
+    expect(result?.nextEvent?.event.id).toBe(nextEvent.id)
+    const after = mocks.findNextSeriesRolloverEvent.mock.calls[0]?.[2]
+    expect(after).toBeInstanceOf(Date)
+    expect(after.getTime()).toBeGreaterThanOrEqual(beforeRequest)
+    expect(after.getTime()).toBeLessThanOrEqual(afterRequest)
+  })
 
   it('keeps current news until the latest market cutoff even if the event date has passed', async () => {
     const overlappingEvent = {
@@ -189,12 +219,16 @@ describe('featured series rollover context', () => {
       data: slug === currentEvent.slug ? overlappingEvent : nextEvent,
       error: null,
     }))
-    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [overlappingEvent, nextEvent], error: null })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
     const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
 
     expect(result?.contextItems[0]?.id).toBe('news:current')
     expect(result?.nextEvent?.contextItems[0]?.id).toBe('news:next')
+    expect(mocks.findNextSeriesRolloverEvent).toHaveBeenCalledWith(
+      currentEvent.series_slug,
+      currentEvent.id,
+      new Date(overlappingEvent.markets[0].end_time),
+    )
   })
 
   it('recovers the immediate predecessor after a longer interruption while its successor is live', async () => {
@@ -204,7 +238,6 @@ describe('featured series rollover context', () => {
       data: slug === currentEvent.slug ? endedEvent : nextEvent,
       error: null,
     }))
-    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [endedEvent, nextEvent], error: null })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
 
     const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
@@ -216,44 +249,33 @@ describe('featured series rollover context', () => {
   })
 
   it('catches up to the configured live event after multiple missed periods', async () => {
-    const endedEvent = { ...currentEvent, end_date: new Date(Date.now() - 60_000).toISOString() }
-    const newerEndedEvent = {
-      ...endedEvent,
-      id: 'newer-ended',
-      slug: 'newer-ended-event',
-      end_date: new Date(Date.now() - 30_000).toISOString(),
-    }
+    const endedEvent = { ...currentEvent, end_date: new Date(Date.now() - 60 * 60_000).toISOString() }
     mocks.resolvePublicTargets.mockResolvedValue({ data: [{ ...target, eventId: nextEvent.id }], error: null })
     mocks.getEventBySlug.mockImplementation(async (slug: string) => ({
       data: slug === endedEvent.slug ? endedEvent : nextEvent,
       error: null,
     }))
-    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({
-      data: [endedEvent, newerEndedEvent, nextEvent],
-      error: null,
-    })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
 
     const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
     expect(result?.nextEvent?.event.id).toBe(nextEvent.id)
     expect(mocks.loadHomeFeaturedNews).toHaveBeenCalledTimes(1)
+    expect(mocks.findNextSeriesRolloverEvent).not.toHaveBeenCalled()
   })
 
-  it('does not search for an unconfigured ended event without an active successor', async () => {
-    const endedEvent = { ...currentEvent, end_date: new Date(Date.now() - 10 * 60_000).toISOString() }
+  it('does not search for an unconfigured event that is still active', async () => {
     mocks.resolvePublicTargets.mockResolvedValue({ data: [{ ...target, eventId: nextEvent.id }], error: null })
-    mocks.getEventBySlug.mockResolvedValue({ data: endedEvent, error: null })
-    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [endedEvent], error: null })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
 
     expect(await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')).toBeNull()
+    expect(mocks.findNextSeriesRolloverEvent).not.toHaveBeenCalled()
     expect(mocks.loadHomeFeaturedNews).not.toHaveBeenCalled()
   })
 
   it('does not search for a future event beyond the current live series entry', async () => {
     const futureEvent = { ...nextEvent, id: 'future', slug: 'future-event', end_date: '2099-01-03T00:00:00Z' }
     mocks.getEventBySlug.mockResolvedValue({ data: futureEvent, error: null })
-    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: [currentEvent, nextEvent, futureEvent], error: null })
+    mocks.findNextSeriesRolloverEvent.mockResolvedValue({ data: null, error: null })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
 
     expect(await getNextHomeFeaturedSeriesRolloverEvent(futureEvent.slug, 'featured', 'en')).toBeNull()

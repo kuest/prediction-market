@@ -110,7 +110,7 @@ export function resolveHomeFeaturedRolloverWakeTimestamp(
   nowTimestamp: number,
 ) {
   const endTimestamp = resolveHomeFeaturedEventEndTimestamp(currentEvent)
-  if (endTimestamp != null && endTimestamp > nowTimestamp) {
+  if (!isHomeFeaturedEventEnded(currentEvent, nowTimestamp) && endTimestamp != null && endTimestamp > nowTimestamp) {
     return endTimestamp
   }
   const nextStartTimestamp = parseFeaturedTimestamp(nextEvent?.start_date)
@@ -126,6 +126,47 @@ export function isHomeFeaturedEventHref(event: Event, href: string) {
   }
   const remainingPath = url.pathname.slice(currentPathIndex + currentPath.length)
   return !remainingPath || remainingPath.startsWith('/')
+}
+
+export function resolveHomeFeaturedLiveLinkFallbackHref(
+  event: Event,
+  href: string,
+  seriesSlug: string,
+  locale: string,
+) {
+  if (!seriesSlug || !isHomeFeaturedEventHref(event, href)) {
+    return null
+  }
+
+  const url = new URL(href, 'https://featured.local')
+  const eventPath = resolveEventPagePath(event)
+  const marketSlug = url.pathname
+    .slice(url.pathname.indexOf(eventPath) + eventPath.length)
+    .split('/')
+    .filter(Boolean)[0]
+  const query = new URLSearchParams({ seriesSlug, locale })
+  if (marketSlug) {
+    query.set('marketSlug', marketSlug)
+  }
+  const conditionId = url.searchParams.get('conditionId')
+  if (conditionId) {
+    query.set('conditionId', conditionId)
+  }
+  const outcomeIndex = url.searchParams.get('outcomeIndex')
+  if (outcomeIndex && /^\d+$/.test(outcomeIndex)) {
+    query.set('outcomeIndex', outcomeIndex)
+  }
+
+  return `/api/home-featured/live-link?${query.toString()}`
+}
+
+export function shouldPreloadHomeFeaturedRollover(
+  isSeries: boolean,
+  isPageVisible: boolean,
+  nextEvent: Event | null,
+  nowTimestamp: number,
+) {
+  return isSeries && isPageVisible && (!nextEvent || isHomeFeaturedEventEnded(nextEvent, nowTimestamp))
 }
 
 export function resolveHomeFeaturedSuccessorHref(currentEvent: Event, nextEvent: Event, href: string) {

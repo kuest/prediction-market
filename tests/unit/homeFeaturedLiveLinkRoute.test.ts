@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import * as nextServer from 'next/server'
 
+import type { Event } from '@/types'
+
+import { resolveHomeFeaturedLiveLinkFallbackHref } from '@/lib/home-featured-rollover'
+
 import { hoisted } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
@@ -27,12 +31,15 @@ describe('home featured live link', () => {
       error: null,
     })
     const { GET } = await import('@/app/api/home-featured/live-link/route')
-
-    const response = await GET(
-      new Request(
-        'https://example.com/api/home-featured/live-link?seriesSlug=btc-15m&locale=pt&outcomeIndex=1&marketSlug=old-market&conditionId=old-condition',
-      ),
+    const fallbackHref = resolveHomeFeaturedLiveLinkFallbackHref(
+      { slug: 'old-event' } as Event,
+      '/pt/event/old-event/old-market?conditionId=old-condition&outcomeIndex=1',
+      'btc-15m',
+      'pt',
     )
+    expect(fallbackHref).not.toBeNull()
+
+    const response = await GET(new Request(`https://example.com${fallbackHref}`))
 
     expect(mocks.resolveLiveSeriesDestination).toHaveBeenCalledWith('btc-15m', 'old-market', 'old-condition')
     expect(response.status).toBe(307)

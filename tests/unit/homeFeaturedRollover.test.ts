@@ -11,10 +11,12 @@ import {
   isHomeFeaturedEventCurrent,
   replaceHomeFeaturedRolloverSuccessor,
   resolveHomeFeaturedEventEndTimestamp,
+  resolveHomeFeaturedLiveLinkFallbackHref,
   resolveHomeFeaturedRolloverContextItems,
   resolveHomeFeaturedRolloverAction,
   resolveHomeFeaturedRolloverWakeTimestamp,
   resolveHomeFeaturedSuccessorHref,
+  shouldPreloadHomeFeaturedRollover,
 } from '@/lib/home-featured-rollover'
 
 function createEvent(): Event {
@@ -88,6 +90,35 @@ describe('homeFeaturedRollover', () => {
     expect(
       resolveHomeFeaturedRolloverWakeTimestamp(createEvent(), future, Date.parse('2026-08-13T21:00:00.000Z')),
     ).toBe(Date.parse('2026-08-14T13:30:00.000Z'))
+  })
+
+  it('wakes at the successor start if the current event resolved before its scheduled end', () => {
+    const current = createEventWithOverrides({ status: 'resolved', resolved_at: '2026-08-13T16:01:00.000Z' })
+    const next = createEventWithOverrides({
+      id: 'next',
+      start_date: '2026-08-13T16:02:00.000Z',
+      end_date: '2026-08-13T16:10:00.000Z',
+      markets: [{ end_time: '2026-08-13T16:10:00.000Z' }] as Event['markets'],
+    })
+    expect(resolveHomeFeaturedRolloverWakeTimestamp(current, next, Date.parse('2026-08-13T16:01:30.000Z'))).toBe(
+      Date.parse('2026-08-13T16:02:00.000Z'),
+    )
+  })
+
+  it('pauses preload while hidden and reevaluates missing or expired successors on resume', () => {
+    const beforeEnd = Date.parse('2026-08-13T16:04:00.000Z')
+    const afterEnd = Date.parse('2026-08-13T16:06:00.000Z')
+    const successor = createEventWithOverrides({
+      id: 'next',
+      end_date: '2026-08-13T16:05:00.000Z',
+      markets: [{ end_time: '2026-08-13T16:05:00.000Z' }] as Event['markets'],
+    })
+    expect(shouldPreloadHomeFeaturedRollover(true, false, null, beforeEnd)).toBe(false)
+    expect(shouldPreloadHomeFeaturedRollover(true, true, null, beforeEnd)).toBe(true)
+    expect(shouldPreloadHomeFeaturedRollover(true, false, successor, afterEnd)).toBe(false)
+    expect(shouldPreloadHomeFeaturedRollover(true, true, successor, beforeEnd)).toBe(false)
+    expect(shouldPreloadHomeFeaturedRollover(true, true, successor, afterEnd)).toBe(true)
+    expect(shouldPreloadHomeFeaturedRollover(false, true, null, afterEnd)).toBe(false)
   })
 
   it('selects the nearest active event after the current market', () => {
@@ -166,6 +197,24 @@ describe('homeFeaturedRollover', () => {
     expect(
       resolveHomeFeaturedSuccessorHref(current, multiMarketNext, '/event/current-event?conditionId=old&outcomeIndex=1'),
     ).toBe('/event/next-event/next-market?outcomeIndex=1')
+  })
+
+  it('routes a boundary click through live-link when the successor is still loading', () => {
+    const current = createEvent()
+    const fallback = resolveHomeFeaturedLiveLinkFallbackHref(
+      current,
+      '/pt/event/current-event/up-down?conditionId=old&outcomeIndex=1',
+      'btc-15m',
+      'pt',
+    )
+    expect(fallback).not.toBeNull()
+    const query = new URL(fallback!, 'https://example.com').searchParams
+    expect(query.get('seriesSlug')).toBe('btc-15m')
+    expect(query.get('locale')).toBe('pt')
+    expect(query.get('marketSlug')).toBe('up-down')
+    expect(query.get('conditionId')).toBe('old')
+    expect(query.get('outcomeIndex')).toBe('1')
+    expect(resolveHomeFeaturedLiveLinkFallbackHref(current, '/event/historical-event', 'btc-15m', 'en')).toBeNull()
   })
 
   it('replaces the stale successor before the first rollover', () => {

@@ -64,11 +64,13 @@ import {
   isHomeFeaturedEventHref,
   isHomeFeaturedEventEnded,
   isHomeFeaturedEventCurrent,
+  resolveHomeFeaturedLiveLinkFallbackHref,
   resolveHomeFeaturedSuccessorHref,
   resolveHomeFeaturedRolloverWakeTimestamp,
   resolveHomeFeaturedRolloverContextItems,
   resolveHomeFeaturedRolloverAction,
   resolveHomeFeaturedEventEndTimestamp,
+  shouldPreloadHomeFeaturedRollover,
 } from '@/lib/home-featured-rollover'
 import {
   DEFAULT_HOME_FEATURED_SIDE_CARD_TEXT,
@@ -2015,6 +2017,14 @@ function buildHomeFeaturedRolloverQueueState(item: HomeFeaturedEventCard): HomeF
   }
 }
 
+function isTimedLiveFeaturedSeries(item: HomeFeaturedEventCard, event = item.event) {
+  return (
+    item.targetType === 'series' &&
+    shouldUseLiveSeriesChart(item.event, item.liveChartConfig) &&
+    resolveHomeFeaturedEventEndTimestamp(event) != null
+  )
+}
+
 function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
   const locale = useLocale()
   const isPageVisible = useSyncExternalStore(
@@ -2056,11 +2066,14 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
 
   useEffect(
     function preloadFutureFeaturedSeriesEvents() {
-      if (item.targetType !== 'series') {
-        return
-      }
-
-      if (nextRolloverEvent && !isHomeFeaturedEventEnded(nextRolloverEvent.event, Date.now())) {
+      if (
+        !shouldPreloadHomeFeaturedRollover(
+          item.targetType === 'series',
+          isPageVisible && getFeaturedVisibilitySnapshot(),
+          nextRolloverEvent?.event ?? null,
+          Date.now(),
+        )
+      ) {
         return
       }
 
@@ -2068,7 +2081,16 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
       let retryTimeoutId: number | null = null
       let isActive = true
 
+      function scheduleRolloverRetry() {
+        if (isActive && getFeaturedVisibilitySnapshot()) {
+          retryTimeoutId = window.setTimeout(loadNextRolloverEvent, HOME_FEATURED_ROLLOVER_RETRY_MS)
+        }
+      }
+
       async function loadNextRolloverEvent() {
+        if (!isActive || !getFeaturedVisibilitySnapshot()) {
+          return
+        }
         try {
           const query = new URLSearchParams({
             currentEventSlug: activeEvent.slug,
@@ -2088,7 +2110,7 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
             contextItems?: HomeFeaturedContextItem[]
             nextEvent?: HomeFeaturedRolloverEvent | null
           }
-          if (!isActive) {
+          if (!isActive || !getFeaturedVisibilitySnapshot()) {
             return
           }
 
@@ -2100,11 +2122,11 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
           if (payload.nextEvent && isHomeFeaturedEventCurrent(payload.nextEvent.event, now)) {
             promoteSuccessor(now)
           } else if (!payload.nextEvent || isHomeFeaturedEventEnded(payload.nextEvent.event, now)) {
-            retryTimeoutId = window.setTimeout(loadNextRolloverEvent, HOME_FEATURED_ROLLOVER_RETRY_MS)
+            scheduleRolloverRetry()
           }
         } catch {
           if (isActive && !controller.signal.aborted) {
-            retryTimeoutId = window.setTimeout(loadNextRolloverEvent, HOME_FEATURED_ROLLOVER_RETRY_MS)
+            scheduleRolloverRetry()
           }
         }
       }
@@ -2125,6 +2147,7 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
       item.event.id,
       item.featuredId,
       item.targetType,
+      isPageVisible,
       locale,
       nextRolloverEvent,
       promoteSuccessor,
@@ -2139,17 +2162,20 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
       }
 
       let timeoutId: number | null = null
-      function reconcileTime() {
+      function reconcileTime(refreshIfMissing: boolean) {
         if (timeoutId != null) {
           window.clearTimeout(timeoutId)
           timeoutId = null
+        }
+        if (!getFeaturedVisibilitySnapshot()) {
+          return
         }
         const now = Date.now()
         setObservedNow(now)
         const action = resolveHomeFeaturedRolloverAction(activeEvent, nextRolloverEvent?.event ?? null, now)
         if (action === 'promote') {
           promoteSuccessor(now)
-        } else if (action === 'refresh') {
+        } else if (action === 'refresh' && refreshIfMissing) {
           setRefreshToken((current) => current + 1)
         }
 
@@ -2159,10 +2185,10 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
           now,
         )
         if (wakeTimestamp != null) {
-          timeoutId = window.setTimeout(reconcileTime, Math.max(0, wakeTimestamp - now))
+          timeoutId = window.setTimeout(() => reconcileTime(true), Math.max(0, wakeTimestamp - now))
         }
       }
-      reconcileTime()
+      reconcileTime(false)
 
       return function cancelFeaturedSeriesRollover() {
         if (timeoutId != null) {
@@ -2185,9 +2211,7 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
   return {
     item: displayedItem,
     unavailable:
-      item.targetType === 'series' &&
-      shouldUseLiveSeriesChart(item.event, item.liveChartConfig) &&
-      resolveHomeFeaturedEventEndTimestamp(activeEvent) != null &&
+      isTimedLiveFeaturedSeries(item, activeEvent) &&
       observedNow != null &&
       !isHomeFeaturedEventCurrent(activeEvent, observedNow),
     refreshAtClick: (now: number) => {
@@ -2196,7 +2220,6 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
         promoteSuccessor(now)
         return nextRolloverEvent.event
       }
-      setRefreshToken((current) => current + 1)
       return null
     },
   }
@@ -2316,7 +2339,7 @@ function FeaturedSlide({
     )
 
   function handleFeaturedClickCapture(event: MouseEvent<HTMLElement>) {
-    if (sourceItem.targetType !== 'series') {
+    if (!isTimedLiveFeaturedSeries(sourceItem)) {
       return
     }
     const anchor = (event.target as Element).closest<HTMLAnchorElement>('a[href]')
@@ -2329,8 +2352,16 @@ function FeaturedSlide({
     }
     const successor = refreshAtClick(now)
     const successorHref = successor && resolveHomeFeaturedSuccessorHref(item.event, successor, anchor.href)
-    if (successorHref) {
-      anchor.href = successorHref
+    const destinationHref =
+      successorHref ||
+      resolveHomeFeaturedLiveLinkFallbackHref(
+        item.event,
+        anchor.href,
+        sourceItem.resolvedSeriesSlug || item.event.series_slug || '',
+        locale,
+      )
+    if (destinationHref) {
+      anchor.href = destinationHref
       event.stopPropagation()
       return
     }

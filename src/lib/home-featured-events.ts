@@ -35,7 +35,11 @@ import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { formatDollarValueLabel } from '@/lib/formatters'
 import { loadHomeFeaturedNews } from '@/lib/home-featured-news'
-import { findNextHomeFeaturedSeriesEvent, isHomeFeaturedEventEnded } from '@/lib/home-featured-rollover'
+import {
+  findNextHomeFeaturedSeriesEvent,
+  isHomeFeaturedEventEnded,
+  resolveHomeFeaturedEventEndTimestamp,
+} from '@/lib/home-featured-rollover'
 import { getHomeFeaturedSettingsFromSettings } from '@/lib/home-featured-settings'
 import { HOME_INITIAL_EVENTS_CACHE_LIFE } from '@/lib/home-initial-events-cache'
 import { resolveDisplayPrice } from '@/lib/market-chance'
@@ -416,21 +420,31 @@ export async function getNextHomeFeaturedSeriesRolloverEvent(
     return null
   }
 
-  const { data: seriesEvents, error: seriesEventsError } = await EventRepository.getSeriesEventsBySeriesSlug(
-    currentEvent.series_slug,
-  )
-  if (seriesEventsError) {
-    throw seriesEventsError
-  }
-
   const now = Date.now()
-  const nextSeriesEntry = findNextHomeFeaturedSeriesEvent(seriesEvents ?? [], currentEvent, now)
-  if (
-    currentEvent.id !== target.eventId &&
-    (!isHomeFeaturedEventEnded(currentEvent, now) || nextSeriesEntry?.id !== target.eventId)
-  ) {
+  const currentEnded = isHomeFeaturedEventEnded(currentEvent, now)
+  if (currentEvent.id !== target.eventId && !currentEnded) {
     return null
   }
+
+  let nextSeriesEntry: { id: string; slug: string } | null = null
+  if (currentEnded && currentEvent.id !== target.eventId) {
+    nextSeriesEntry = { id: target.eventId, slug: target.eventSlug }
+  } else {
+    const currentEndTimestamp = resolveHomeFeaturedEventEndTimestamp(currentEvent)
+    if (currentEndTimestamp != null) {
+      const after = new Date(currentEnded ? now : Math.max(now, currentEndTimestamp))
+      const { data, error } = await HomeFeaturedEventsRepository.findNextSeriesRolloverEvent(
+        currentEvent.series_slug,
+        currentEvent.id,
+        after,
+      )
+      if (error) {
+        throw error
+      }
+      nextSeriesEntry = data
+    }
+  }
+
   const nextEvent = nextSeriesEntry ? await loadHomeFeaturedEvent(nextSeriesEntry.slug, locale) : null
   const contextInput = {
     targetType: target.targetType,
@@ -441,7 +455,7 @@ export async function getNextHomeFeaturedSeriesRolloverEvent(
     refreshNews: true,
   }
   const [contextItems, nextContextItems] = await Promise.all([
-    isHomeFeaturedEventEnded(currentEvent, now) ? [] : resolveContextItems({ ...contextInput, event: currentEvent }),
+    currentEnded ? [] : resolveContextItems({ ...contextInput, event: currentEvent }),
     nextEvent ? resolveContextItems({ ...contextInput, event: nextEvent }) : [],
   ])
 
