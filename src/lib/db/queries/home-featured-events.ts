@@ -665,15 +665,7 @@ export const HomeFeaturedEventsRepository = {
             eq(events.is_hidden, false),
             gt(events.end_date, after),
             buildPublicEventListVisibilityCondition(events.id),
-            or(
-              not(exists(db.select({ id: markets.condition_id }).from(markets).where(eq(markets.event_id, events.id)))),
-              exists(
-                db
-                  .select({ id: markets.condition_id })
-                  .from(markets)
-                  .where(and(eq(markets.event_id, events.id), eq(markets.is_resolved, false))),
-              ),
-            ),
+            hasActiveFeaturedMarketCondition(),
           ),
         )
         .orderBy(asc(events.end_date), desc(events.created_at), desc(events.id))
