@@ -12,10 +12,8 @@ import {
   isCanonicalEventBoundEquityCloseSnapshot,
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
-  LIVE_DATA_RETENTION_MS,
-  normalizeLiveChartPrice,
+  LIVE_PRICE_STORAGE_PREFIX,
   readPersistedLivePrice,
-  writePersistedLivePrice,
 } from '../_utils/eventLiveSeriesChartUtils'
 
 interface UseLiveSeriesPriceSnapshotOptions {
@@ -57,7 +55,6 @@ interface LiveSeriesPriceSnapshotRequest {
 }
 
 const liveSeriesPriceSnapshotStores = new Map<string, LiveSeriesPriceSnapshotStoreEntry>()
-const liveSeriesPriceStorageKeyPrefix = 'kuest-live-last-price'
 const LIVE_SERIES_PRICE_SNAPSHOT_STORE_TTL_MS = 10 * 60 * 1000
 const BINANCE_CLOSE_FIRST_REFRESH_DELAY_MS = 65 * 1000
 const BINANCE_CLOSE_REFRESH_INTERVAL_MS = 10 * 1000
@@ -122,7 +119,7 @@ function buildLiveSeriesPriceSnapshotQuery({
 }
 
 function buildPersistedLivePriceStorageKey(topic: string, symbol: string) {
-  return `${liveSeriesPriceStorageKeyPrefix}:${topic.trim().toLowerCase()}:${symbol.trim().toUpperCase()}`
+  return `${LIVE_PRICE_STORAGE_PREFIX}:${topic.trim().toLowerCase()}:${symbol.trim().toUpperCase()}`
 }
 
 function resolveRequestedWindowStart(request: LiveSeriesPriceSnapshotRequest) {
@@ -272,25 +269,6 @@ async function fetchLiveSeriesPriceSnapshot(storeKey: string, request: LiveSerie
         ...entry.snapshot,
         referenceSnapshot: payload,
         referenceSnapshotStatus: 'ready',
-      }
-
-      const fallbackPrice = normalizeLiveChartPrice(
-        payload.latest_price ?? payload.closing_price ?? Number.NaN,
-        request.topic,
-      )
-
-      if (typeof fallbackPrice === 'number') {
-        const rawFallbackTimestamp = payload.latest_source_timestamp_ms ?? payload.event_window_end_ms ?? Date.now()
-        const minTimestamp = Date.now() - LIVE_DATA_RETENTION_MS + 1000
-        const fallbackTimestamp = Math.max(rawFallbackTimestamp, minTimestamp)
-        writePersistedLivePrice(request.topic, request.subscriptionSymbol, fallbackPrice, fallbackTimestamp)
-        entry.snapshot = {
-          ...entry.snapshot,
-          persistedFallbackPrice: {
-            price: fallbackPrice,
-            timestamp: fallbackTimestamp,
-          },
-        }
       }
     } catch {
       entry.snapshot = {

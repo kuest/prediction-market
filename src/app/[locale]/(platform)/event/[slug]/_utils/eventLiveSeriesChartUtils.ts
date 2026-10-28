@@ -27,11 +27,32 @@ export const LIVE_TARGET_MAX_BOTTOM_OFFSET = 10
 export const LIVE_CURRENT_MARKER_OFFSET_X = -34
 export const LIVE_PLOT_CLIP_RIGHT_PADDING = 22
 export const POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS = Date.parse('2026-08-07T00:00:00Z')
-const LIVE_PRICE_STORAGE_PREFIX = 'kuest-live-last-price'
+export const LIVE_PRICE_STORAGE_PREFIX = 'kuest-live-ws-last-price'
 
 export interface PersistedLivePrice {
   price: number
   timestamp: number
+}
+
+export function resolveRecentPersistedLivePrice(
+  persistedPrice: PersistedLivePrice | null,
+  nowTimestamp: number,
+  maxAgeMs = LIVE_DATA_RETENTION_MS,
+) {
+  if (
+    !persistedPrice ||
+    !Number.isFinite(persistedPrice.price) ||
+    persistedPrice.price <= 0 ||
+    !Number.isFinite(persistedPrice.timestamp) ||
+    !Number.isFinite(nowTimestamp) ||
+    nowTimestamp <= 0 ||
+    persistedPrice.timestamp > nowTimestamp ||
+    nowTimestamp - persistedPrice.timestamp > maxAgeMs
+  ) {
+    return null
+  }
+
+  return persistedPrice.price
 }
 
 export interface LiveSeriesPriceHistoryPoint {

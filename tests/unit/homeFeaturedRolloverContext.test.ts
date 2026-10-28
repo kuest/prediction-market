@@ -215,7 +215,7 @@ describe('featured series rollover context', () => {
     expect(mocks.loadHomeFeaturedNews.mock.calls[0]?.[1].id).toBe(nextEvent.id)
   })
 
-  it('does not search for an older predecessor when a more recent event has ended', async () => {
+  it('catches up to the configured live event after multiple missed periods', async () => {
     const endedEvent = { ...currentEvent, end_date: new Date(Date.now() - 60_000).toISOString() }
     const newerEndedEvent = {
       ...endedEvent,
@@ -224,15 +224,19 @@ describe('featured series rollover context', () => {
       end_date: new Date(Date.now() - 30_000).toISOString(),
     }
     mocks.resolvePublicTargets.mockResolvedValue({ data: [{ ...target, eventId: nextEvent.id }], error: null })
-    mocks.getEventBySlug.mockResolvedValue({ data: endedEvent, error: null })
+    mocks.getEventBySlug.mockImplementation(async (slug: string) => ({
+      data: slug === endedEvent.slug ? endedEvent : nextEvent,
+      error: null,
+    }))
     mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({
       data: [endedEvent, newerEndedEvent, nextEvent],
       error: null,
     })
     const { getNextHomeFeaturedSeriesRolloverEvent } = await import('@/lib/home-featured-events')
 
-    expect(await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')).toBeNull()
-    expect(mocks.loadHomeFeaturedNews).not.toHaveBeenCalled()
+    const result = await getNextHomeFeaturedSeriesRolloverEvent(currentEvent.slug, 'featured', 'en')
+    expect(result?.nextEvent?.event.id).toBe(nextEvent.id)
+    expect(mocks.loadHomeFeaturedNews).toHaveBeenCalledTimes(1)
   })
 
   it('does not search for an unconfigured ended event without an active successor', async () => {

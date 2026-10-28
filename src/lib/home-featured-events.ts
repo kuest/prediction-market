@@ -424,27 +424,13 @@ export async function getNextHomeFeaturedSeriesRolloverEvent(
   }
 
   const now = Date.now()
-  const liveSeriesEntry = (seriesEvents ?? [])
-    .filter((entry) => entry.status === 'active' && Date.parse(entry.end_date ?? '') > now)
-    .sort((left, right) => Date.parse(left.end_date!) - Date.parse(right.end_date!))[0]
-  const previousSeriesEntry = (seriesEvents ?? [])
-    .filter(
-      (entry) =>
-        entry.status === 'resolved' ||
-        entry.status === 'archived' ||
-        Boolean(entry.resolved_at) ||
-        Date.parse(entry.end_date ?? '') <= now,
-    )
-    .sort((left, right) => Date.parse(right.end_date!) - Date.parse(left.end_date!))[0]
-  const isImmediatePredecessor =
-    Boolean(liveSeriesEntry) &&
-    currentEvent.id === previousSeriesEntry?.id &&
-    isHomeFeaturedEventEnded(currentEvent, now)
-  if (currentEvent.id !== target.eventId && currentEvent.id !== liveSeriesEntry?.id && !isImmediatePredecessor) {
+  const nextSeriesEntry = findNextHomeFeaturedSeriesEvent(seriesEvents ?? [], currentEvent, now)
+  if (
+    currentEvent.id !== target.eventId &&
+    (!isHomeFeaturedEventEnded(currentEvent, now) || nextSeriesEntry?.id !== target.eventId)
+  ) {
     return null
   }
-
-  const nextSeriesEntry = findNextHomeFeaturedSeriesEvent(seriesEvents ?? [], currentEvent, now)
   const nextEvent = nextSeriesEntry ? await loadHomeFeaturedEvent(nextSeriesEntry.slug, locale) : null
   const contextInput = {
     targetType: target.targetType,
@@ -455,7 +441,7 @@ export async function getNextHomeFeaturedSeriesRolloverEvent(
     refreshNews: true,
   }
   const [contextItems, nextContextItems] = await Promise.all([
-    isImmediatePredecessor ? [] : resolveContextItems({ ...contextInput, event: currentEvent }),
+    isHomeFeaturedEventEnded(currentEvent, now) ? [] : resolveContextItems({ ...contextInput, event: currentEvent }),
     nextEvent ? resolveContextItems({ ...contextInput, event: nextEvent }) : [],
   ])
 

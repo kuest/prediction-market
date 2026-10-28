@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, mock, jest } from 'bun:tes
 import type { EventLiveChartConfig } from '@/types'
 
 import { useLiveSeriesPriceSnapshot } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveSeriesPriceSnapshot'
+import { writePersistedLivePrice } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
 
 import {
   advanceTimersByTimeAsync,
@@ -82,6 +83,71 @@ describe('useLiveSeriesPriceSnapshot', () => {
     const resumedUrl = new URL(getRequestUrl(fetchMock.mock.calls[1]?.[0]), 'https://example.test')
     expect(resumedUrl.searchParams.get('eventEndMs')).toBe(String(now))
   })
+
+  it.each(['reference-first', 'websocket-first'] as const)(
+    'keeps the live WebSocket price when a stale reference arrives %s',
+    async (arrivalOrder) => {
+      const storageKey = 'kuest-live-ws-last-price:crypto_prices:BTC'
+      window.localStorage.setItem(
+        'kuest-live-last-price:crypto_prices:BTC',
+        JSON.stringify({ price: 80_811, timestamp: now - 1_000 }),
+      )
+      if (arrivalOrder === 'websocket-first') {
+        writePersistedLivePrice('crypto_prices', 'BTC', 80_732, now - 1_000)
+      }
+
+      let resolveFetch: ((value: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
+      const fetchMock = mock(
+        () =>
+          new Promise<{ ok: boolean; json: () => Promise<unknown> }>((resolve) => {
+            resolveFetch = resolve
+          }),
+      )
+      stubGlobal('fetch', fetchMock)
+
+      const { result } = renderHook(() =>
+        useLiveSeriesPriceSnapshot({
+          config: {
+            series_slug: `snapshot-arrival-order-${arrivalOrder}`,
+            topic: 'crypto_prices',
+            active_window_minutes: 15,
+          } as EventLiveChartConfig,
+          subscriptionSymbol: 'BTC',
+          explicitEndTimestamp: now + 10 * 60_000,
+          startTimestamp: now - 5 * 60_000,
+        }),
+      )
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+      await act(async () => {
+        resolveFetch?.({
+          ok: true,
+          json: async () => ({
+            opening_price: 80_811,
+            latest_price: 80_811,
+            latest_source_timestamp_ms: now - 5 * 60_000,
+            event_window_end_ms: now + 10 * 60_000,
+          }),
+        })
+      })
+      await waitFor(() => expect(result.current.referenceSnapshotStatus).toBe('ready'))
+      expect(result.current.referenceSnapshot?.opening_price).toBe(80_811)
+
+      if (arrivalOrder === 'reference-first') {
+        expect(result.current.persistedFallbackPrice).toBeNull()
+        act(() => {
+          writePersistedLivePrice('crypto_prices', 'BTC', 80_732, now - 1_000)
+          window.dispatchEvent(new StorageEvent('storage', { key: storageKey }))
+        })
+      }
+
+      expect(result.current.persistedFallbackPrice).toEqual({ price: 80_732, timestamp: now - 1_000 })
+      expect(JSON.parse(window.localStorage.getItem(storageKey) ?? 'null')).toEqual({
+        price: 80_732,
+        timestamp: now - 1_000,
+      })
+    },
+  )
 
   it('exposes loading and unavailable states before a reference snapshot is confirmed', async () => {
     let resolveFetch: ((value: { ok: boolean }) => void) | null = null

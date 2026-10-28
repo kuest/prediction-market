@@ -49,6 +49,7 @@ import {
   normalizeSubscriptionSymbol,
   parseUtcDate,
   requiresCanonicalBinanceDailyClose,
+  resolveRecentPersistedLivePrice,
   resolveLiveChartPaddedDomainEnd,
   resolveDisplayedLiveSeriesBaselinePrice,
   resolveEventEndTimestamp,
@@ -517,23 +518,8 @@ function EventLiveSeriesChartContent({
       return finalPrice
     }
 
-    if (referenceSnapshot) {
-      const snapshotPrice = normalizeLiveChartPrice(
-        referenceSnapshot.latest_price ?? referenceSnapshot.closing_price ?? Number.NaN,
-        realtimeTopic,
-      )
-
-      if (typeof snapshotPrice === 'number' && Number.isFinite(snapshotPrice) && snapshotPrice > 0) {
-        return snapshotPrice
-      }
-    }
-
-    if (persistedFallbackPrice && Number.isFinite(persistedFallbackPrice.price) && persistedFallbackPrice.price > 0) {
-      return persistedFallbackPrice.price
-    }
-
-    return null
-  }, [finalPrice, isEventClosed, persistedFallbackPrice, realtimeTopic, referenceSnapshot])
+    return resolveRecentPersistedLivePrice(persistedFallbackPrice, nowMs)
+  }, [finalPrice, isEventClosed, nowMs, persistedFallbackPrice])
 
   const tradingWindowMs = useMemo(() => {
     const configuredWindowMinutes = Number(config.active_window_minutes)
@@ -782,7 +768,7 @@ function EventLiveSeriesChartContent({
     )
   }, [axisCurrentPrice, axisPriceDisplayDigits, dataSource, featuredChartLayout, idleRecovery, renderData])
   const axisInitializationPhase =
-    data.length > 0 ? 'realtime-ready' : dataSource.length > 0 ? 'reference-ready' : 'empty'
+    data.length > 0 ? 'realtime-ready' : dataSource.length > 0 ? `fallback-ready:${fallbackCurrentPrice}` : 'empty'
   const chartScopeKey = preserveSeriesContinuity
     ? `${config.series_slug}:${config.topic}:${config.event_type}:${subscriptionSymbol}`
     : `${event.id}:${realtimeTopic}:${subscriptionSymbol}`

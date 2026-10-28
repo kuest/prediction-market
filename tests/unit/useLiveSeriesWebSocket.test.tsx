@@ -289,7 +289,7 @@ describe('useLiveSeriesWebSocket', () => {
       date: new Date(eventEndTimestamp),
       [SERIES_KEY]: 110,
     })
-    expect(JSON.parse(window.localStorage.getItem('kuest-live-last-price:crypto_prices:BTC')!)).toEqual({
+    expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
       price: 110,
       timestamp: eventEndTimestamp - 1,
     })
@@ -546,7 +546,7 @@ describe('useLiveSeriesWebSocket', () => {
       [latestTimestamp - 1_000, 101],
       [latestTimestamp, 102.5],
     ])
-    expect(JSON.parse(window.localStorage.getItem('kuest-live-last-price:crypto_prices:BTC')!)).toEqual({
+    expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
       price: 102,
       timestamp: latestTimestamp,
     })
@@ -580,7 +580,7 @@ describe('useLiveSeriesWebSocket', () => {
       }),
     )
     expect(result.current.data).toBe(newerData)
-    expect(JSON.parse(window.localStorage.getItem('kuest-live-last-price:crypto_prices:BTC')!)).toEqual({
+    expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
       price: 103,
       timestamp: now,
     })
@@ -677,7 +677,7 @@ describe('useLiveSeriesWebSocket', () => {
       expect(newerData.at(-1)?.[SERIES_KEY]).toBe(lastPrice + 10)
       act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: 1, timestamp: now - 500 }))
       expect(result.current.data).toBe(newerData)
-      expect(JSON.parse(window.localStorage.getItem('kuest-live-last-price:crypto_prices:BTC')!)).toEqual({
+      expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
         price: lastPrice + 10,
         timestamp: now,
       })

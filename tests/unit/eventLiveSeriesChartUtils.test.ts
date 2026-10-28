@@ -18,9 +18,11 @@ import {
   isGoldDailySeries,
   isGoldMarketSessionOpen,
   LIVE_PRICE_TRANSITION_MS,
+  LIVE_DATA_RETENTION_MS,
   MAX_POINTS,
   POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
   requiresCanonicalBinanceDailyClose,
+  resolveRecentPersistedLivePrice,
   resolveLiveChartPaddedDomainEnd,
   resolveDisplayedLiveSeriesBaselinePrice,
   resolveEventEndTimestamp,
@@ -447,6 +449,16 @@ describe('event live series chart utils', () => {
   it('does not seed the live line without a valid fallback price', () => {
     expect(buildLiveSeriesFallbackData(null, Date.now())).toEqual([])
     expect(buildLiveSeriesFallbackData(0, Date.now())).toEqual([])
+  })
+
+  it('uses only a recent WebSocket price as a live fallback', () => {
+    const now = Date.parse('2026-10-27T19:38:00Z')
+    expect(resolveRecentPersistedLivePrice({ price: 80_732, timestamp: now - 1_000 }, now)).toBe(80_732)
+    expect(
+      resolveRecentPersistedLivePrice({ price: 80_811, timestamp: now - LIVE_DATA_RETENTION_MS - 1 }, now),
+    ).toBeNull()
+    expect(resolveRecentPersistedLivePrice({ price: 80_811, timestamp: now + 1 }, now)).toBeNull()
+    expect(resolveRecentPersistedLivePrice({ price: 80_811, timestamp: now - 1_000 }, 0)).toBeNull()
   })
 
   it('returns a zero countdown for the SSR clock sentinel', () => {

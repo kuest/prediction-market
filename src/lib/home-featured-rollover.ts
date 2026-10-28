@@ -1,5 +1,6 @@
 import type { Event, EventSeriesEntry, HomeFeaturedContextItem, HomeFeaturedRolloverEvent } from '@/types'
 
+import { resolveEventOutcomePath, resolveEventPagePath } from '@/lib/events-routing'
 import { isEventResolvedLike } from '@/lib/home-events'
 
 export interface HomeFeaturedRolloverQueueState {
@@ -82,6 +83,92 @@ export function isHomeFeaturedEventEnded(event: Event, nowTimestamp: number | nu
 
   const endTimestamp = resolveHomeFeaturedEventEndTimestamp(event)
   return endTimestamp != null && nowTimestamp != null && nowTimestamp >= endTimestamp
+}
+
+export function isHomeFeaturedEventCurrent(event: Event, nowTimestamp: number) {
+  const startTimestamp = parseFeaturedTimestamp(event.start_date)
+  return (startTimestamp == null || startTimestamp <= nowTimestamp) && !isHomeFeaturedEventEnded(event, nowTimestamp)
+}
+
+export function canActivateHomeFeaturedSuccessor(currentEvent: Event, nextEvent: Event, nowTimestamp: number) {
+  return isHomeFeaturedEventEnded(currentEvent, nowTimestamp) && isHomeFeaturedEventCurrent(nextEvent, nowTimestamp)
+}
+
+export function resolveHomeFeaturedRolloverAction(currentEvent: Event, nextEvent: Event | null, nowTimestamp: number) {
+  if (!isHomeFeaturedEventEnded(currentEvent, nowTimestamp)) {
+    return 'wait' as const
+  }
+  if (nextEvent && isHomeFeaturedEventCurrent(nextEvent, nowTimestamp)) {
+    return 'promote' as const
+  }
+  return nextEvent && !isHomeFeaturedEventEnded(nextEvent, nowTimestamp) ? ('wait' as const) : ('refresh' as const)
+}
+
+export function resolveHomeFeaturedRolloverWakeTimestamp(
+  currentEvent: Event,
+  nextEvent: Event | null,
+  nowTimestamp: number,
+) {
+  const endTimestamp = resolveHomeFeaturedEventEndTimestamp(currentEvent)
+  if (endTimestamp != null && endTimestamp > nowTimestamp) {
+    return endTimestamp
+  }
+  const nextStartTimestamp = parseFeaturedTimestamp(nextEvent?.start_date)
+  return nextStartTimestamp != null && nextStartTimestamp > nowTimestamp ? nextStartTimestamp : null
+}
+
+export function isHomeFeaturedEventHref(event: Event, href: string) {
+  const url = new URL(href, 'https://featured.local')
+  const currentPath = resolveEventPagePath(event)
+  const currentPathIndex = url.pathname.indexOf(currentPath)
+  if (currentPathIndex < 0) {
+    return false
+  }
+  const remainingPath = url.pathname.slice(currentPathIndex + currentPath.length)
+  return !remainingPath || remainingPath.startsWith('/')
+}
+
+export function resolveHomeFeaturedSuccessorHref(currentEvent: Event, nextEvent: Event, href: string) {
+  if (!isHomeFeaturedEventHref(currentEvent, href)) {
+    return null
+  }
+
+  const url = new URL(href, 'https://featured.local')
+  const currentPath = resolveEventPagePath(currentEvent)
+  const currentPathIndex = url.pathname.indexOf(currentPath)
+  const remainingPath = url.pathname.slice(currentPathIndex + currentPath.length)
+
+  const localePrefix = url.pathname.slice(0, currentPathIndex)
+  const outcomeIndex = url.searchParams.get('outcomeIndex')
+  if (!outcomeIndex || !/^\d+$/.test(outcomeIndex)) {
+    return `${localePrefix}${resolveEventPagePath(nextEvent)}`
+  }
+
+  const marketSlug = remainingPath.split('/').filter(Boolean)[0]
+  const conditionId = url.searchParams.get('conditionId')
+  const currentMarket = currentEvent.markets.find(
+    (market) => market.slug === marketSlug || market.condition_id === conditionId,
+  )
+  const nextMarkets = nextEvent.markets.filter((market) => market.is_active && !market.is_resolved)
+  const currentMarketLabel =
+    currentMarket?.short_title?.trim().toLowerCase() || currentMarket?.title.trim().toLowerCase()
+  const matchingMarkets = currentMarket
+    ? nextMarkets.filter(
+        (market) =>
+          (market.short_title?.trim().toLowerCase() || market.title.trim().toLowerCase()) === currentMarketLabel,
+      )
+    : []
+  const nextMarket =
+    matchingMarkets.length === 1 ? matchingMarkets[0] : nextMarkets.length === 1 ? nextMarkets[0] : null
+  if (!nextMarket) {
+    return null
+  }
+
+  return `${localePrefix}${resolveEventOutcomePath(nextEvent, {
+    marketSlug: nextMarket.slug,
+    conditionId: nextMarket.condition_id,
+    outcomeIndex: Number(outcomeIndex),
+  })}`
 }
 
 export function findNextHomeFeaturedSeriesEvent(
