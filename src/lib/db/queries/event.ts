@@ -1914,12 +1914,12 @@ export const EventRepository = {
     sportsSportSlug = '',
     sportsSection = '',
     sportsVertical = '',
-  }: ListEventsProps): Promise<QueryResult<Event[]>> {
+  }: ListEventsProps): Promise<QueryResult<Event[]> & { updatedAt: number }> {
     'use cache'
     cacheTag(cacheTags.events(userId || 'guest'))
     cacheTag(cacheTags.eventsList)
 
-    return await runQuery(async () => {
+    const result = await runQuery(async () => {
       const safeLimit = normalizeEventListLimit(limit)
       const validOffset = normalizeEventListOffset(offset)
       const sportsSlugResolver = await getSportsSlugResolverFromDb()
@@ -2291,6 +2291,7 @@ export const EventRepository = {
 
       return { data: eventsWithMarkets, error: null }
     })
+    return { ...result, updatedAt: result.error ? 0 : Date.now() }
   },
 
   async listSportsFeedEvents({

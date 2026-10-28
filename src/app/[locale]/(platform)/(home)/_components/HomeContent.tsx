@@ -11,7 +11,6 @@ import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
-import { getHomeInitialEventsUpdatedAt } from '@/lib/home-initial-events-cache'
 import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
 import { PUBLIC_LISTING_PAGE_CACHE_LIFE } from '@/lib/public-listing-cache'
 import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
@@ -55,12 +54,13 @@ export default async function HomeContent({
     bookmarked: false,
     locale: resolvedLocale,
     currentTimestamp,
+    includeUpdatedAt: true,
     ...(initialSortBy && { sortBy: initialSortBy }),
   })
-    .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore }) => ({
+    .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore, updatedAt }) => ({
       events: error ? [] : (events ?? []),
       currentTimestamp: resolvedCurrentTimestamp ?? null,
-      updatedAt: error ? 0 : getHomeInitialEventsUpdatedAt(),
+      updatedAt: error ? 0 : (updatedAt ?? 0),
       hasMore: !error && hasMore === true,
     }))
     .catch((error) => {

@@ -316,15 +316,16 @@ describe('listHomeEventsPage', () => {
     const visibleAfterAllBatches = [...secondBatch.slice(0, 8), ...firstPage.slice(8)]
 
     mocks.listEvents
-      .mockResolvedValueOnce({ data: firstPage, error: null })
-      .mockResolvedValueOnce({ data: secondBatch, error: null })
-      .mockResolvedValueOnce({ data: thirdBatch, error: null })
+      .mockResolvedValueOnce({ data: firstPage, error: null, updatedAt: 20_000 })
+      .mockResolvedValueOnce({ data: secondBatch, error: null, updatedAt: 10_000 })
+      .mockResolvedValueOnce({ data: thirdBatch, error: null, updatedAt: 30_000 })
 
     mocks.filterHomeEvents.mockReturnValueOnce(visibleAfterAllBatches)
 
     const { listHomeEventsPage } = await import('@/lib/home-events-page')
     const result = await listHomeEventsPage({
       bookmarked: false,
+      includeUpdatedAt: true,
       locale: 'en',
       mainTag: 'trending',
       status: 'active',
@@ -371,6 +372,7 @@ describe('listHomeEventsPage', () => {
       error: null,
       currentTimestamp: null,
       hasMore: true,
+      updatedAt: 10_000,
     })
   })
 

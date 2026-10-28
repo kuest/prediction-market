@@ -10,6 +10,7 @@ const HOME_EVENTS_QUERY_BATCH_SIZE = 128
 interface ListHomeEventsPageOptions {
   bookmarked: boolean
   currentTimestamp?: number | null
+  includeUpdatedAt?: boolean
   frequency?: 'all' | 'daily' | 'weekly' | 'monthly'
   hideCrypto?: boolean
   hideEarnings?: boolean
@@ -26,10 +27,14 @@ interface ListHomeEventsPageOptions {
   userId: string
 }
 
-interface LoadHomeEventCandidatesOptions extends Omit<ListHomeEventsPageOptions, 'currentTimestamp'> {}
+interface LoadHomeEventCandidatesOptions extends Omit<
+  ListHomeEventsPageOptions,
+  'currentTimestamp' | 'includeUpdatedAt'
+> {}
 
 interface LoadHomeEventBatchesOptions extends Omit<LoadHomeEventCandidatesOptions, 'offset'> {
   initialEvents?: Event[]
+  initialUpdatedAt?: number
   offset: number
   skipLivePricing?: boolean
 }
@@ -41,6 +46,7 @@ async function loadHomeEventBatches({
   hideEarnings = false,
   hideSports = false,
   initialEvents = [],
+  initialUpdatedAt = Number.POSITIVE_INFINITY,
   locale,
   mainTag,
   offset,
@@ -55,9 +61,14 @@ async function loadHomeEventBatches({
 }: LoadHomeEventBatchesOptions) {
   let rawOffset = Math.max(0, offset)
   const accumulatedEvents = [...initialEvents]
+  let updatedAt = initialUpdatedAt
 
   while (true) {
-    const { data: rawEvents, error } = await EventRepository.listEvents({
+    const {
+      data: rawEvents,
+      error,
+      updatedAt: batchUpdatedAt,
+    } = await EventRepository.listEvents({
       tag,
       mainTag,
       search,
@@ -79,8 +90,10 @@ async function loadHomeEventBatches({
     })
 
     if (error) {
-      return { data: [], error }
+      return { data: [], error, updatedAt: 0 }
     }
+
+    updatedAt = Math.min(updatedAt, batchUpdatedAt)
 
     const batch = rawEvents ?? []
     if (batch.length === 0) {
@@ -99,6 +112,7 @@ async function loadHomeEventBatches({
   return {
     data: accumulatedEvents,
     error: null,
+    updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
   }
 }
 
@@ -123,7 +137,7 @@ async function loadHomeEventCandidates({
   const hasHomeVisibilityFilters = hideSports || hideCrypto || hideEarnings
 
   if (status === 'resolved' && !hasHomeVisibilityFilters) {
-    const { data, error } = await EventRepository.listEvents({
+    const { data, error, updatedAt } = await EventRepository.listEvents({
       tag,
       mainTag,
       search,
@@ -148,6 +162,7 @@ async function loadHomeEventCandidates({
     return {
       data: data ?? [],
       error,
+      updatedAt: error ? 0 : updatedAt,
     }
   }
 
@@ -155,9 +170,14 @@ async function loadHomeEventCandidates({
     let rawOffset = 0
     const accumulatedEvents: Event[] = []
     let visibleEventsCount = 0
+    let updatedAt = Number.POSITIVE_INFINITY
 
     while (true) {
-      const { data: rawEvents, error } = await EventRepository.listEvents({
+      const {
+        data: rawEvents,
+        error,
+        updatedAt: batchUpdatedAt,
+      } = await EventRepository.listEvents({
         tag,
         mainTag,
         search,
@@ -180,8 +200,10 @@ async function loadHomeEventCandidates({
       })
 
       if (error) {
-        return { data: [], error }
+        return { data: [], error, updatedAt: 0 }
       }
+
+      updatedAt = Math.min(updatedAt, batchUpdatedAt)
 
       const batch = rawEvents ?? []
       if (batch.length === 0) {
@@ -211,13 +233,18 @@ async function loadHomeEventCandidates({
     return {
       data: accumulatedEvents,
       error: null,
+      updatedAt: Number.isFinite(updatedAt) ? updatedAt : 0,
     }
   }
 
   if (status === 'active' && !hasHomeVisibilityFilters && targetOffset === 0) {
     // Only non-sports-primary recurring series can be replaced by later candidates during home filtering.
     // A page without one is already final, so avoid scanning the rest of the category.
-    const { data: firstPage, error } = await EventRepository.listEvents({
+    const {
+      data: firstPage,
+      error,
+      updatedAt,
+    } = await EventRepository.listEvents({
       tag,
       mainTag,
       search,
@@ -235,7 +262,7 @@ async function loadHomeEventCandidates({
     })
 
     if (error) {
-      return { data: [], error }
+      return { data: [], error, updatedAt: 0 }
     }
 
     const candidates = firstPage ?? []
@@ -247,6 +274,7 @@ async function loadHomeEventCandidates({
       return {
         data: candidates,
         error: null,
+        updatedAt,
       }
     }
 
@@ -260,6 +288,7 @@ async function loadHomeEventCandidates({
       hideEarnings,
       hideSports,
       initialEvents: candidates,
+      initialUpdatedAt: updatedAt,
       locale,
       mainTag,
       offset: candidates.length,
@@ -300,6 +329,7 @@ async function loadHomeEventCandidates({
 export async function listHomeEventsPage({
   bookmarked,
   currentTimestamp,
+  includeUpdatedAt = false,
   frequency = 'all',
   hideCrypto = false,
   hideEarnings = false,
@@ -314,7 +344,13 @@ export async function listHomeEventsPage({
   status = 'active',
   tag,
   userId,
-}: ListHomeEventsPageOptions) {
+}: ListHomeEventsPageOptions): Promise<{
+  data: Event[]
+  error: string | null
+  currentTimestamp: number | null
+  hasMore: boolean
+  updatedAt?: number
+}> {
   const targetOffset = Math.max(0, offset)
   const resolvedCurrentTimestamp = currentTimestamp ?? null
   const hasHomeVisibilityFilters = hideSports || hideCrypto || hideEarnings
@@ -339,7 +375,13 @@ export async function listHomeEventsPage({
   const { data: rawEvents, error } = candidatesResult
 
   if (error) {
-    return { data: [], error, currentTimestamp: resolvedCurrentTimestamp ?? null, hasMore: false }
+    return {
+      data: [],
+      error,
+      currentTimestamp: resolvedCurrentTimestamp ?? null,
+      hasMore: false,
+      ...(includeUpdatedAt && { updatedAt: 0 }),
+    }
   }
 
   let visibleEvents: Event[] = rawEvents ?? []
@@ -399,5 +441,6 @@ export async function listHomeEventsPage({
     error: null,
     currentTimestamp: resolvedCurrentTimestamp ?? null,
     hasMore: visibleEvents.length > pageEnd,
+    ...(includeUpdatedAt && { updatedAt: candidatesResult.updatedAt }),
   }
 }
