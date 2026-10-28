@@ -991,6 +991,43 @@ describe('eventsGrid', () => {
     expect(options.refetchInterval({ state: { dataUpdatedAt: updatedAt - 60_000 } })).toBe(60_000)
   })
 
+  it('does not read the clock when React Query evaluates the refresh interval on the server', () => {
+    render(
+      <EventsGrid
+        filters={{
+          tag: 'new',
+          mainTag: 'new',
+          search: '',
+          bookmarked: false,
+          frequency: 'all',
+          sortBy: 'created_at',
+          status: 'active',
+          hideSports: false,
+          hideCrypto: false,
+          hideEarnings: false,
+        }}
+        initialEvents={[]}
+        initialCurrentTimestamp={null}
+        routeMainTag="new"
+        routeTag="new"
+      />,
+    )
+
+    const options = mocks.useInfiniteQuery.mock.calls.at(-1)?.[0]
+    const dateNowSpy = spyOn(Date, 'now').mockImplementation(() => {
+      throw new Error('Date.now must not run during server prerender')
+    })
+    stubGlobal('window', undefined)
+
+    try {
+      expect(options.refetchInterval({ state: { dataUpdatedAt: 0 } })).toBe(60_000)
+      expect(dateNowSpy).not.toHaveBeenCalled()
+    } finally {
+      unstubAllGlobals()
+      dateNowSpy.mockRestore()
+    }
+  })
+
   it('hydrates new route initial data with newest-first sort', async () => {
     const newestLowVolumeEvent = {
       id: 'newer-low-volume-event',

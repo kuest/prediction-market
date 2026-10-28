@@ -635,6 +635,10 @@ export default function EventsGrid({
     staleTime: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : 'static',
     refetchInterval: shouldAutoRefreshEvents
       ? (query) => {
+          if (typeof window === 'undefined') {
+            return HOME_FEED_REFRESH_INTERVAL_MS
+          }
+
           const remaining = HOME_FEED_REFRESH_INTERVAL_MS - (Date.now() - query.state.dataUpdatedAt)
           return remaining > 0 ? remaining : HOME_FEED_REFRESH_INTERVAL_MS
         }
