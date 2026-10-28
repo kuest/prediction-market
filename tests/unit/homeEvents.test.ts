@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test'
 
-import { filterHomeEvents, isEventResolvedLike } from '@/lib/home-events'
+import {
+  filterHomeEvents,
+  isCurrentHomeLiveSeriesEvent,
+  isEventResolvedLike,
+  resolveHomeLiveSeriesEndTimestamp,
+} from '@/lib/home-events'
 
 describe('home-events', () => {
   it('treats active events with unresolved markets as not resolved-like', () => {
@@ -268,5 +273,88 @@ describe('home-events', () => {
         status: 'active',
       }),
     ).toEqual([todayEvent])
+  })
+
+  it('rolls a live series card to its current event at the exact market end', () => {
+    const previous = {
+      id: 'previous',
+      slug: 'previous',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      status: 'active' as const,
+      start_date: '2026-06-09T12:00:00.000Z',
+      end_date: '2026-06-09T12:15:00.000Z',
+      created_at: '2026-06-09T11:55:00.000Z',
+      updated_at: '2026-06-09T11:55:00.000Z',
+      markets: [{ is_resolved: false, end_time: '2026-06-09T12:15:00.000Z' }],
+    }
+    const current = {
+      ...previous,
+      id: 'current',
+      slug: 'current',
+      start_date: '2026-06-09T12:15:00.000Z',
+      end_date: '2026-06-09T12:30:00.000Z',
+      created_at: '2026-06-09T12:10:00.000Z',
+      updated_at: '2026-06-09T12:10:00.000Z',
+      markets: [{ is_resolved: false, end_time: '2026-06-09T12:30:00.000Z' }],
+    }
+    const future = {
+      ...current,
+      id: 'future',
+      slug: 'future',
+      start_date: '2026-06-09T12:30:00.000Z',
+      end_date: '2026-06-09T12:45:00.000Z',
+      created_at: '2026-06-09T12:25:00.000Z',
+      updated_at: '2026-06-09T12:25:00.000Z',
+      markets: [{ is_resolved: false, end_time: '2026-06-09T12:45:00.000Z' }],
+    }
+
+    expect(
+      filterHomeEvents([future, previous, current], {
+        currentTimestamp: Date.parse('2026-06-09T12:14:59.999Z'),
+      }),
+    ).toEqual([previous])
+    expect(
+      filterHomeEvents([future, previous, current], {
+        currentTimestamp: Date.parse('2026-06-09T12:15:00.000Z'),
+      }),
+    ).toEqual([current])
+    expect(filterHomeEvents([previous], { currentTimestamp: Date.parse('2026-06-09T12:15:00.000Z') })).toEqual([])
+  })
+
+  it('does not promote a future live period before its start', () => {
+    const future = {
+      id: 'future',
+      slug: 'future',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      status: 'active' as const,
+      start_date: '2026-06-10T09:30:00.000Z',
+      end_date: '2026-06-10T09:45:00.000Z',
+      created_at: '2026-06-09T12:00:00.000Z',
+      updated_at: '2026-06-09T12:00:00.000Z',
+      markets: [{ is_resolved: false }],
+    }
+    expect(filterHomeEvents([future], { currentTimestamp: Date.parse('2026-06-09T22:00:00.000Z') })).toEqual([future])
+    expect(isCurrentHomeLiveSeriesEvent(future, Date.parse('2026-06-09T22:00:00.000Z'))).toBe(false)
+    expect(isCurrentHomeLiveSeriesEvent(future, Date.parse('2026-06-10T09:30:00.000Z'))).toBe(true)
+  })
+
+  it('uses UTC and the latest market end for live series rollover', () => {
+    const event = {
+      id: 'live',
+      slug: 'live',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      status: 'active' as const,
+      start_date: '2026-06-09 12:00:00',
+      end_date: '2026-06-09 12:14:00',
+      created_at: '2026-06-09T11:55:00.000Z',
+      updated_at: '2026-06-09T11:55:00.000Z',
+      markets: [{ is_resolved: false, end_time: '2026-06-09 12:15:00' }],
+    }
+    expect(resolveHomeLiveSeriesEndTimestamp(event)).toBe(Date.parse('2026-06-09T12:15:00.000Z'))
+    expect(isCurrentHomeLiveSeriesEvent(event, Date.parse('2026-06-09T12:14:59.999Z'))).toBe(true)
+    expect(filterHomeEvents([event], { currentTimestamp: Date.parse('2026-06-09T12:15:00.000Z') })).toEqual([])
   })
 })

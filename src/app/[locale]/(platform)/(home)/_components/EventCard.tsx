@@ -24,7 +24,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { resolveCryptoCadenceEventTitle } from '@/lib/crypto-cadence-event'
 import { shouldShowEventNewBadge } from '@/lib/event-new-badge'
-import { isEventResolvedLike } from '@/lib/home-events'
+import { isCurrentHomeLiveSeriesEvent, isEventResolvedLike } from '@/lib/home-events'
 import {
   localizeHomeEventCardTitle,
   localizeHomeEventMarketDates,
@@ -123,7 +123,10 @@ export default function EventCard({
   const yesOutcome = primaryMarket ? resolveHomeCardBinaryOutcome(primaryMarket, OUTCOME_INDEX.YES) : null
   const noOutcome = primaryMarket ? resolveHomeCardBinaryOutcome(primaryMarket, OUTCOME_INDEX.NO) : null
   const shouldShowNewBadge = shouldShowEventNewBadge(event, currentTimestamp)
-  const shouldShowLiveBadge = !isResolvedEvent && Boolean(event.has_live_chart)
+  const shouldShowLiveBadge =
+    !isResolvedEvent &&
+    Boolean(event.has_live_chart) &&
+    (!event.series_slug?.trim() || currentTimestamp == null || isCurrentHomeLiveSeriesEvent(event, currentTimestamp))
   const chanceByMarket = buildChanceByMarket(event.markets, priceOverridesByMarket)
   const homeSportsMoneylineModel = enableHomeSportsMoneylineLayout ? buildHomeSportsMoneylineModel(event) : null
   const resolvedOutcomeIndexByConditionId = useResolvedOutcomeIndexByConditionId({

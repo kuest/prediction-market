@@ -6,7 +6,9 @@ import { hoisted } from '../bun-test-helpers'
 const mocks = hoisted(() => ({
   buildHomeSportsMoneylineModel: mock(),
   dynamicSportsCard: mock(),
+  eventCardFooter: mock(),
   eventCardHeader: mock(),
+  isCurrentHomeLiveSeriesEvent: mock(),
   locale: 'en-US',
   singleMarketActions: mock(),
   useXTrackerTweetCount: mock(),
@@ -28,7 +30,10 @@ void mock.module('next/dynamic', () => ({
 }))
 
 void mock.module('@/app/[locale]/(platform)/(home)/_components/EventCardFooter', () => ({
-  default: () => <div data-testid="event-card-footer" />,
+  default: (props: any) => {
+    mocks.eventCardFooter(props)
+    return <div data-testid="event-card-footer" />
+  },
 }))
 
 void mock.module('@/app/[locale]/(platform)/(home)/_components/EventCardHeader', () => ({
@@ -63,7 +68,9 @@ void mock.module('@/lib/event-new-badge', () => ({
 }))
 
 void mock.module('@/lib/home-events', () => ({
+  isCurrentHomeLiveSeriesEvent: (...args: any[]) => mocks.isCurrentHomeLiveSeriesEvent(...args),
   isEventResolvedLike: () => false,
+  resolveHomeLiveSeriesEndTimestamp: () => Number.POSITIVE_INFINITY,
 }))
 
 void mock.module('@/lib/market-chance', () => ({
@@ -107,7 +114,10 @@ describe('eventCard', () => {
   beforeEach(() => {
     mocks.buildHomeSportsMoneylineModel.mockReset()
     mocks.dynamicSportsCard.mockReset()
+    mocks.eventCardFooter.mockReset()
     mocks.eventCardHeader.mockReset()
+    mocks.isCurrentHomeLiveSeriesEvent.mockReset()
+    mocks.isCurrentHomeLiveSeriesEvent.mockReturnValue(false)
     mocks.locale = 'en-US'
     mocks.singleMarketActions.mockReset()
     mocks.useXTrackerTweetCount.mockReset()
@@ -124,6 +134,25 @@ describe('eventCard', () => {
     expect(screen.getByTestId('event-card-single-market-actions')).toBeInTheDocument()
     expect(screen.queryByTestId('sports-moneyline-card')).not.toBeInTheDocument()
     expect(mocks.dynamicSportsCard).not.toHaveBeenCalled()
+  })
+
+  it('does not label an upcoming live series event as Live', () => {
+    mocks.buildHomeSportsMoneylineModel.mockReturnValue(null)
+    render(
+      <EventCard
+        event={{ ...EVENT, series_slug: 'live-series', has_live_chart: true } as any}
+        currentTimestamp={Date.parse('2026-06-09T12:00:00.000Z')}
+      />,
+    )
+    expect(mocks.eventCardFooter.mock.calls.at(-1)?.[0].showLiveBadge).toBe(false)
+    mocks.isCurrentHomeLiveSeriesEvent.mockReturnValue(true)
+    render(
+      <EventCard
+        event={{ ...EVENT, series_slug: 'live-series', has_live_chart: true } as any}
+        currentTimestamp={Date.parse('2026-06-09T12:15:00.000Z')}
+      />,
+    )
+    expect(mocks.eventCardFooter.mock.calls.at(-1)?.[0].showLiveBadge).toBe(true)
   })
 
   it('uses standard Yes and No action labels when a binary market has no outcome rows', () => {

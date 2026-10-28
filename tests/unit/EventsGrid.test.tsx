@@ -5,7 +5,7 @@ import EventsGrid from '@/app/[locale]/(platform)/(home)/_components/EventsGrid'
 import * as actualHomeEvents from '@/lib/home-events'
 import * as actualMarketChance from '@/lib/market-chance'
 
-import { hoisted, stubGlobal, unstubAllGlobals } from '../bun-test-helpers'
+import { hoisted, stubGlobal, unstubAllGlobals, useFakeTimers, useRealTimers } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
   eventsStaticGrid: mock(),
@@ -636,6 +636,168 @@ describe('eventsGrid', () => {
     expect(mocks.refetch).not.toHaveBeenCalled()
     expect(mocks.useInfiniteQuery.mock.calls.at(-1)?.[0].refetchOnMount).toBe(true)
     expect(mocks.useInfiniteQuery.mock.calls.at(-1)?.[0].staleTime).toBe(60_000)
+  })
+
+  it('updates the live series card at its end and refreshes the existing feed once', async () => {
+    useFakeTimers()
+    const beforeEnd = Date.parse('2026-06-09T12:14:59.000Z')
+    jest.setSystemTime(beforeEnd)
+    mocks.useCurrentTimestamp.mockReturnValue(beforeEnd)
+    mocks.filterHomeEvents.mockImplementation((events: any[], options?: any) =>
+      events.filter(
+        (event) =>
+          Date.parse(event.start_date) <= options.currentTimestamp &&
+          options.currentTimestamp < Date.parse(event.end_date),
+      ),
+    )
+    const previous = createEvent({
+      id: 'previous',
+      slug: 'previous',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      start_date: '2026-06-09T12:00:00.000Z',
+      end_date: '2026-06-09T12:15:00.000Z',
+    })
+    const current = createEvent({
+      id: 'current',
+      slug: 'current',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      start_date: '2026-06-09T12:15:00.000Z',
+      end_date: '2026-06-09T12:30:00.000Z',
+    })
+    let events = [previous, current]
+    let isFetching = true
+    mocks.useInfiniteQuery.mockImplementation(() => ({
+      status: 'success',
+      data: { pages: [{ events, hasMore: false }] },
+      dataUpdatedAt: 1,
+      isFetching,
+      isFetchingNextPage: false,
+      fetchNextPage: mock(),
+      hasNextPage: false,
+      isPending: false,
+      refetch: mocks.refetch,
+    }))
+    const filters = {
+      tag: 'trending',
+      mainTag: 'trending',
+      search: '',
+      bookmarked: false,
+      frequency: 'all',
+      sortBy: 'volume_24h',
+      status: 'active',
+      hideSports: false,
+      hideCrypto: false,
+      hideEarnings: false,
+    } as const
+
+    try {
+      const { rerender } = render(
+        <EventsGrid
+          filters={filters}
+          initialEvents={[]}
+          initialCurrentTimestamp={beforeEnd}
+          routeMainTag="trending"
+          routeTag="trending"
+        />,
+      )
+      expect(mocks.eventsStaticGrid.mock.calls.at(-1)?.[0].events.map((event: any) => event.id)).toEqual(['previous'])
+      expect(mocks.refetch).not.toHaveBeenCalled()
+
+      await act(async () => jest.advanceTimersByTime(1_000))
+      expect(mocks.eventsStaticGrid.mock.calls.at(-1)?.[0].events.map((event: any) => event.id)).toEqual(['current'])
+      expect(mocks.refetch).not.toHaveBeenCalled()
+
+      events = [current]
+      isFetching = false
+      rerender(
+        <EventsGrid
+          filters={filters}
+          initialEvents={[]}
+          initialCurrentTimestamp={beforeEnd}
+          routeMainTag="trending"
+          routeTag="trending"
+        />,
+      )
+      expect(mocks.refetch).toHaveBeenCalledTimes(1)
+      await act(async () => jest.advanceTimersByTime(1_000))
+      expect(mocks.refetch).toHaveBeenCalledTimes(1)
+    } finally {
+      useRealTimers()
+    }
+  })
+
+  it('hides an expired live card without a successor and refreshes after a hidden-tab rollover', async () => {
+    useFakeTimers()
+    const beforeEnd = Date.parse('2026-06-09T12:14:59.000Z')
+    jest.setSystemTime(beforeEnd)
+    mocks.useCurrentTimestamp.mockReturnValue(beforeEnd)
+    mocks.filterHomeEvents.mockImplementation((events: any[], options?: any) =>
+      events.filter((event) => Date.parse(event.end_date) > options.currentTimestamp),
+    )
+    const previous = createEvent({
+      id: 'previous',
+      slug: 'previous',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      start_date: '2026-06-09T12:00:00.000Z',
+      end_date: '2026-06-09T12:15:00.000Z',
+    })
+    mocks.useInfiniteQuery.mockImplementation(() => ({
+      status: 'success',
+      data: { pages: [{ events: [previous], hasMore: false }] },
+      dataUpdatedAt: 1,
+      isFetching: false,
+      isFetchingNextPage: false,
+      fetchNextPage: mock(),
+      hasNextPage: false,
+      isPending: false,
+      refetch: mocks.refetch,
+    }))
+    const originalVisibilityState = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    let visibilityState = 'visible'
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => visibilityState })
+
+    try {
+      render(
+        <EventsGrid
+          filters={{
+            tag: 'trending',
+            mainTag: 'trending',
+            search: '',
+            bookmarked: false,
+            frequency: 'all',
+            sortBy: 'volume_24h',
+            status: 'active',
+            hideSports: false,
+            hideCrypto: false,
+            hideEarnings: false,
+          }}
+          initialEvents={[]}
+          initialCurrentTimestamp={beforeEnd}
+          routeMainTag="trending"
+          routeTag="trending"
+        />,
+      )
+      visibilityState = 'hidden'
+      await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+      await act(async () => jest.advanceTimersByTime(30 * 60_000))
+      expect(mocks.refetch).not.toHaveBeenCalled()
+
+      visibilityState = 'visible'
+      await act(async () => document.dispatchEvent(new Event('visibilitychange')))
+      expect(mocks.refetch).toHaveBeenCalledTimes(1)
+      expect(screen.queryByTestId('events-static-grid')).not.toBeInTheDocument()
+      expect(screen.getByTestId('events-empty-state')).toBeInTheDocument()
+    } finally {
+      if (originalVisibilityState) {
+        Object.defineProperty(document, 'visibilityState', originalVisibilityState)
+      } else {
+        Reflect.deleteProperty(document, 'visibilityState')
+      }
+      useRealTimers()
+    }
   })
 
   it('refreshes active series with the current client timestamp instead of the cached shell timestamp', async () => {

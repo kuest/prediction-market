@@ -4,7 +4,7 @@ import type { InfiniteData } from '@tanstack/react-query'
 
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query'
 import { useExtracted, useLocale } from 'next-intl'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import type { FilterState } from '@/app/[locale]/(platform)/_providers/FilterProvider'
 import type { HomeEventsApiPage } from '@/lib/events-api'
@@ -23,7 +23,12 @@ import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
 import { matchesCryptoCadenceRoute } from '@/lib/crypto-cadence-event'
-import { filterHomeEvents, isEventResolvedLike } from '@/lib/home-events'
+import {
+  filterHomeEvents,
+  isEventResolvedLike,
+  resolveHomeLiveSeriesEndTimestamp,
+  resolveHomeLiveSeriesStartTimestamp,
+} from '@/lib/home-events'
 import {
   fetchHomeEventsQueryPage,
   getHomeEventsNextPageParam,
@@ -52,6 +57,15 @@ const eventsSnapshotCache = new Map<string, Event[]>()
 const EVENTS_SNAPSHOT_CACHE_LIMIT = 24
 const HOME_LIVE_PRICE_OBSERVER_ROOT_MARGIN = '200px 0px'
 const HOME_LIVE_OVERRIDE_SETTLE_DELAY_MS = 2_000
+function subscribeHomeVisibility(listener: () => void) {
+  document.addEventListener('visibilitychange', listener)
+  return () => document.removeEventListener('visibilitychange', listener)
+}
+
+function getHomeVisibilitySnapshot() {
+  return document.visibilityState !== 'hidden'
+}
+
 function hasFiniteTimestamp(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value)
 }
@@ -503,10 +517,18 @@ export default function EventsGrid({
   const user = useUser()
   const { open: openAppKit } = useAppKit()
   const queryUserScope = user?.id ?? 'guest'
-  const currentTimestamp = useCurrentTimestamp({
+  const sampledCurrentTimestamp = useCurrentTimestamp({
     initialTimestamp: initialCurrentTimestamp,
     intervalMs: HOME_FEED_REFRESH_INTERVAL_MS,
   })
+  const [rolloverTimestamp, setRolloverTimestamp] = useState<number | null>(null)
+  const lastVisibleTimestampRef = useRef<number | null>(initialCurrentTimestamp)
+  const pendingRolloverRefreshRef = useRef(false)
+  const isPageVisible = useSyncExternalStore(subscribeHomeVisibility, getHomeVisibilitySnapshot, () => true)
+  const currentTimestamp =
+    rolloverTimestamp != null && (sampledCurrentTimestamp == null || rolloverTimestamp > sampledCurrentTimestamp)
+      ? rolloverTimestamp
+      : sampledCurrentTimestamp
   const hasHydrated = useHasHydrated()
   const routeDefaultSortBy = getDefaultHomeRouteSortBy(routeTag)
   const snapshotKey = [
@@ -589,6 +611,7 @@ export default function EventsGrid({
     hasNextPage,
     isPending,
     isPlaceholderData,
+    refetch,
   } = useInfiniteQuery({
     queryKey: eventsQueryKey,
     queryFn: ({ pageParam }) =>
@@ -630,6 +653,73 @@ export default function EventsGrid({
     visibleEvents.length === 0 && cachedSnapshotEvents.length > 0 && status !== 'success'
   const eventsToRender = shouldShowSnapshotFallback ? cachedSnapshotEvents : visibleEvents
   const hydrationSafeEventsToRender = !hasHydrated && isRouteInitialState ? initialEvents : eventsToRender
+  const rolloverCandidates = useMemo(
+    () => (data ? data.pages.flatMap((page) => page.events) : initialEvents),
+    [data, initialEvents],
+  )
+
+  useEffect(
+    function scheduleHomeLiveSeriesRollover() {
+      if (!shouldAutoRefreshEvents || !hasHydrated || !isPageVisible) {
+        return
+      }
+
+      let timeoutId: number | null = null
+      function reconcileTime() {
+        if (timeoutId != null) {
+          window.clearTimeout(timeoutId)
+          timeoutId = null
+        }
+        if (!getHomeVisibilitySnapshot()) {
+          return
+        }
+
+        const now = Date.now()
+        const lastVisibleTimestamp = lastVisibleTimestampRef.current ?? now
+        lastVisibleTimestampRef.current = now
+        let nextTransition = Number.POSITIVE_INFINITY
+        let crossedTransition = false
+
+        for (const event of rolloverCandidates) {
+          if (!event.has_live_chart || !event.series_slug?.trim()) {
+            continue
+          }
+          const endTimestamp = resolveHomeLiveSeriesEndTimestamp(event)
+          const startTimestamp = resolveHomeLiveSeriesStartTimestamp(event)
+          for (const timestamp of [startTimestamp, endTimestamp]) {
+            if (!Number.isFinite(timestamp)) {
+              continue
+            }
+            if (timestamp > lastVisibleTimestamp && timestamp <= now) {
+              crossedTransition = true
+            } else if (timestamp > now) {
+              nextTransition = Math.min(nextTransition, timestamp)
+            }
+          }
+        }
+
+        if (crossedTransition) {
+          setRolloverTimestamp(now)
+          pendingRolloverRefreshRef.current = true
+        }
+        if (pendingRolloverRefreshRef.current && !isFetching) {
+          pendingRolloverRefreshRef.current = false
+          void refetch()
+        }
+        if (Number.isFinite(nextTransition)) {
+          timeoutId = window.setTimeout(reconcileTime, Math.max(1, nextTransition - now))
+        }
+      }
+
+      reconcileTime()
+      return function cancelHomeLiveSeriesRollover() {
+        if (timeoutId != null) {
+          window.clearTimeout(timeoutId)
+        }
+      }
+    },
+    [hasHydrated, isFetching, isPageVisible, refetch, rolloverCandidates, shouldAutoRefreshEvents],
+  )
 
   const { parentRef, livePriceEventIds } = useHomeLivePriceVisibility(hydrationSafeEventsToRender)
   const { stablePriceOverridesByMarket } = useHomeLivePriceOverrides({
