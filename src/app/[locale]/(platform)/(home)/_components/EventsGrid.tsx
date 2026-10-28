@@ -57,6 +57,7 @@ const eventsSnapshotCache = new Map<string, Event[]>()
 const EVENTS_SNAPSHOT_CACHE_LIMIT = 24
 const HOME_LIVE_PRICE_OBSERVER_ROOT_MARGIN = '200px 0px'
 const HOME_LIVE_OVERRIDE_SETTLE_DELAY_MS = 2_000
+const MAX_HOME_ROLLOVER_TIMEOUT_MS = 2_147_483_647
 function subscribeHomeVisibility(listener: () => void) {
   document.addEventListener('visibilitychange', listener)
   return () => document.removeEventListener('visibilitychange', listener)
@@ -707,7 +708,10 @@ export default function EventsGrid({
           void refetch()
         }
         if (Number.isFinite(nextTransition)) {
-          timeoutId = window.setTimeout(reconcileTime, Math.max(1, nextTransition - now))
+          timeoutId = window.setTimeout(
+            reconcileTime,
+            Math.min(MAX_HOME_ROLLOVER_TIMEOUT_MS, Math.max(1, nextTransition - now)),
+          )
         }
       }
 

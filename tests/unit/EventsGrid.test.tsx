@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, mock, jest } from 'bun:test'
+import { beforeEach, describe, expect, it, mock, jest, spyOn } from 'bun:test'
 
 import EventsGrid from '@/app/[locale]/(platform)/(home)/_components/EventsGrid'
 import * as actualHomeEvents from '@/lib/home-events'
@@ -796,6 +796,67 @@ describe('eventsGrid', () => {
       } else {
         Reflect.deleteProperty(document, 'visibilityState')
       }
+      useRealTimers()
+    }
+  })
+
+  it('caps the rollover timer for a live period more than 24 days away', async () => {
+    useFakeTimers()
+    const now = Date.parse('2026-06-09T12:00:00.000Z')
+    jest.setSystemTime(now)
+    mocks.useCurrentTimestamp.mockReturnValue(now)
+    const timeoutSpy = spyOn(window, 'setTimeout')
+    const future = createEvent({
+      id: 'future',
+      slug: 'future',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      start_date: '2026-07-20T12:00:00.000Z',
+      end_date: '2026-07-20T12:15:00.000Z',
+    })
+    mocks.useInfiniteQuery.mockImplementation(() => ({
+      status: 'success',
+      data: { pages: [{ events: [future], hasMore: false }] },
+      dataUpdatedAt: 1,
+      isFetching: false,
+      isFetchingNextPage: false,
+      fetchNextPage: mock(),
+      hasNextPage: false,
+      isPending: false,
+      refetch: mocks.refetch,
+    }))
+
+    try {
+      render(
+        <EventsGrid
+          filters={{
+            tag: 'trending',
+            mainTag: 'trending',
+            search: '',
+            bookmarked: false,
+            frequency: 'all',
+            sortBy: 'volume_24h',
+            status: 'active',
+            hideSports: false,
+            hideCrypto: false,
+            hideEarnings: false,
+          }}
+          initialEvents={[]}
+          initialCurrentTimestamp={now}
+          routeMainTag="trending"
+          routeTag="trending"
+        />,
+      )
+      expect(timeoutSpy.mock.calls.some(([, delay]) => delay === 2_147_483_647)).toBe(true)
+      await act(async () => jest.advanceTimersByTime(1_000))
+      expect(mocks.refetch).not.toHaveBeenCalled()
+      await act(async () => jest.advanceTimersByTime(2_147_483_647 - 1_000))
+      expect(
+        timeoutSpy.mock.calls.filter(([, delay]) => typeof delay === 'number' && delay > 24 * 60 * 60_000),
+      ).toHaveLength(2)
+      expect(mocks.refetch).not.toHaveBeenCalled()
+    } finally {
+      timeoutSpy.mockRestore()
       useRealTimers()
     }
   })
