@@ -9,10 +9,7 @@ import LeaderboardClient from '@/app/[locale]/(platform)/leaderboard/_components
 import LeaderboardPageSkeleton from '@/app/[locale]/(platform)/leaderboard/_components/LeaderboardPageSkeleton'
 import {
   buildLeaderboardPath,
-  CATEGORY_OPTIONS,
-  ORDER_OPTIONS,
   parseLeaderboardFilters,
-  PERIOD_OPTIONS,
 } from '@/app/[locale]/(platform)/leaderboard/_utils/leaderboardFilters'
 import { DEFAULT_LOCALE } from '@/i18n/locales'
 import { getRootLocale } from '@/i18n/root-locale'
@@ -107,20 +104,6 @@ export async function generateMetadata({
       images: [socialImage],
     },
   }
-}
-
-export async function generateStaticParams() {
-  const params: Array<{ filters: string[] }> = [{ filters: [] }]
-
-  for (const category of CATEGORY_OPTIONS.map((option) => option.value)) {
-    for (const period of PERIOD_OPTIONS.map((option) => option.value)) {
-      for (const order of ORDER_OPTIONS.map((option) => option.value)) {
-        params.push({ filters: [category, period, order] })
-      }
-    }
-  }
-
-  return params
 }
 
 export default function LeaderboardPage({ params }: PageProps<'/[locale]/leaderboard/[[...filters]]'>) {
