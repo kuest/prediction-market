@@ -6,6 +6,7 @@ import {
   applyHomeFeaturedRolloverResponse,
   canActivateHomeFeaturedSuccessor,
   findNextHomeFeaturedSeriesEvent,
+  getHomeFeaturedRolloverPreloadDelay,
   isHomeFeaturedEventHref,
   isHomeFeaturedEventEnded,
   isHomeFeaturedEventCurrent,
@@ -119,6 +120,14 @@ describe('homeFeaturedRollover', () => {
     expect(shouldPreloadHomeFeaturedRollover(true, true, successor, beforeEnd)).toBe(false)
     expect(shouldPreloadHomeFeaturedRollover(true, true, successor, afterEnd)).toBe(true)
     expect(shouldPreloadHomeFeaturedRollover(false, true, null, afterEnd)).toBe(false)
+  })
+
+  it('waits until one minute before a current series ends to preload its successor', () => {
+    const current = createEvent()
+    const now = Date.parse('2026-08-13T16:01:00.000Z')
+    expect(getHomeFeaturedRolloverPreloadDelay(current, now)).toBe(180_000)
+    expect(getHomeFeaturedRolloverPreloadDelay(current, Date.parse('2026-08-13T16:04:30.000Z'))).toBe(0)
+    expect(getHomeFeaturedRolloverPreloadDelay(current, Date.parse('2026-08-13T16:05:30.000Z'))).toBe(0)
   })
 
   it('selects the nearest active event after the current market', () => {

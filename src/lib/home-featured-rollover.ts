@@ -169,6 +169,15 @@ export function shouldPreloadHomeFeaturedRollover(
   return isSeries && isPageVisible && (!nextEvent || isHomeFeaturedEventEnded(nextEvent, nowTimestamp))
 }
 
+export function getHomeFeaturedRolloverPreloadDelay(currentEvent: Event, nowTimestamp: number) {
+  if (isHomeFeaturedEventEnded(currentEvent, nowTimestamp)) {
+    return 0
+  }
+
+  const endTimestamp = resolveHomeFeaturedEventEndTimestamp(currentEvent)
+  return endTimestamp == null ? 0 : Math.max(0, endTimestamp - nowTimestamp - 60_000)
+}
+
 export function resolveHomeFeaturedSuccessorHref(currentEvent: Event, nextEvent: Event, href: string) {
   if (!isHomeFeaturedEventHref(currentEvent, href)) {
     return null

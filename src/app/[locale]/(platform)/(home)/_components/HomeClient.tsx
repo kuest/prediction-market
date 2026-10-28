@@ -37,6 +37,7 @@ const CategorySidebar = dynamic(() => import('@/app/[locale]/(platform)/(home)/_
 interface HomeClientProps {
   categoryFaqItems: EventFaqItem[]
   initialEvents: Event[]
+  initialEventsUpdatedAt: number
   initialHasMore: boolean
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
@@ -123,6 +124,7 @@ function useHomeClientState({ initialTag, initialMainTag }: Pick<HomeClientProps
 export default function HomeClient({
   categoryFaqItems,
   initialEvents,
+  initialEventsUpdatedAt,
   initialHasMore,
   initialFeaturedEvents,
   initialFeaturedHotTopics,
@@ -155,6 +157,7 @@ export default function HomeClient({
       dynamicHomeCategorySlugSet={dynamicHomeCategorySlugSet}
       initialCurrentTimestamp={initialCurrentTimestamp}
       initialEvents={initialEvents}
+      initialEventsUpdatedAt={initialEventsUpdatedAt}
       initialHasMore={initialHasMore}
       initialFeaturedEvents={initialFeaturedEvents}
       initialFeaturedHotTopics={initialFeaturedHotTopics}
@@ -176,6 +179,7 @@ interface HomeClientContentProps {
   dynamicHomeCategorySlugSet: Set<string>
   initialCurrentTimestamp: number | null
   initialEvents: Event[]
+  initialEventsUpdatedAt: number
   initialHasMore: boolean
   initialFeaturedEvents: HomeFeaturedEventCard[]
   initialFeaturedHotTopics: HomeFeaturedHotTopic[]
@@ -443,6 +447,7 @@ function HomeClientContent({
   dynamicHomeCategorySlugSet,
   initialCurrentTimestamp,
   initialEvents,
+  initialEventsUpdatedAt,
   initialHasMore,
   initialFeaturedEvents,
   initialFeaturedHotTopics,
@@ -532,6 +537,7 @@ function HomeClientContent({
           <EventsGrid
             filters={homeFilters}
             initialEvents={canUseServerInitialEvents ? initialEvents : []}
+            initialEventsUpdatedAt={initialEventsUpdatedAt}
             initialHasMore={canUseServerInitialEvents && initialHasMore}
             initialCurrentTimestamp={initialCurrentTimestamp}
             onClearFilters={handleClearFilters}

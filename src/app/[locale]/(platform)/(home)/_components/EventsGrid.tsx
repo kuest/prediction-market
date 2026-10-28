@@ -43,6 +43,7 @@ import { useUser } from '@/stores/useUser'
 interface EventsGridProps {
   filters: FilterState
   initialEvents: Event[]
+  initialEventsUpdatedAt?: number
   initialHasMore?: boolean
   initialCurrentTimestamp: number | null
   maxColumns?: number
@@ -506,6 +507,7 @@ function useInfiniteScrollLoadMore({
 export default function EventsGrid({
   filters,
   initialEvents,
+  initialEventsUpdatedAt = 0,
   initialHasMore = false,
   initialCurrentTimestamp,
   maxColumns,
@@ -631,9 +633,14 @@ export default function EventsGrid({
     refetchOnMount: shouldAutoRefreshEvents ? true : false,
     refetchOnWindowFocus: false,
     staleTime: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : 'static',
-    refetchInterval: shouldAutoRefreshEvents ? HOME_FEED_REFRESH_INTERVAL_MS : false,
+    refetchInterval: shouldAutoRefreshEvents
+      ? (query) => {
+          const remaining = HOME_FEED_REFRESH_INTERVAL_MS - (Date.now() - query.state.dataUpdatedAt)
+          return remaining > 0 ? remaining : HOME_FEED_REFRESH_INTERVAL_MS
+        }
+      : false,
     refetchIntervalInBackground: true,
-    initialDataUpdatedAt: 0,
+    initialDataUpdatedAt: shouldUseInitialData ? initialEventsUpdatedAt : 0,
     placeholderData: keepPreviousData,
   })
 
@@ -649,7 +656,7 @@ export default function EventsGrid({
 
   const columns = useColumns(maxColumns)
   const loadingMoreColumns = Math.max(1, columns)
-  const hasFreshQueryData = !shouldUseInitialData || dataUpdatedAt > 0
+  const hasFreshQueryData = !shouldUseInitialData || dataUpdatedAt > initialEventsUpdatedAt
   const shouldShowSnapshotFallback =
     visibleEvents.length === 0 && cachedSnapshotEvents.length > 0 && status !== 'success'
   const eventsToRender = shouldShowSnapshotFallback ? cachedSnapshotEvents : visibleEvents

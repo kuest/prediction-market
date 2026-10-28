@@ -61,6 +61,7 @@ import {
 import {
   applyHomeFeaturedRolloverResponse,
   canActivateHomeFeaturedSuccessor,
+  getHomeFeaturedRolloverPreloadDelay,
   isHomeFeaturedEventHref,
   isHomeFeaturedEventEnded,
   isHomeFeaturedEventCurrent,
@@ -2078,6 +2079,7 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
       }
 
       const controller = new AbortController()
+      let preloadTimeoutId: number | null = null
       let retryTimeoutId: number | null = null
       let isActive = true
 
@@ -2131,18 +2133,29 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
         }
       }
 
-      void loadNextRolloverEvent()
+      function schedulePreload() {
+        const preloadDelay = getHomeFeaturedRolloverPreloadDelay(activeEvent, Date.now())
+        if (preloadDelay > 0) {
+          preloadTimeoutId = window.setTimeout(schedulePreload, Math.min(preloadDelay, 2_147_483_647))
+        } else {
+          void loadNextRolloverEvent()
+        }
+      }
+      schedulePreload()
 
       return function cancelFutureFeaturedSeriesEventPreload() {
         isActive = false
         controller.abort()
+        if (preloadTimeoutId != null) {
+          window.clearTimeout(preloadTimeoutId)
+        }
         if (retryTimeoutId != null) {
           window.clearTimeout(retryTimeoutId)
         }
       }
     },
     [
-      activeEvent.slug,
+      activeEvent,
       item.contextItems,
       item.event.id,
       item.featuredId,

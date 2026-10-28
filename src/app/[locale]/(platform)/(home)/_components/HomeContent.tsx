@@ -11,6 +11,7 @@ import { buildTranslatedCategoryFaqItems } from '@/lib/category-faq-server'
 import { listHomeEventsPage } from '@/lib/home-events-page'
 import { getHomeFeaturedSideCard, listHomeFeaturedEvents, listHomeFeaturedHotTopics } from '@/lib/home-featured-events'
 import { DEFAULT_HOME_FEATURED_SETTINGS } from '@/lib/home-featured-settings'
+import { getHomeInitialEventsUpdatedAt } from '@/lib/home-initial-events-cache'
 import { getInitialHomeEventsSortBy } from '@/lib/home-route-sort'
 import { PUBLIC_LISTING_PAGE_CACHE_LIFE } from '@/lib/public-listing-cache'
 import { loadRuntimeThemeSiteName } from '@/lib/theme-settings'
@@ -38,6 +39,7 @@ export default async function HomeContent({
   const shouldLoadFeaturedEvents = initialTagSlug === 'trending' && initialMainTagSlug === 'trending'
   const initialSortBy = getInitialHomeEventsSortBy(initialTagSlug)
   let initialCurrentTimestamp: number | null = null
+  let initialEventsUpdatedAt = 0
   let initialHasMore = false
 
   let initialEvents: Event[] = []
@@ -58,11 +60,12 @@ export default async function HomeContent({
     .then(({ data: events, error, currentTimestamp: resolvedCurrentTimestamp, hasMore }) => ({
       events: error ? [] : (events ?? []),
       currentTimestamp: resolvedCurrentTimestamp ?? null,
+      updatedAt: error ? 0 : getHomeInitialEventsUpdatedAt(),
       hasMore: !error && hasMore === true,
     }))
     .catch((error) => {
       console.error('Failed to load initial home events', error)
-      return { events: [], currentTimestamp: null, hasMore: false }
+      return { events: [], currentTimestamp: null, updatedAt: 0, hasMore: false }
     })
 
   const featuredEventsPromise = shouldLoadFeaturedEvents
@@ -115,6 +118,7 @@ export default async function HomeContent({
 
   initialEvents = initialEventsResult.events
   initialCurrentTimestamp = initialEventsResult.currentTimestamp
+  initialEventsUpdatedAt = initialEventsResult.updatedAt
   initialHasMore = initialEventsResult.hasMore
   initialFeaturedEvents = featuredEventsResult.featuredEvents
   initialFeaturedHotTopics = featuredEventsResult.featuredHotTopics
@@ -139,6 +143,7 @@ export default async function HomeContent({
           initialFeaturedHotTopics={initialFeaturedHotTopics}
           initialFeaturedSideCard={initialFeaturedSideCard}
           initialEvents={initialEvents}
+          initialEventsUpdatedAt={initialEventsUpdatedAt}
           initialHasMore={initialHasMore}
           initialCurrentTimestamp={initialCurrentTimestamp}
           initialTag={initialTagSlug}

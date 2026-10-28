@@ -9,3 +9,7 @@ const HOME_INITIAL_EVENTS_TIMESTAMP_BUCKET_MS = 900_000
 export function getHomeInitialCurrentTimestamp() {
   return Math.floor(Date.now() / HOME_INITIAL_EVENTS_TIMESTAMP_BUCKET_MS) * HOME_INITIAL_EVENTS_TIMESTAMP_BUCKET_MS
 }
+
+export function getHomeInitialEventsUpdatedAt() {
+  return Date.now()
+}
