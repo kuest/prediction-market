@@ -56,6 +56,7 @@ describe('homeContent', () => {
         mainTag: 'tech',
         locale: 'en',
         currentTimestamp,
+        cardPayload: true,
       }),
     )
   })

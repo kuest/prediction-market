@@ -47,6 +47,7 @@ export default async function HomeContent({
   let initialFeaturedSideCard: HomeFeaturedSideCardSettings = DEFAULT_HOME_FEATURED_SETTINGS.sideCard
 
   const initialEventsPromise = listHomeEventsPage({
+    cardPayload: true,
     tag: initialTagSlug,
     mainTag: initialMainTagSlug,
     search: '',

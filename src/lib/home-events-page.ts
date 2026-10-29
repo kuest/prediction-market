@@ -9,6 +9,7 @@ const HOME_EVENTS_QUERY_BATCH_SIZE = 128
 
 interface ListHomeEventsPageOptions {
   bookmarked: boolean
+  cardPayload?: boolean
   currentTimestamp?: number | null
   includeUpdatedAt?: boolean
   frequency?: 'all' | 'daily' | 'weekly' | 'monthly'
@@ -29,12 +30,13 @@ interface ListHomeEventsPageOptions {
 
 interface LoadHomeEventCandidatesOptions extends Omit<
   ListHomeEventsPageOptions,
-  'currentTimestamp' | 'includeUpdatedAt'
+  'cardPayload' | 'currentTimestamp' | 'includeUpdatedAt'
 > {}
 
 interface LoadHomeEventBatchesOptions extends Omit<LoadHomeEventCandidatesOptions, 'offset'> {
   initialEvents?: Event[]
   initialUpdatedAt?: number
+  minimumVisibleEvents?: number
   offset: number
   skipLivePricing?: boolean
 }
@@ -49,6 +51,7 @@ async function loadHomeEventBatches({
   initialUpdatedAt = Number.POSITIVE_INFINITY,
   locale,
   mainTag,
+  minimumVisibleEvents,
   offset,
   search = '',
   skipLivePricing = false,
@@ -103,6 +106,23 @@ async function loadHomeEventBatches({
     accumulatedEvents.push(...batch)
 
     if (batch.length < HOME_EVENTS_QUERY_BATCH_SIZE) {
+      break
+    }
+
+    // Later rows cannot replace an already complete page without recurring series.
+    // Keep one visible lookahead so hasMore remains accurate without reading the rest.
+    if (
+      status === 'active' &&
+      minimumVisibleEvents !== undefined &&
+      accumulatedEvents.length >= minimumVisibleEvents &&
+      !accumulatedEvents.some((event) => Boolean(event.series_slug?.trim()) && !isSportsPrimaryHomeEvent(event)) &&
+      filterHomeEvents(accumulatedEvents, {
+        hideSports,
+        hideCrypto,
+        hideEarnings,
+        status,
+      }).length >= minimumVisibleEvents
+    ) {
       break
     }
 
@@ -266,9 +286,10 @@ async function loadHomeEventCandidates({
     }
 
     const candidates = firstPage ?? []
-    const firstPageHasReplaceableSeries = candidates
-      .slice(0, HOME_EVENTS_PAGE_SIZE)
-      .some((event) => Boolean(event.series_slug?.trim()) && !isSportsPrimaryHomeEvent(event))
+    // The lookahead must also survive filtering before it can establish hasMore.
+    const firstPageHasReplaceableSeries = candidates.some(
+      (event) => Boolean(event.series_slug?.trim()) && !isSportsPrimaryHomeEvent(event),
+    )
 
     if (candidates.length < HOME_EVENTS_PAGE_SIZE + 1 || !firstPageHasReplaceableSeries) {
       return {
@@ -315,6 +336,7 @@ async function loadHomeEventCandidates({
     hideSports,
     locale,
     mainTag,
+    minimumVisibleEvents: status === 'active' ? targetOffset + HOME_EVENTS_PAGE_SIZE + 1 : undefined,
     offset: 0,
     search,
     sortBy,
@@ -326,8 +348,28 @@ async function loadHomeEventCandidates({
   })
 }
 
+function toHomeEventCard(event: Event): Event {
+  // Detail text is not rendered by cards. Copy before trimming so repository/cache
+  // objects remain complete for event pages and other consumers.
+  const cardEvent = { ...event }
+  delete cardEvent.rules
+  delete cardEvent.additional_context
+  delete cardEvent.additional_context_updated_at
+
+  if (cardEvent.markets) {
+    cardEvent.markets = cardEvent.markets.map((market) => {
+      const cardMarket = { ...market }
+      delete cardMarket.market_rules
+      return cardMarket
+    })
+  }
+
+  return cardEvent
+}
+
 export async function listHomeEventsPage({
   bookmarked,
+  cardPayload = false,
   currentTimestamp,
   includeUpdatedAt = false,
   frequency = 'all',
@@ -437,7 +479,7 @@ export async function listHomeEventsPage({
   }
 
   return {
-    data: pageEvents,
+    data: cardPayload ? pageEvents.map(toHomeEventCard) : pageEvents,
     error: null,
     currentTimestamp: resolvedCurrentTimestamp ?? null,
     hasMore: visibleEvents.length > pageEnd,

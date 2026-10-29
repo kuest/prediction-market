@@ -8,9 +8,9 @@ import type { OrderSide } from '@/types'
 
 import EventTradeToast from '@/app/[locale]/(platform)/event/[slug]/_components/EventTradeToast'
 import { toast } from '@/components/ui/toast'
+import { triggerConfetti } from '@/lib/confetti'
 import { ORDER_SIDE, OUTCOME_INDEX } from '@/lib/constants'
 import { formatCentsValueLabel, formatDollarValueLabel } from '@/lib/formatters'
-import { triggerConfetti } from '@/lib/utils'
 
 type Translate = (message: string, values?: Record<string, string | number | Date>) => string
 

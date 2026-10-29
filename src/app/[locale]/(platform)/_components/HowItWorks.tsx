@@ -17,7 +17,8 @@ import {
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { cn, triggerConfetti } from '@/lib/utils'
+import { triggerConfetti } from '@/lib/confetti'
+import { cn } from '@/lib/utils'
 
 interface HowItWorksProps {
   displayMode?: 'auto' | 'mobile' | 'desktop'

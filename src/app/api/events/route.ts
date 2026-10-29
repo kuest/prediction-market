@@ -21,6 +21,7 @@ export async function GET(request: Request) {
   const hideCrypto = searchParams.get('hideCrypto') === 'true'
   const hideEarnings = searchParams.get('hideEarnings') === 'true'
   const homeFeed = searchParams.get('homeFeed') === 'true'
+  const cardPayload = searchParams.get('cardPayload') === 'true'
   const includePageInfo = searchParams.get('includePageInfo') === 'true'
   const statusParam = searchParams.get('status')
   const status = statusParam ?? 'active'
@@ -70,6 +71,7 @@ export async function GET(request: Request) {
         error,
         hasMore,
       } = await listHomeEventsPage({
+        cardPayload,
         tag,
         mainTag,
         search,

@@ -122,6 +122,7 @@ export interface HomeEventsApiPage {
 export async function fetchHomeEventsPageApi(options: BuildEventsApiSearchParamsOptions): Promise<HomeEventsApiPage> {
   const params = buildEventsApiSearchParams({ ...options, homeFeed: true })
   params.set('includePageInfo', 'true')
+  params.set('cardPayload', 'true')
   const response = await fetch(`/api/events?${params.toString()}`, { signal: options.signal })
 
   if (!response.ok) {

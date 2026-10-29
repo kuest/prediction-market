@@ -35,4 +35,22 @@ describe('events API errors', () => {
       'Failed to fetch home feed events',
     )
   })
+
+  it('requests card payloads only through the home grid helper', async () => {
+    const fetchMock = mock().mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [], hasMore: false }),
+    })
+    stubGlobal('fetch', fetchMock)
+
+    await fetchEventsApi({ tag: 'sports', locale: 'en' })
+    await fetchHomeEventsPageApi({ tag: 'trending', locale: 'en' })
+
+    const genericParams = new URL(String(fetchMock.mock.calls[0]![0]), 'https://example.com').searchParams
+    const homeParams = new URL(String(fetchMock.mock.calls[1]![0]), 'https://example.com').searchParams
+    expect(genericParams.has('cardPayload')).toBe(false)
+    expect(homeParams.get('homeFeed')).toBe('true')
+    expect(homeParams.get('includePageInfo')).toBe('true')
+    expect(homeParams.get('cardPayload')).toBe('true')
+  })
 })

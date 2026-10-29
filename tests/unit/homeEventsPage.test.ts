@@ -4,6 +4,8 @@ import * as actualHomeEvents from '@/lib/home-events'
 
 import { hoisted } from '../bun-test-helpers'
 
+const realFilterHomeEvents = actualHomeEvents.filterHomeEvents
+
 const mocks = hoisted(() => ({
   cacheTag: mock(),
   filterHomeEvents: mock(),
@@ -42,6 +44,95 @@ describe('listHomeEventsPage', () => {
       data: slugs.map((slug) => ({ id: slug, slug })),
       error: null,
     }))
+  })
+
+  it('omits detail text from cards without mutating repository events or market data', async () => {
+    const market = Object.freeze({
+      condition_id: 'condition-1',
+      title: 'Market title',
+      market_rules: 'Detailed market resolution rules',
+      resolution_source_url: 'https://x.com/example',
+      metadata: Object.freeze({ short_title: 'October 29', image: '/market.png' }),
+      condition: Object.freeze({ resolved: true, payout_numerators: [1, 0] }),
+      outcomes: Object.freeze([{ outcome_index: 0, token_id: 'token-1', buy_price: 0.75 }]),
+    })
+    const event = Object.freeze({
+      id: 'event-1',
+      slug: 'event-1',
+      title: 'Event title',
+      rules: 'Detailed event resolution rules',
+      additional_context: 'Detailed event context',
+      additional_context_updated_at: '2026-10-29T12:00:00Z',
+      markets: Object.freeze([market]),
+    })
+    mocks.listEvents.mockResolvedValueOnce({ data: [event], error: null })
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      cardPayload: true,
+      locale: 'en',
+      mainTag: 'trending',
+      status: 'resolved',
+      tag: 'trending',
+      userId: '',
+    })
+
+    const card = result.data[0]!
+    expect(card).not.toHaveProperty('rules')
+    expect(card).not.toHaveProperty('additional_context')
+    expect(card).not.toHaveProperty('additional_context_updated_at')
+    expect(card.markets[0]).not.toHaveProperty('market_rules')
+    expect(card).toMatchObject({ id: event.id, slug: event.slug, title: event.title })
+    expect(card.markets[0]).toEqual({
+      condition_id: market.condition_id,
+      title: market.title,
+      resolution_source_url: market.resolution_source_url,
+      metadata: market.metadata,
+      condition: market.condition,
+      outcomes: market.outcomes,
+    })
+    expect(card).not.toBe(event)
+    expect(card.markets).not.toBe(event.markets)
+    expect(card.markets[0]).not.toBe(market)
+    expect(event.rules).toBe('Detailed event resolution rules')
+    expect(event.additional_context).toBe('Detailed event context')
+    expect(event.additional_context_updated_at).toBe('2026-10-29T12:00:00Z')
+    expect(market.market_rules).toBe('Detailed market resolution rules')
+  })
+
+  it('preserves the complete legacy payload unless the card projection is requested', async () => {
+    const event = {
+      id: 'event-1',
+      slug: 'event-1',
+      rules: 'Detailed event resolution rules',
+      additional_context: 'Detailed event context',
+      additional_context_updated_at: '2026-10-29T12:00:00Z',
+      markets: [
+        {
+          condition_id: 'condition-1',
+          market_rules: 'Detailed market resolution rules',
+          sports: { sports_source_market_id: 'source-market-1' },
+          condition: { outcomes: [{ token_id: 'token-1', outcome_index: 0 }] },
+          outcomes: [{ token_id: 'token-1', outcome_index: 0, buy_price: 0.75 }],
+        },
+      ],
+    }
+    mocks.listEvents.mockResolvedValueOnce({ data: [event], error: null })
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      locale: 'en',
+      mainTag: 'trending',
+      status: 'resolved',
+      tag: 'trending',
+      userId: '',
+    })
+
+    expect(result.data).toEqual([event])
+    expect(result.data[0]).toBe(event)
+    expect(result.data[0]?.markets).toBe(event.markets)
   })
 
   it('queries one SQL-filtered page for resolved pages without home visibility filters', async () => {
@@ -257,8 +348,61 @@ describe('listHomeEventsPage', () => {
     })
   })
 
+  it('keeps hasMore when the 33rd candidate is an expired live series and a later card is visible', async () => {
+    const currentTimestamp = Date.parse('2026-10-29T12:00:00Z')
+    const visibleFirstPage = Array.from({ length: 32 }, (_, index) => ({
+      id: `event-${index}`,
+      slug: `event-${index}`,
+      status: 'active' as const,
+      created_at: '2026-10-28T12:00:00Z',
+      updated_at: '2026-10-28T12:00:00Z',
+      markets: [],
+    }))
+    const expiredLookahead = {
+      id: 'expired-live-series',
+      slug: 'expired-live-series',
+      status: 'active' as const,
+      created_at: '2026-10-28T12:00:00Z',
+      updated_at: '2026-10-28T12:00:00Z',
+      series_slug: 'live-series',
+      has_live_chart: true,
+      start_date: '2026-10-29T11:00:00Z',
+      end_date: '2026-10-29T11:30:00Z',
+      markets: [{ is_resolved: false, end_time: '2026-10-29T11:30:00Z' }],
+    }
+    const nextVisibleEvent = {
+      ...visibleFirstPage[0],
+      id: 'later-visible-card',
+      slug: 'later-visible-card',
+    }
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: [...visibleFirstPage, expiredLookahead], error: null })
+      .mockResolvedValueOnce({ data: [nextVisibleEvent], error: null })
+    mocks.filterHomeEvents.mockImplementation(realFilterHomeEvents)
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      currentTimestamp,
+      locale: 'en',
+      mainTag: 'tech',
+      status: 'active',
+      tag: 'tech',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2)
+    expect(mocks.listEvents).toHaveBeenNthCalledWith(2, expect.objectContaining({ offset: 33 }))
+    expect(mocks.getEventsBySlugs).not.toHaveBeenCalled()
+    expect(result.data).toEqual(visibleFirstPage)
+    expect(result.hasMore).toBe(true)
+  })
+
   it('forwards active home visibility filters to every candidate batch', async () => {
-    const firstBatch = Array.from({ length: queryBatchSize }, (_, index) => ({ id: `event-${index}` }))
+    const firstBatch = Array.from({ length: queryBatchSize }, (_, index) => ({
+      id: `event-${index}`,
+      ...(index === 0 ? { series_slug: 'series-1' } : {}),
+    }))
     const secondBatch = [{ id: 'event-last' }]
 
     mocks.listEvents
@@ -300,6 +444,91 @@ describe('listHomeEventsPage', () => {
         offset: queryBatchSize,
       }),
     )
+  })
+
+  it('stops a later active page after a complete visible prefix without recurring series', async () => {
+    const firstBatch = Array.from({ length: queryBatchSize }, (_, index) => ({
+      id: `event-${index}`,
+      slug: `event-${index}`,
+    }))
+    mocks.listEvents.mockResolvedValueOnce({ data: firstBatch, error: null, updatedAt: 20_000 })
+    mocks.filterHomeEvents.mockImplementation((events: any[]) => events)
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      includeUpdatedAt: true,
+      locale: 'en',
+      mainTag: 'tech',
+      offset: 32,
+      status: 'active',
+      tag: 'tech',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenCalledTimes(1)
+    expect(mocks.getEventsBySlugs).not.toHaveBeenCalled()
+    expect(result).toEqual({
+      data: firstBatch.slice(32, 64),
+      error: null,
+      currentTimestamp: null,
+      hasMore: true,
+      updatedAt: 20_000,
+    })
+  })
+
+  it('continues an active filtered page until there is a visible lookahead', async () => {
+    const firstBatch = Array.from({ length: queryBatchSize }, (_, index) => ({
+      id: `event-${index}`,
+      slug: `event-${index}`,
+      main_tag: index < 96 ? 'Crypto' : 'Finance',
+    }))
+    const nextVisibleEvent = { id: 'event-next', slug: 'event-next', main_tag: 'Finance' }
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstBatch, error: null })
+      .mockResolvedValueOnce({ data: [nextVisibleEvent], error: null })
+    mocks.filterHomeEvents.mockImplementation((events: any[]) => events.filter((event) => event.main_tag !== 'Crypto'))
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      hideCrypto: true,
+      locale: 'en',
+      mainTag: 'trending',
+      status: 'active',
+      tag: 'trending',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2)
+    expect(result.data).toEqual(firstBatch.slice(96))
+    expect(result.hasMore).toBe(true)
+  })
+
+  it('checks exhaustion when a full batch has exactly enough events for the final page', async () => {
+    const firstBatch = Array.from({ length: queryBatchSize }, (_, index) => ({
+      id: `event-${index}`,
+      slug: `event-${index}`,
+    }))
+    mocks.listEvents
+      .mockResolvedValueOnce({ data: firstBatch, error: null })
+      .mockResolvedValueOnce({ data: [], error: null })
+    mocks.filterHomeEvents.mockImplementation((events: any[]) => events)
+
+    const { listHomeEventsPage } = await import('@/lib/home-events-page')
+    const result = await listHomeEventsPage({
+      bookmarked: false,
+      locale: 'en',
+      mainTag: 'tech',
+      offset: 96,
+      status: 'active',
+      tag: 'tech',
+      userId: '',
+    })
+
+    expect(mocks.listEvents).toHaveBeenCalledTimes(2)
+    expect(result.data).toEqual(firstBatch.slice(96))
+    expect(result.hasMore).toBe(false)
   })
 
   it('keeps scanning active pages when recurring series can replace earlier events', async () => {

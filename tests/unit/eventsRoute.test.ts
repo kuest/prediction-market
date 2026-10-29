@@ -88,6 +88,7 @@ describe('events route', () => {
     expect(mocks.listHomeEventsPage).toHaveBeenCalledWith(
       expect.objectContaining({
         sortBy: 'volume_24h',
+        cardPayload: false,
       }),
     )
   })
@@ -101,10 +102,11 @@ describe('events route', () => {
     })
 
     const response = await GET(
-      new Request('https://example.com/api/events?homeFeed=true&includePageInfo=true&locale=en'),
+      new Request('https://example.com/api/events?homeFeed=true&includePageInfo=true&cardPayload=true&locale=en'),
     )
 
     expect(response.status).toBe(200)
+    expect(mocks.listHomeEventsPage).toHaveBeenCalledWith(expect.objectContaining({ cardPayload: true }))
     await expect(response.json()).resolves.toEqual({
       events: [{ id: 'event-1' }],
       hasMore: true,

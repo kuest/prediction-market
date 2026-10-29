@@ -21,7 +21,7 @@ void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventTradeT
   default: ({ children }: { children: unknown }) => children,
 }))
 
-void mock.module('@/lib/utils', () => ({
+void mock.module('@/lib/confetti', () => ({
   triggerConfetti: mock(),
 }))
 

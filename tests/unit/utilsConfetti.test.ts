@@ -16,7 +16,7 @@ describe('utils (confetti/cn)', () => {
   })
 
   it('triggerConfetti uses default origin when no event', async () => {
-    const { triggerConfetti } = await import('@/lib/utils')
+    const { triggerConfetti } = await import('@/lib/confetti')
     confettiMock.fn.mockReset()
 
     triggerConfetti('yes')
@@ -30,7 +30,7 @@ describe('utils (confetti/cn)', () => {
   })
 
   it('triggerConfetti computes origin from event coords', async () => {
-    const { triggerConfetti } = await import('@/lib/utils')
+    const { triggerConfetti } = await import('@/lib/confetti')
     confettiMock.fn.mockReset()
 
     stubGlobal('innerWidth', 1000)

@@ -63,9 +63,12 @@ void mock.module('@/i18n/navigation', () => ({ Link: () => null }))
 
 void mock.module('@/lib/trading-cache', () => ({ invalidatePortfolioClaimQueries: mock() }))
 
+void mock.module('@/lib/confetti', () => ({
+  triggerConfetti: mock(),
+}))
+
 void mock.module('@/lib/utils', () => ({
   cn: (...classes: string[]) => classes.join(' '),
-  triggerConfetti: mock(),
 }))
 
 void mock.module('@/lib/wallet/client', () => ({
