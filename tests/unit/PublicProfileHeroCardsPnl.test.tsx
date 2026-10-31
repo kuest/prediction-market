@@ -30,7 +30,7 @@ void mock.module('@/components/ui/popover', () => ({
   PopoverContent: () => null,
   PopoverTitle: () => null,
 }))
-void mock.module('react-animated-counter', () => ({
+void mock.module('@/components/ui/animated-counter', () => ({
   AnimatedCounter: ({ value }: { value: number }) => {
     const [id] = React.useState(() => ++counters.mounted)
     return (

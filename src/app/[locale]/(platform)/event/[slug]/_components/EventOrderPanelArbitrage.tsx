@@ -5,7 +5,6 @@ import { InfoIcon, TriangleAlertIcon, UnplugIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
 import Image from 'next/image'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { AnimatedCounter } from 'react-animated-counter'
 import { useAccount, useConnections } from 'wagmi'
 
 import type { ArbitrageQuote } from '@/lib/arbitrage-quote'
@@ -14,6 +13,7 @@ import type { Event, Market } from '@/types'
 import { useOrderBookSummaries } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
 import EventOrderPanelAnimatedCents from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelAnimatedCents'
 import EventOrderPanelSubmitButton from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelSubmitButton'
+import { AnimatedCounter } from '@/components/ui/animated-counter'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -121,8 +121,6 @@ function AnimatedCurrency({ value, fontSize = '20px' }: { value: number; fontSiz
         includeCommas
         includeDecimals
         decimalPrecision={2}
-        incrementColor="currentColor"
-        decrementColor="currentColor"
         digitStyles={{ fontWeight: 600, lineHeight: '1' }}
         containerStyles={{
           display: 'inline-flex',

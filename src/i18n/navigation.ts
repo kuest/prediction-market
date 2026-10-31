@@ -1,5 +1,2 @@
-import { createNavigation } from 'next-intl/navigation'
-
-import { routing } from './routing'
-
-export const { Link, redirect, usePathname, useRouter } = createNavigation(routing)
+export { default as Link } from '@/components/NavigationProgressLink'
+export { redirect, usePathname, useRouter } from './navigation-base'

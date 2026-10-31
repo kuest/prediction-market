@@ -1,9 +1,8 @@
 import type { CSSProperties } from 'react'
 
-import { AnimatedCounter } from 'react-animated-counter'
-
 import type { OddsFormat } from '@/lib/odds-format'
 
+import { AnimatedCounter } from '@/components/ui/animated-counter'
 import { Button } from '@/components/ui/button'
 import { formatCentsLabel, toCents } from '@/lib/formatters'
 import { formatOddsFromPrice } from '@/lib/odds-format'
@@ -58,8 +57,6 @@ function OutcomePrice({
         includeCommas={false}
         includeDecimals={!Number.isInteger(centsValue)}
         decimalPrecision={1}
-        incrementColor="currentColor"
-        decrementColor="currentColor"
         digitStyles={{
           fontWeight: 700,
           lineHeight: '1',

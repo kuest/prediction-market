@@ -5,7 +5,7 @@ import PnlAnimatedCurrency from '@/app/[locale]/(platform)/profile/_components/P
 
 const received: Array<{ value: number; fontSize: string; includeDecimals: boolean; decimalPrecision: number }> = []
 
-void mock.module('react-animated-counter', () => ({
+void mock.module('@/components/ui/animated-counter', () => ({
   AnimatedCounter: (props: { value: number; fontSize: string; includeDecimals: boolean; decimalPrecision: number }) => {
     received.push(props)
     return <span>{props.value.toFixed(2)}</span>

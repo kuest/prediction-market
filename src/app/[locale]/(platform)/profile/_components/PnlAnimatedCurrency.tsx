@@ -1,7 +1,6 @@
 'use client'
 
-import { AnimatedCounter } from 'react-animated-counter'
-
+import { AnimatedCounter } from '@/components/ui/animated-counter'
 import { formatCurrency } from '@/lib/formatters'
 
 interface PnlAnimatedCurrencyProps {
@@ -28,8 +27,6 @@ export default function PnlAnimatedCurrency({ magnitude, sign, size = 'regular' 
           includeCommas
           includeDecimals
           decimalPrecision={2}
-          incrementColor="currentColor"
-          decrementColor="currentColor"
           digitStyles={{ fontWeight: 600, lineHeight: '1' }}
           containerStyles={{
             display: 'inline-flex',

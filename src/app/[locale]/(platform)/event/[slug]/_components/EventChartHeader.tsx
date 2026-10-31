@@ -1,10 +1,10 @@
 import { TriangleIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
-import { AnimatedCounter } from 'react-animated-counter'
 
 import type { EventSeriesEntry } from '@/types'
 
 import SiteLogoIcon from '@/components/SiteLogoIcon'
+import { AnimatedCounter } from '@/components/ui/animated-counter'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { cn } from '@/lib/utils'
 
@@ -126,8 +126,6 @@ export default function EventChartHeader({
                   fontSize="24px"
                   includeCommas={false}
                   includeDecimals={false}
-                  incrementColor="currentColor"
-                  decrementColor="currentColor"
                   digitStyles={{
                     fontWeight: 600,
                     letterSpacing: '-0.02em',

@@ -236,9 +236,9 @@ export default function EventLiveSeriesChartHeader({
             <TooltipTrigger
               render={
                 <button type="button" className="grid shrink-0 justify-items-end gap-1 text-left">
-                  <div className="flex items-end gap-0.5 min-[360px]:gap-1 sm:gap-3">
+                  <div className="flex items-end gap-0.5 min-[360px]:gap-1 sm:gap-2">
                     {visibleCountdownUnits.map(({ unit, value }) => (
-                      <div key={unit} className="min-w-6 text-right min-[360px]:min-w-8 sm:min-w-11">
+                      <div key={unit} className="min-w-6 text-right min-[360px]:min-w-7 sm:min-w-8">
                         <div
                           className={cn(
                             'text-[16px] leading-none font-semibold tabular-nums min-[360px]:text-[18px] sm:text-[22px]',
