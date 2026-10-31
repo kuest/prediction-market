@@ -3,7 +3,7 @@ import { describe, expect, it, mock } from 'bun:test'
 
 import EventOrderPanelAnimatedCents from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelAnimatedCents'
 
-void mock.module('react-animated-counter', () => ({
+void mock.module('@/components/ui/animated-counter', () => ({
   AnimatedCounter: ({ value, includeDecimals }: { value: number; includeDecimals: boolean }) => (
     <span data-testid="counter" data-decimals={String(includeDecimals)}>
       {value}

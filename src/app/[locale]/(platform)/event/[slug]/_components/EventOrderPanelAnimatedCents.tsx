@@ -1,6 +1,6 @@
 'use client'
 
-import { AnimatedCounter } from 'react-animated-counter'
+import { AnimatedCounter } from '@/components/ui/animated-counter'
 
 export default function EventOrderPanelAnimatedCents({
   value,
@@ -20,8 +20,6 @@ export default function EventOrderPanelAnimatedCents({
         includeCommas={false}
         includeDecimals={!Number.isInteger(normalizedValue)}
         decimalPrecision={1}
-        incrementColor="currentColor"
-        decrementColor="currentColor"
         digitStyles={{ fontWeight: 700, lineHeight: '1' }}
         containerStyles={{
           display: 'inline-flex',

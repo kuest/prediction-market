@@ -8,7 +8,7 @@ void mock.module('next-intl', () => ({
   useExtracted: () => (message: string) => (message === 'chance' ? '概率' : message),
 }))
 
-void mock.module('react-animated-counter', () => ({
+void mock.module('@/components/ui/animated-counter', () => ({
   AnimatedCounter: ({ value }: { value: number }) => <span>{value}</span>,
 }))
 

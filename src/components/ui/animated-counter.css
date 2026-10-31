@@ -1,0 +1,73 @@
+/* Adapted slot geometry: see animated-counter.LICENSE. */
+.animated-counter {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  flex-direction: row-reverse;
+  align-items: baseline;
+  overflow: hidden;
+  margin: auto;
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings:
+    'tnum' 1,
+    'lnum' 1;
+}
+
+.animated-counter-selection {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 0;
+  width: max-content;
+  height: 100%;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  white-space: nowrap;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  caret-color: transparent;
+}
+
+.animated-counter-glyph {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  height: 1em;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.animated-counter-digit {
+  position: relative;
+  display: block;
+  height: 1em;
+  overflow: hidden;
+}
+
+.animated-counter-placeholder {
+  visibility: hidden;
+  display: block;
+}
+
+.animated-counter-column {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  transform: translate3d(0, calc(var(--counter-digit) * 100%), 0);
+}
+
+.animated-counter-column > span {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  line-height: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-counter-column {
+    transform: translate3d(0, calc(var(--counter-digit) * 100%), 0) !important;
+  }
+}
