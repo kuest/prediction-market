@@ -1,5 +1,5 @@
 import { cleanup, render } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, jest } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it, jest, spyOn } from 'bun:test'
 
 import { trackNavigationProgress } from '@/lib/navigation-progress'
 import ProgressIndicatorProvider from '@/providers/ProgressIndicatorProvider'
@@ -20,11 +20,22 @@ function getBar(container: HTMLElement) {
 }
 
 describe('local navigation progress', () => {
+  let reducedMotion: boolean
   beforeEach(() => {
+    reducedMotion = false
+    spyOn(window, 'matchMedia').mockImplementation(
+      () =>
+        ({
+          get matches() {
+            return reducedMotion
+          },
+        }) as unknown as MediaQueryList,
+    )
     useFakeTimers()
   })
   afterEach(() => {
     cleanup()
+    jest.restoreAllMocks()
     useRealTimers()
   })
 
@@ -45,6 +56,31 @@ describe('local navigation progress', () => {
     jest.advanceTimersByTime(800)
     expect(bar.style.transform).not.toBe('translateX(-92%)')
     slow?.()
+    expect(bar.style.transform).toBe('translateX(0)')
+    jest.advanceTimersByTime(400)
+    expect(bar.hidden).toBe(true)
+  })
+
+  it('keeps reduced-motion progress static and responds to preference changes', () => {
+    reducedMotion = true
+    const view = render(<ProgressIndicatorProvider>Content</ProgressIndicatorProvider>)
+    const bar = getBar(view.container)
+    const finish = begin()
+    jest.advanceTimersByTime(700)
+    expect(bar.hidden).toBe(false)
+    const initial = bar.style.transform
+    jest.advanceTimersByTime(1600)
+    expect(bar.style.transform).toBe(initial)
+
+    reducedMotion = false
+    jest.advanceTimersByTime(200)
+    expect(bar.style.transform).not.toBe(initial)
+    const current = bar.style.transform
+    reducedMotion = true
+    jest.advanceTimersByTime(800)
+    expect(bar.style.transform).toBe(current)
+
+    finish?.()
     expect(bar.style.transform).toBe('translateX(0)')
     jest.advanceTimersByTime(400)
     expect(bar.hidden).toBe(true)

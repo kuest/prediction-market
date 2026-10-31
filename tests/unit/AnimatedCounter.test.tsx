@@ -65,6 +65,40 @@ describe('local animated counter', () => {
     expect(view.container.querySelector('.animated-counter-selection')?.textContent).toBe('0.00')
   })
 
+  it('avoids layout reads and observer churn for equivalent inline styles', () => {
+    const OriginalObserver = globalThis.ResizeObserver
+    const observe = mock()
+    const disconnect = mock()
+    globalThis.ResizeObserver = class {
+      observe = observe
+      disconnect = disconnect
+      unobserve() {}
+    }
+    let view: ReturnType<typeof render> | undefined
+    try {
+      view = render(<AnimatedCounter value={12.5} digitStyles={{ fontWeight: 600, lineHeight: '1' }} />)
+      const selection = view.container.querySelector('.animated-counter-selection') as HTMLElement
+      const layoutRead = mock(() => 40)
+      Object.defineProperty(selection, 'offsetWidth', { configurable: true, get: layoutRead })
+      expect(observe).toHaveBeenCalledTimes(1)
+
+      view.rerender(<AnimatedCounter value={12.5} digitStyles={{ fontWeight: 600, lineHeight: '1' }} />)
+      view.rerender(<AnimatedCounter value={12.5} digitStyles={{ lineHeight: '1', fontWeight: 600 }} />)
+      expect(layoutRead).not.toHaveBeenCalled()
+      expect(observe).toHaveBeenCalledTimes(1)
+      expect(disconnect).not.toHaveBeenCalled()
+
+      view.rerender(<AnimatedCounter value={12.5} digitStyles={{ fontWeight: 700, lineHeight: '1' }} />)
+      expect(layoutRead).toHaveBeenCalledTimes(1)
+      expect(observe).toHaveBeenCalledTimes(2)
+      expect(disconnect).toHaveBeenCalledTimes(1)
+    } finally {
+      view?.unmount()
+      globalThis.ResizeObserver = OriginalObserver
+    }
+    expect(disconnect).toHaveBeenCalledTimes(2)
+  })
+
   it('renders the correct initial slots on the server and hydrates without starting animations', async () => {
     const container = document.createElement('div')
     const counter = <AnimatedCounter value={12.5} fontSize="1em" />

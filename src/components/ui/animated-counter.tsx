@@ -121,6 +121,12 @@ export const AnimatedCounter = memo(function AnimatedCounter({
   const selection = useRef<HTMLSpanElement>(null)
   const resolvedFontSize = /^\d+(\.\d+)?$/.test(fontSize.trim()) ? `${fontSize.trim()}px` : fontSize
   const glyphStyle: CSSProperties = { fontSize: resolvedFontSize, color, lineHeight: 1, ...digitStyles }
+  // Compare values so equivalent inline styles do not repeat layout reads or replace the observer.
+  const digitStyleKey = JSON.stringify(
+    Object.entries(digitStyles ?? {})
+      .filter(([, value]) => value !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right)),
+  )
 
   useLayoutEffect(() => {
     const element = selection.current
@@ -137,7 +143,7 @@ export const AnimatedCounter = memo(function AnimatedCounter({
     const observer = new ResizeObserver(fitSelection)
     observer.observe(container)
     return () => observer.disconnect()
-  }, [text, resolvedFontSize, digitStyles])
+  }, [text, resolvedFontSize, digitStyleKey])
 
   return (
     <span className="animated-counter" style={containerStyles}>

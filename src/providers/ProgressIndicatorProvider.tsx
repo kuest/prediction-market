@@ -16,6 +16,7 @@ function ProgressIndicatorProvider({ children }: { children: ReactNode }) {
     if (!element) {
       return
     }
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     let active: symbol | undefined
     let delay: ReturnType<typeof setTimeout> | undefined
     let fade: ReturnType<typeof setTimeout> | undefined
@@ -75,6 +76,9 @@ function ProgressIndicatorProvider({ children }: { children: ReactNode }) {
           element.style.opacity = '1'
           element.style.transform = `translateX(${(progress - 1) * 100}%)`
           trickle = setInterval(() => {
+            if (reducedMotion.matches) {
+              return
+            }
             const step = progress < 0.2 ? 0.1 : progress < 0.5 ? 0.04 : progress < 0.8 ? 0.02 : 0.005
             progress = Math.min(0.994, progress + step)
             element.style.transform = `translateX(${(progress - 1) * 100}%)`
