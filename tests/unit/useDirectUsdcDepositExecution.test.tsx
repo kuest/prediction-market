@@ -8,7 +8,9 @@ import { polygon } from 'viem/chains'
 
 import { hoisted } from '../bun-test-helpers'
 
-const mocks = hoisted(() => ({ send: mock(), receipt: mock() }))
+const mocks = hoisted(() => ({ send: mock(), receipt: mock(), trackEvent: mock() }))
+
+void mock.module('@/hooks/useOperatorAnalytics', () => ({ useOperatorAnalytics: () => mocks.trackEvent }))
 
 void mock.module('@/lib/network', () => ({
   DEFAULT_CHAIN_ID: 137,
@@ -37,6 +39,7 @@ beforeEach(() => {
   queryClient = new QueryClient()
   mocks.send.mockReset().mockResolvedValue('0xhash')
   mocks.receipt.mockReset().mockResolvedValue({ status: 'success', transactionHash: '0xhash' })
+  mocks.trackEvent.mockReset()
 })
 
 describe('direct USDC deposit execution on Polygon', () => {
@@ -58,6 +61,7 @@ describe('direct USDC deposit execution on Polygon', () => {
       args: [toAddress, 804780000n],
     })
     expect(mocks.receipt).toHaveBeenCalledWith({ hash: '0xhash', onReplaced: expect.any(Function) })
+    expect(mocks.trackEvent.mock.calls).toEqual([['deposit_confirmed']])
   })
 
   it('does not report success when the transaction reverts', async () => {
@@ -69,6 +73,7 @@ describe('direct USDC deposit execution on Polygon', () => {
     await act(async () => {
       await expect(result.current.execute()).rejects.toThrow('Transaction reverted.')
     })
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
   })
 
   it('checks the broadcast hash after an RPC timeout, including after remounting', async () => {
@@ -80,6 +85,7 @@ describe('direct USDC deposit execution on Polygon', () => {
       await expect(first.result.current.execute()).rejects.toThrow('RPC timeout')
     })
     await waitFor(() => expect(first.result.current.pendingTransaction?.hash).toBe('0xhash'))
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
     first.unmount()
     const second = renderHook(() => useDirectUsdcDepositExecution({ amountValue: '804.78', fromAddress, toAddress }), {
       wrapper,
@@ -89,6 +95,54 @@ describe('direct USDC deposit execution on Polygon', () => {
     })
     expect(mocks.send).toHaveBeenCalledTimes(1)
     expect(mocks.receipt).toHaveBeenCalledTimes(2)
+    expect(mocks.trackEvent.mock.calls).toEqual([['deposit_confirmed']])
+  })
+
+  it('does not mistake a pending LI.FI origin transaction for a confirmed direct deposit', async () => {
+    queryClient.setQueryData(['wallet-deposit-transaction', fromAddress], {
+      hash: '0xhash',
+      chainId: 137,
+      phase: 'deposit',
+    })
+    const { result } = renderHook(() => useDirectUsdcDepositExecution({ amountValue: '1', fromAddress, toAddress }), {
+      wrapper,
+    })
+    await act(async () => {
+      await result.current.execute()
+    })
+    expect(mocks.send).not.toHaveBeenCalled()
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
+  })
+
+  it('does not count a cancelled or replaced transfer', async () => {
+    mocks.receipt.mockImplementationOnce(async ({ onReplaced }) => {
+      onReplaced({ reason: 'cancelled', transaction: { hash: '0xcancel' } })
+      return { status: 'success', transactionHash: '0xcancel' }
+    })
+    const { result } = renderHook(() => useDirectUsdcDepositExecution({ amountValue: '1', fromAddress, toAddress }), {
+      wrapper,
+    })
+    await act(async () => {
+      await expect(result.current.execute()).rejects.toThrow('Transaction was cancelled or replaced.')
+    })
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
+  })
+
+  it('counts an overlapping receipt check only once', async () => {
+    queryClient.setQueryData(['wallet-deposit-transaction', fromAddress], {
+      hash: '0xhash',
+      chainId: 137,
+      phase: 'deposit',
+      isDirectUsdcDeposit: true,
+    })
+    const { result } = renderHook(() => useDirectUsdcDepositExecution({ amountValue: '1', fromAddress, toAddress }), {
+      wrapper,
+    })
+    await act(async () => {
+      await Promise.all([result.current.execute(), result.current.execute()])
+    })
+    expect(mocks.trackEvent.mock.calls).toEqual([['deposit_confirmed']])
+    expect(mocks.send).not.toHaveBeenCalled()
   })
 
   it('allows another send only after a confirmed revert', async () => {

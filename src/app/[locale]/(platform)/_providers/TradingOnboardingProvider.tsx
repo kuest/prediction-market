@@ -32,6 +32,7 @@ import { useAffiliateOrderMetadata } from '@/hooks/useAffiliateOrderMetadata'
 import { useAppKit } from '@/hooks/useAppKit'
 import { useDepositWalletPolling } from '@/hooks/useDepositWalletPolling'
 import { useHasHydrated } from '@/hooks/useHasHydrated'
+import { useOperatorAnalytics } from '@/hooks/useOperatorAnalytics'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import {
@@ -465,6 +466,9 @@ function isPaymentsEnabledResponse(value: unknown): value is { enabled: boolean 
 
 function TradingOnboardingProviderContent({ children, user }: TradingOnboardingProviderContentProps) {
   const hasHydrated = useHasHydrated()
+  const trackEvent = useOperatorAnalytics()
+  const profileCompletedReportedRef = useRef(false)
+  const tradingEnabledReportedRef = useRef(false)
   const userId = user?.id
   const [activeModal, setActiveModal] = useState<OnboardingModal>(null)
   const [dismissedModal, setDismissedModal] = useState<OnboardingModal>(null)
@@ -618,6 +622,15 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
   const needsSumsub = sumsubStatus.effective && !sumsubApproved
   const needsSumsubForFlow = needsSumsub && !(sumsubStatus.enforcement === 'observe' && sumsubObserveDismissed)
   const tradingReady = isTradingReady({ onboardingStatus: status, sumsubLoaded, sumsubStatus })
+  useEffect(() => {
+    // Restoring an already-enabled session is not a new trading activation.
+    const completedSetup = enableTradingStep === 'completed' || approvalsStep === 'completed'
+    // oxlint-disable-next-line react-you-might-not-need-an-effect/no-event-handler -- Deployment and verification can finish after the successful handler returns.
+    if (tradingReady && completedSetup && !tradingEnabledReportedRef.current) {
+      tradingEnabledReportedRef.current = true
+      trackEvent('trading_enabled')
+    }
+  }, [approvalsStep, enableTradingStep, trackEvent, tradingReady])
   const reownEmail =
     embeddedWalletInfo?.authProvider === 'email' && hasUsableUserEmail(embeddedWalletInfo.user?.email)
       ? (embeddedWalletInfo.user?.email?.trim() ?? '')
@@ -1076,6 +1089,10 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
           return
         }
         const data = result.data
+        if (!profileCompletedReportedRef.current) {
+          profileCompletedReportedRef.current = true
+          trackEvent('profile_completed')
+        }
         useUser.setState((previous) => {
           if (!previous) {
             return previous
@@ -1118,6 +1135,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
       signMessageAsync,
       shouldContinueTradingAuthPrompt,
       status,
+      trackEvent,
       handleWalletActionError,
       t,
       user,

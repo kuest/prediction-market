@@ -66,7 +66,7 @@ export function useDirectUsdcDepositExecution({
         value: 0n,
       })
 
-      trackTransaction({ hash, chainId: DEFAULT_CHAIN_ID, phase: 'deposit' })
+      trackTransaction({ hash, chainId: DEFAULT_CHAIN_ID, phase: 'deposit', isDirectUsdcDeposit: true })
       return await checkPendingTransaction(publicClient)
     },
   })
