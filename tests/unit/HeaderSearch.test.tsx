@@ -37,7 +37,21 @@ void mock.module('@/hooks/useSiteIdentity', () => ({
 }))
 
 void mock.module('@/app/[locale]/(platform)/_components/SearchResults', () => ({
-  SearchResults: () => <div data-testid="search-results" />,
+  SearchResults: ({ query, onResultClick, onTabChange }: any) => (
+    <div data-testid="search-results">
+      <span>{query}</span>
+      <button onClick={() => onTabChange('profiles')}>Profiles</button>
+      <button onClick={onResultClick}>Select result</button>
+    </div>
+  ),
+}))
+
+void mock.module('@/app/[locale]/(platform)/_components/SearchDiscoveryContent', () => ({
+  default: ({ onNavigate }: any) => (
+    <button data-testid="search-discovery" onClick={onNavigate}>
+      Discover event
+    </button>
+  ),
 }))
 
 describe('headerSearch', () => {
@@ -131,7 +145,28 @@ describe('headerSearch', () => {
     expect(screen.getByText('/').tagName).toBe('KBD')
   })
 
-  it('closes the attached dropdown when escape is pressed', () => {
+  it('keeps the input responsive and passes the latest query to results', async () => {
+    const searchState = { ...mocks.useSearch(), showResults: true }
+    mocks.useSearch.mockReturnValue(searchState)
+    const view = render(<HeaderSearch />)
+    const input = screen.getByTestId('header-search-input')
+
+    fireEvent.change(input, { target: { value: 'Canada' } })
+    expect(mocks.handleQueryChange).toHaveBeenCalledWith('Canada')
+
+    mocks.useSearch.mockReturnValue({ ...searchState, query: 'Canada' })
+    view.rerender(<HeaderSearch />)
+
+    expect(await screen.findByText('Canada')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Profiles' }))
+    expect(mocks.setActiveTab).toHaveBeenCalledWith('profiles')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select result' }))
+    expect(mocks.clearSearch).toHaveBeenCalledTimes(1)
+    expect(mocks.hideResults).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes the attached dropdown when escape is pressed', async () => {
     mocks.useSearch.mockReturnValue({
       activeTab: 'events',
       clearSearch: mocks.clearSearch,
@@ -153,7 +188,7 @@ describe('headerSearch', () => {
 
     render(<HeaderSearch />)
 
-    expect(screen.getByTestId('search-results')).toBeInTheDocument()
+    expect(await screen.findByTestId('search-results')).toBeInTheDocument()
 
     fireEvent.keyDown(screen.getByTestId('header-search-input'), { key: 'Escape' })
 
@@ -162,7 +197,7 @@ describe('headerSearch', () => {
     expect(screen.queryByTestId('search-results')).not.toBeInTheDocument()
   })
 
-  it('keeps the attached dropdown open when escape is pressed during composition', () => {
+  it('keeps the attached dropdown open when escape is pressed during composition', async () => {
     mocks.useSearch.mockReturnValue({
       activeTab: 'events',
       clearSearch: mocks.clearSearch,
@@ -184,7 +219,7 @@ describe('headerSearch', () => {
 
     render(<HeaderSearch />)
 
-    expect(screen.getByTestId('search-results')).toBeInTheDocument()
+    expect(await screen.findByTestId('search-results')).toBeInTheDocument()
 
     fireEvent.keyDown(screen.getByTestId('header-search-input'), {
       key: 'Escape',
@@ -193,5 +228,23 @@ describe('headerSearch', () => {
 
     expect(mocks.hideResults).not.toHaveBeenCalled()
     expect(screen.getByTestId('search-results')).toBeInTheDocument()
+  })
+
+  it('opens deferred discovery with the slash shortcut and dismisses it after navigation', async () => {
+    mocks.useSearch.mockReturnValue({ ...mocks.useSearch(), query: '' })
+    render(<HeaderSearch />)
+
+    const input = screen.getByTestId('header-search-input')
+    expect(screen.queryByTestId('search-discovery')).not.toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: '/' })
+
+    expect(input).toHaveFocus()
+    fireEvent.click(await screen.findByTestId('search-discovery'))
+
+    expect(mocks.clearSearch).toHaveBeenCalledTimes(1)
+    expect(mocks.hideResults).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('search-discovery')).not.toBeInTheDocument()
+    expect(input).not.toHaveFocus()
   })
 })

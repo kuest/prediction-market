@@ -90,7 +90,7 @@ describe('searchResults', () => {
           profiles: false,
         }}
         activeTab="events"
-        query="brazil"
+        query="BRaZiL"
         onResultClick={onResultClick}
         onTabChange={() => {}}
       />,

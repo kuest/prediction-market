@@ -138,7 +138,14 @@ describe('useSearch', () => {
     })
 
     await act(async () => {
-      jest.advanceTimersByTime(300)
+      jest.advanceTimersByTime(299)
+      await Promise.resolve()
+    })
+
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await act(async () => {
+      jest.advanceTimersByTime(1)
       await Promise.resolve()
     })
 

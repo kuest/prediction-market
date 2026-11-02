@@ -5,10 +5,7 @@ import { useExtracted } from 'next-intl'
 import dynamic from 'next/dynamic'
 
 import HeaderDropdownUserMenuGuest from '@/app/[locale]/(platform)/_components/HeaderDropdownUserMenuGuest'
-import HeaderNotifications from '@/app/[locale]/(platform)/_components/HeaderNotifications'
 import { useOptionalTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingContext'
-import HeaderDropdownUserMenuAuth from '@/components/HeaderDropdownUserMenuAuth'
-import HeaderPortfolio from '@/components/HeaderPortfolio'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -20,6 +17,21 @@ import { authClient } from '@/lib/auth-client'
 import { useUser } from '@/stores/useUser'
 
 const { useSession } = authClient
+
+const HeaderNotifications = dynamic(() => import('@/app/[locale]/(platform)/_components/HeaderNotifications'), {
+  loading: () => <Skeleton className="size-9 rounded-md" />,
+})
+const HeaderDropdownUserMenuAuth = dynamic(() => import('@/components/HeaderDropdownUserMenuAuth'), {
+  loading: () => <Skeleton className="h-9 w-20 rounded-md" />,
+})
+const HeaderPortfolio = dynamic(() => import('@/components/HeaderPortfolio'), {
+  loading: () => (
+    <div className="flex items-center gap-2" aria-hidden="true">
+      <Skeleton className="h-9 w-16" />
+      <Skeleton className="h-9 w-16" />
+    </div>
+  ),
+})
 
 const HeaderDepositButton = dynamic(() => import('@/app/[locale]/(platform)/_components/HeaderDepositButton'), {
   ssr: false,

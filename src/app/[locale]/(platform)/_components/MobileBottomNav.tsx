@@ -18,11 +18,11 @@ import {
   UnplugIcon,
 } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { lazy, Suspense, useEffect, useState } from 'react'
 
 import type { SupportedLocale } from '@/i18n/locales'
 
-import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
 import { MOBILE_BOTTOM_NAV_OFFSET } from '@/app/[locale]/(platform)/_lib/mobile-bottom-nav'
 import LocaleFlag from '@/components/LocaleFlag'
 import PwaInstallDialog from '@/components/PwaInstallDialog'
@@ -47,6 +47,7 @@ import { useUser } from '@/stores/useUser'
 
 const HeaderSearch = lazy(() => import('@/app/[locale]/(platform)/_components/HeaderSearch'))
 const HowItWorks = lazy(() => import('@/app/[locale]/(platform)/_components/HowItWorks'))
+const SearchDiscoveryContent = dynamic(() => import('@/app/[locale]/(platform)/_components/SearchDiscoveryContent'))
 
 const { useSession } = authClient
 

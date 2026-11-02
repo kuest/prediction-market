@@ -5,9 +5,9 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from '
 
 import { SearchIcon, XIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import SearchDiscoveryContent from '@/app/[locale]/(platform)/_components/SearchDiscoveryContent'
 import { SearchResults } from '@/app/[locale]/(platform)/_components/SearchResults'
 import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
@@ -16,6 +16,8 @@ import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useRouter } from '@/i18n/navigation'
 import { buildPredictionResultsPath } from '@/lib/prediction-search'
 import { cn } from '@/lib/utils'
+
+const SearchDiscoveryContent = dynamic(() => import('@/app/[locale]/(platform)/_components/SearchDiscoveryContent'))
 
 interface HeaderSearchProps {
   autoFocus?: boolean

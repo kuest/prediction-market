@@ -1,21 +1,24 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 import { cloneElement } from 'react'
 
 import { hoisted } from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
+  push: mock(),
   useHasHydrated: mock(),
   useSession: mock(),
   useUser: mock(),
 }))
 
-void mock.module('next/dynamic', () => ({
-  __esModule: true,
-  default: () =>
-    function MockDynamicComponent() {
-      return <div data-testid="mobile-bottom-nav-dynamic" />
-    },
+void mock.module('@/app/[locale]/(platform)/_components/HeaderSearch', () => ({
+  default: ({ emptyState, onPredictionResultsNavigate }: any) => (
+    <>
+      <input data-testid="header-search-input" />
+      <button onClick={() => onPredictionResultsNavigate('/predictions/canada')}>See all results</button>
+      {emptyState}
+    </>
+  ),
 }))
 
 void mock.module('next-intl', () => ({
@@ -87,7 +90,7 @@ void mock.module('@/i18n/navigation', () => ({
     )
   },
   usePathname: () => '/crypto',
-  useRouter: () => ({ push: mock() }),
+  useRouter: () => ({ push: mocks.push }),
 }))
 
 void mock.module('@/lib/auth-client', () => ({
@@ -108,6 +111,7 @@ const { default: MobileBottomNav } = await import('@/app/[locale]/(platform)/_co
 
 describe('mobileBottomNav', () => {
   beforeEach(() => {
+    mocks.push.mockReset()
     mocks.useHasHydrated.mockReset()
     mocks.useSession.mockReset()
     mocks.useUser.mockReset()
@@ -130,5 +134,20 @@ describe('mobileBottomNav', () => {
 
     expect(screen.getByRole('link', { name: 'Portfolio' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument()
+  })
+
+  it('loads mobile discovery when search opens and closes the drawer after navigation', async () => {
+    render(<MobileBottomNav />)
+
+    expect(screen.queryByTestId('search-discovery')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect(await screen.findByTestId('header-search-input')).toBeInTheDocument()
+    expect(await screen.findByTestId('search-discovery')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'See all results' }))
+
+    expect(mocks.push).toHaveBeenCalledWith('/predictions/canada')
+    expect(screen.queryByTestId('search-discovery')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('header-search-input')).not.toBeInTheDocument()
   })
 })
