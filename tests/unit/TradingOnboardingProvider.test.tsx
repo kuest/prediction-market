@@ -18,8 +18,12 @@ const mocks = hoisted(() => ({
   openAppKit: mock(),
   signAndSubmitDepositWalletCalls: mock(),
   signTypedDataAsync: mock(),
+  trackEvent: mock(),
+  updateOnboardingUsernameAction: mock(),
   usePathname: mock(() => '/'),
 }))
+
+void mock.module('@/hooks/useOperatorAnalytics', () => ({ useOperatorAnalytics: () => mocks.trackEvent }))
 
 const PENDING_DEPOSIT_WALLET_MESSAGE = 'Your trading wallet is still being set up on-chain. Check back shortly.'
 const WALLET_RECONNECT_MESSAGE = 'Your wallet connection expired. Reconnect your wallet and try again.'
@@ -54,7 +58,7 @@ void mock.module('@/app/[locale]/(platform)/_actions/deposit-wallet', () => ({
   enableTradingAuthAction: mocks.enableTradingAuthAction,
   markAutoRedeemApprovalCompletedAction: mock(),
   updateOnboardingEmailAction: mock(),
-  updateOnboardingUsernameAction: mock(),
+  updateOnboardingUsernameAction: mocks.updateOnboardingUsernameAction,
 }))
 
 void mock.module('@/app/[locale]/(platform)/_components/TradingOnboardingDialogs', () => ({
@@ -203,6 +207,9 @@ describe('tradingOnboardingProvider', () => {
     mocks.openAppKit.mockClear()
     mocks.signAndSubmitDepositWalletCalls.mockReset()
     mocks.signTypedDataAsync.mockReset()
+    mocks.trackEvent.mockReset()
+    mocks.updateOnboardingUsernameAction.mockReset()
+    window.localStorage.removeItem('community_auth')
     mocks.usePathname.mockReturnValue('/')
   })
 
@@ -210,6 +217,77 @@ describe('tradingOnboardingProvider', () => {
     useUser.setState(null)
     jest.restoreAllMocks()
     unstubAllGlobals()
+  })
+
+  it.each([
+    { communityOk: true, localOk: true },
+    { communityOk: true, localOk: false },
+    { communityOk: false, localOk: true },
+  ])('tracks profile completion only after both saves succeed (%j)', async ({ communityOk, localOk }) => {
+    const user = createUser()
+    useUser.setState(user)
+    window.localStorage.setItem(
+      'community_auth',
+      JSON.stringify({
+        version: 3,
+        token: 'test-token',
+        address: user.address,
+        expires_at: '2999-01-01T00:00:00Z',
+      }),
+    )
+    mocked(fetch).mockImplementation(
+      async (_input, init) =>
+        new Response(JSON.stringify(init?.method === 'POST' ? { username: 'chosen-name' } : { enabled: false }), {
+          status: init?.method === 'POST' && !communityOk ? 409 : 200,
+        }),
+    )
+    mocks.updateOnboardingUsernameAction.mockResolvedValue(
+      localOk ? { error: null, data: { username: 'chosen-name', settings: {} } } : { error: 'Save failed', data: null },
+    )
+    render(
+      <TradingOnboardingProvider>
+        <div />
+      </TradingOnboardingProvider>,
+    )
+    await waitFor(() => expect(mocks.dialogProps?.activeModal).toBe('username'))
+    await act(async () => {
+      await mocks.dialogProps.onUsernameSubmit('chosen-name', true)
+    })
+
+    expect(mocks.trackEvent.mock.calls).toEqual(communityOk && localOk ? [['profile_completed']] : [])
+    if (communityOk && localOk) {
+      await act(async () => {
+        await mocks.dialogProps.onUsernameSubmit('chosen-name', true)
+      })
+      expect(mocks.trackEvent.mock.calls).toEqual([['profile_completed']])
+    }
+  })
+
+  it('does not track a restored profile or trading state as a new completion', async () => {
+    const user = createUser({
+      username: 'existing-name',
+      email: 'test@example.com',
+      deposit_wallet_address: '0xbc040c5a56d757986475005f8cde8e41fe3e2486',
+      deposit_wallet_status: 'deployed',
+      settings: {
+        tradingAuth: {
+          clob: { enabled: true, updatedAt: '2026-07-10T10:41:37.944Z' },
+          relayer: { enabled: true, updatedAt: '2026-07-10T10:41:37.944Z' },
+          approvals: { enabled: true, updatedAt: '2026-07-10T10:41:37.944Z', version: 'v1' },
+        },
+      },
+    })
+    useUser.setState(user)
+    render(
+      <TradingOnboardingProvider>
+        <div />
+      </TradingOnboardingProvider>,
+    )
+    await waitFor(() => expect(mocks.dialogProps?.hasTokenApprovals).toBe(true))
+    await act(async () => {
+      useUser.setState({ ...user })
+    })
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
   })
 
   it('places Required Sumsub after profile details and before wallet setup', async () => {
@@ -803,6 +881,7 @@ describe('tradingOnboardingProvider', () => {
     expect(mocks.createDepositWalletAction).toHaveBeenCalledTimes(2)
     expect(screen.getByTestId('active-modal')).toHaveTextContent('enable')
     expect(screen.getByTestId('active-modal')).not.toHaveTextContent('enable-status')
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
   })
 
   it('auto-prompts trading auth on event routes', async () => {
@@ -934,6 +1013,11 @@ describe('tradingOnboardingProvider', () => {
     await waitFor(() => {
       expect(onTradingReady).toHaveBeenCalledTimes(1)
     })
+    await waitFor(() => expect(mocks.trackEvent.mock.calls).toEqual([['trading_enabled']]))
+    await act(async () => {
+      useUser.setState((previous) => (previous ? { ...previous } : previous))
+    })
+    expect(mocks.trackEvent.mock.calls).toEqual([['trading_enabled']])
   })
 
   it('opens AppKit instead of exposing wagmi connector errors during enable trading', async () => {
@@ -997,6 +1081,7 @@ describe('tradingOnboardingProvider', () => {
     })
 
     expect(mocks.dialogProps.enableTradingError).toBe(ENABLE_TRADING_RETRY_MESSAGE)
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
   })
 
   it('does not start token approval signing before the deposit wallet is deployed', async () => {

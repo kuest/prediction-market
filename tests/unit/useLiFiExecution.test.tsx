@@ -8,7 +8,8 @@ import type { LiFiWalletTokenItem } from '@/hooks/useLiFiWalletTokens'
 
 import { hoisted, stubGlobal, unstubAllGlobals } from '../bun-test-helpers'
 
-const mocks = hoisted(() => ({ send: mock(), receipt: mock(), allowance: mock() }))
+const mocks = hoisted(() => ({ send: mock(), receipt: mock(), allowance: mock(), trackEvent: mock() }))
+void mock.module('@/hooks/useOperatorAnalytics', () => ({ useOperatorAnalytics: () => mocks.trackEvent }))
 void mock.module('wagmi', () => ({
   useWalletClient: () => ({ data: { chain: { id: 137 }, sendTransaction: mocks.send } }),
   usePublicClient: () => ({ waitForTransactionReceipt: mocks.receipt, readContract: mocks.allowance }),
@@ -38,6 +39,7 @@ beforeEach(() => {
   mocks.send.mockReset().mockResolvedValue('0xswap')
   mocks.receipt.mockReset().mockResolvedValue({ status: 'success', transactionHash: '0xswap' })
   mocks.allowance.mockReset().mockResolvedValue(0n)
+  mocks.trackEvent.mockReset()
   fetchMock = mock(async (url: string) => ({
     ok: true,
     json: async () =>
@@ -62,6 +64,7 @@ describe('LI.FI deposit receipt recovery', () => {
     expect(mocks.send).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(mocks.receipt.mock.calls[1][0].hash).toBe('0xswap')
+    expect(mocks.trackEvent).not.toHaveBeenCalled()
   })
 
   it('checks a pending approval before allowing the swap', async () => {
