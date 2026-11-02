@@ -3,11 +3,13 @@ import { describe, expect, it } from 'bun:test'
 import type { ActivityOrder } from '@/types'
 
 import {
+  buildActivityCsv,
   formatActivityShares,
   normalizeActivityHistoryDisplay,
   resolveVariant,
 } from '@/app/[locale]/(platform)/profile/_utils/PublicActivityUtils'
 import { MICRO_UNIT } from '@/lib/constants'
+import { mapDataApiActivityToActivityOrder } from '@/lib/data-api/user'
 
 function createActivity(overrides: Partial<ActivityOrder> = {}): ActivityOrder {
   return {
@@ -45,6 +47,23 @@ function createActivity(overrides: Partial<ActivityOrder> = {}): ActivityOrder {
 }
 
 describe('public activity utils', () => {
+  it.each(['SPLIT', 'MERGE'])('keeps %s quantities and collateral consistent in history and CSV', (type) => {
+    const activity = mapDataApiActivityToActivityOrder({
+      type,
+      size: 2101.45,
+      usdcSize: 2101.45,
+      price: 0,
+      timestamp: 1793653617,
+      title: 'Bitcoin Up or Down',
+      transactionHash: '0xsplit-or-merge',
+    })
+
+    expect(formatActivityShares(activity)).toBe('2,101.45 shares')
+    expect(buildActivityCsv([activity], 'Kuest').csvContent.split('\n')[1]).toBe(
+      `"Bitcoin Up or Down","${type === 'SPLIT' ? 'Split' : 'Merge'}","2101.45","2101.45","","1793653617","0xsplit-or-merge"`,
+    )
+  })
+
   it('deduplicates overlapping activity pages by activity id', () => {
     const activity = createActivity({ id: 'duplicate-activity' })
 

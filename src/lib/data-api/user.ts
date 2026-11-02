@@ -187,6 +187,50 @@ function buildActivityId(activity: DataApiActivity, slugFallback: string, eventI
   return parts.join(':')
 }
 
+function nonNegativeUnitAmount(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined
+}
+
+function resolveActivityAmounts(activity: DataApiActivity, normalizedType: string | undefined) {
+  const isSplit = normalizedType === 'split'
+  if (isSplit || normalizedType === 'merge' || normalizedType === 'merged') {
+    // The API reports full sets and collateral in units. Each set is backed by
+    // one USDC, regardless of outcome prices or the magnitude of the amount.
+    const collateral = nonNegativeUnitAmount(activity.usdcSize)
+    const baseSize = nonNegativeUnitAmount(activity.size) ?? collateral ?? 0
+    return {
+      baseSize,
+      // ActivityOrder counts both minted outcomes for splits; history displays
+      // half this amount. Merges retain the number of full sets burned.
+      size: isSplit ? baseSize * 2 : baseSize,
+      price: isSplit ? 0.5 : 1,
+      totalUsd: collateral ?? baseSize,
+    }
+  }
+
+  const normalizedUsd = normalizeUsd(activity.usdcSize)
+  let price = sanitizePrice(normalizeValue(activity.price))
+  if (price < 0) {
+    price = 0
+  }
+
+  let baseSize = normalizeShares(activity.size)
+
+  const canDeriveFromUsd = normalizedUsd > 0 && price > 0
+  if (canDeriveFromUsd && (baseSize <= 0 || baseSize > 1_000)) {
+    baseSize = normalizedUsd / price
+  }
+
+  const derivedTotal = baseSize > 0 && price > 0 ? baseSize * price : 0
+  let totalUsd = normalizedUsd > 0 ? normalizedUsd : 0
+  if (derivedTotal > 0 && (totalUsd === 0 || derivedTotal < totalUsd * 10)) {
+    totalUsd = derivedTotal
+  } else if (totalUsd === 0) {
+    totalUsd = derivedTotal
+  }
+  return { baseSize, size: baseSize, price, totalUsd }
+}
+
 export function mapDataApiActivityToActivityOrder(activity: DataApiActivity): ActivityOrder {
   const slug = activity.slug || activity.conditionId || 'unknown-market'
   const eventSlug = activity.eventSlug || slug
@@ -194,29 +238,7 @@ export function mapDataApiActivityToActivityOrder(activity: DataApiActivity): Ac
   const normalizedType = activity.type?.toLowerCase()
   const isSplit = normalizedType === 'split'
   const isRedeem = normalizedType === 'redeem' || normalizedType === 'redeemed' || normalizedType === 'redemption'
-  const normalizedUsd = normalizeUsd(activity.usdcSize)
-  let normalizedPrice = sanitizePrice(normalizeValue(activity.price))
-  if (normalizedPrice < 0) {
-    normalizedPrice = 0
-  }
-
-  let baseSize = normalizeShares(activity.size)
-
-  const price = isSplit ? 0.5 : normalizedPrice
-  const canDeriveFromUsd = normalizedUsd > 0 && price > 0
-  if (canDeriveFromUsd && (baseSize <= 0 || baseSize > 1_000)) {
-    baseSize = normalizedUsd / price
-  }
-
-  const size = isSplit ? baseSize * 2 : baseSize
-
-  const derivedTotal = size > 0 && price > 0 ? size * price : 0
-  let totalUsd = normalizedUsd > 0 ? normalizedUsd : 0
-  if (derivedTotal > 0 && (totalUsd === 0 || derivedTotal < totalUsd * 10)) {
-    totalUsd = derivedTotal
-  } else if (totalUsd === 0) {
-    totalUsd = derivedTotal
-  }
+  const { baseSize, size, price, totalUsd } = resolveActivityAmounts(activity, normalizedType)
   const isZeroRedeem = isRedeem && baseSize <= 0 && totalUsd <= 0
   const outcomeText = isSplit ? 'Yes / No' : isZeroRedeem ? 'Outcome' : activity.outcome || 'Outcome'
   const outcomeIndex = isSplit || isZeroRedeem ? undefined : (activity.outcomeIndex ?? 0)
