@@ -18,7 +18,7 @@ import { Drawer, DrawerContent } from '@/components/ui/drawer'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
-import { MICRO_UNIT, ORDER_SIDE, OUTCOME_INDEX, tableHeaderClass } from '@/lib/constants'
+import { ORDER_SIDE, OUTCOME_INDEX, tableHeaderClass } from '@/lib/constants'
 import { fetchUserPositionsForMarket } from '@/lib/data-api/user'
 import {
   formatAmountInputValue,
@@ -28,6 +28,11 @@ import {
   formatSharesLabel,
   fromMicro,
 } from '@/lib/formatters'
+import {
+  resolvePositionCostValue,
+  resolvePositionCurrentValue,
+  resolvePositionRealizedPnl,
+} from '@/lib/position-values'
 import { buildShareCardPayload } from '@/lib/share-card'
 import { getUserPublicAddress } from '@/lib/user-address'
 import { cn } from '@/lib/utils'
@@ -77,44 +82,15 @@ function resolvePositionCost(position: UserPosition) {
   const avgPrice =
     normalizePositionPrice(position.avgPrice) ??
     normalizePositionPrice(Number(fromMicro(String(position.average_position ?? 0), 6)))
-  const explicitCost =
-    toNumber(position.totalBought) ??
-    toNumber(position.initialValue) ??
-    (typeof position.total_position_cost === 'number'
-      ? Number(fromMicro(String(position.total_position_cost), 6))
-      : null)
-
-  if (explicitCost != null && explicitCost > 0) {
-    return explicitCost
-  }
-
-  const derivedCost = quantity > 0 && typeof avgPrice === 'number' ? quantity * avgPrice : null
-  if (derivedCost != null && derivedCost > 0) {
-    return derivedCost
-  }
-
-  return explicitCost
+  return resolvePositionCostValue(position, quantity, avgPrice)
 }
 
 function resolvePositionValue(position: UserPosition, marketPrice: number | null = null) {
   const quantity = resolvePositionShares(position)
-  if (quantity > 0) {
-    const currentPrice = marketPrice ?? normalizePositionPrice(position.curPrice)
-    if (currentPrice && currentPrice > 0) {
-      return currentPrice * quantity
-    }
-  }
-
-  let value = toNumber(position.currentValue) ?? Number(fromMicro(String(position.total_position_value ?? 0), 2))
-  if (!(value > 0) && quantity > 0) {
-    const avgPrice =
-      normalizePositionPrice(position.avgPrice) ??
-      normalizePositionPrice(Number(fromMicro(String(position.average_position ?? 0), 6)))
-    if (avgPrice && avgPrice > 0) {
-      value = avgPrice * quantity
-    }
-  }
-  return Number.isFinite(value) ? value : 0
+  const avgPrice =
+    normalizePositionPrice(position.avgPrice) ??
+    normalizePositionPrice(Number(fromMicro(String(position.average_position ?? 0), 6)))
+  return resolvePositionCurrentValue(position, quantity, avgPrice, marketPrice)
 }
 
 function resolvePositionOutcomeIndex(position: UserPosition) {
@@ -123,23 +99,6 @@ function resolvePositionOutcomeIndex(position: UserPosition) {
   const resolvedOutcomeIndex =
     explicitOutcomeIndex ?? (normalizedOutcome === 'no' ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES)
   return resolvedOutcomeIndex === OUTCOME_INDEX.NO ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES
-}
-
-function normalizePnlValue(value: number | null, baseCostValue: number | null) {
-  if (!Number.isFinite(value)) {
-    return 0
-  }
-  if (!baseCostValue || baseCostValue <= 0) {
-    return value ?? 0
-  }
-  if (Math.abs(value ?? 0) <= baseCostValue * 10) {
-    return value ?? 0
-  }
-  const scaled = (value ?? 0) / MICRO_UNIT
-  if (Math.abs(scaled) <= baseCostValue * 10) {
-    return scaled
-  }
-  return 0
 }
 
 async function fetchAllUserPositions({
@@ -485,15 +444,11 @@ function MarketPositionRow({
   const valueLabel = formatDollarValueLabel(Math.max(0, totalValue), { fallback: '0¢' })
   const baseCostValue = resolvePositionCost(position)
   const costLabel = baseCostValue != null ? formatDollarValueLabel(baseCostValue, { fallback: '0¢' }) : null
-  const rawRealizedPnl = toNumber(position.realizedPnl) ?? toNumber(position.cashPnl) ?? 0
-  const realizedPnlValue = normalizePnlValue(rawRealizedPnl, baseCostValue)
+  const realizedPnlValue = resolvePositionRealizedPnl(position)
   const unrealizedValue = baseCostValue != null ? Number((totalValue - baseCostValue).toFixed(6)) : 0
   const totalProfitLossValue = Number((unrealizedValue + realizedPnlValue).toFixed(6))
-  const percentFromPayload = toNumber(position.percentPnl) ?? toNumber(position.profit_loss_percent)
-  const derivedPercent = baseCostValue && baseCostValue !== 0 ? (totalProfitLossValue / baseCostValue) * 100 : null
-  const percentSource = derivedPercent ?? percentFromPayload ?? 0
-  const isPayloadPercent = derivedPercent == null && percentFromPayload !== null
-  const normalizedPercent = isPayloadPercent && Math.abs(percentSource) <= 1 ? percentSource * 100 : percentSource
+  const derivedPercent = baseCostValue && baseCostValue > 0 ? (totalProfitLossValue / baseCostValue) * 100 : null
+  const normalizedPercent = derivedPercent ?? 0
   const percentDigits = Math.abs(normalizedPercent) >= 10 ? 0 : 1
   const percentLabel = formatPercent(Math.abs(normalizedPercent), { digits: percentDigits })
   const isPositive = totalProfitLossValue >= 0
@@ -548,7 +503,7 @@ function MarketPositionRow({
             render={
               <PositionReturnSummary
                 valueLabel={displayedReturnValue}
-                percentLabel={isNeutralReturn ? null : signedPercentLabel}
+                percentLabel={isNeutralReturn || derivedPercent == null ? null : signedPercentLabel}
                 percentClassName={cn('text-2xs font-semibold sm:text-sm', returnColorClass)}
                 underlineValue
               />
@@ -569,7 +524,7 @@ function MarketPositionRow({
                 <span>{t('Total')}</span>
                 <span className="font-semibold">
                   {displayedReturnValue}
-                  {!isNeutralReturn && (
+                  {!isNeutralReturn && derivedPercent != null && (
                     <span className={cn('ml-1 font-semibold', returnColorClass)}>({signedPercentLabel})</span>
                   )}
                 </span>
@@ -596,6 +551,7 @@ function MarketPositionRow({
             variant="outline"
             size="sm"
             aria-label={t('Sell position')}
+            disabled={!market.is_active || market.is_resolved || market.condition?.resolved}
             onClick={() => onSell(position)}
           >
             {t('Sell')}
@@ -738,7 +694,9 @@ export default function EventMarketPositions({
   const setIsMobileOrderPanelOpen = useOrder((state) => state.setIsMobileOrderPanelOpen)
   const orderInputRef = useOrder((state) => state.inputRef)
 
-  const positionStatus = market.is_active && !market.is_resolved ? 'active' : 'closed'
+  // /positions means inventory still held, including an ended market waiting
+  // for resolution or a resolved position that has not yet been redeemed.
+  const positionStatus = 'active'
 
   const { status, refetch, visiblePositions } = useMarketPositionsQuery({
     userAddress,

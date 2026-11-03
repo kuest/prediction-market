@@ -11,8 +11,8 @@ import {
   resolveSportsAuxiliaryMarketTitle,
 } from '@/app/[locale]/(platform)/sports/_utils/sports-games-data'
 import { resolveHexToRgbComponents } from '@/lib/color'
-import { MICRO_UNIT, OUTCOME_INDEX } from '@/lib/constants'
-import { formatSharePriceLabel, fromMicro } from '@/lib/formatters'
+import { OUTCOME_INDEX } from '@/lib/constants'
+import { formatSharePriceLabel } from '@/lib/formatters'
 import { ODDS_FORMAT_OPTIONS } from '@/lib/odds-format'
 import {
   isSportsTeamTone,
@@ -43,6 +43,8 @@ import {
   TRADE_FLOW_TTL_MS,
 } from './sports-games-center-constants'
 
+export { resolvePositionCostValue, resolvePositionCurrentValue } from '@/lib/position-values'
+
 const GRAPH_SELECTION_MARKET_PRIORITY: SportsGamesButton['marketType'][] = [
   'moneyline',
   'binary',
@@ -69,7 +71,7 @@ export function resolveInitialShowSpreadsAndTotals() {
   return window.localStorage.getItem(SPORTS_GAMES_SHOW_SPREADS_TOTALS_STORAGE_KEY) === '1'
 }
 
-export function toFiniteNumber(value: unknown) {
+function toFiniteNumber(value: unknown) {
   if (value == null) {
     return null
   }
@@ -96,67 +98,6 @@ export function normalizePositionPrice(value: unknown) {
   }
 
   return normalized
-}
-
-export function resolvePositionCostValue(position: UserPosition, shares: number, avgPrice: number | null) {
-  const baseCostValue =
-    toFiniteNumber(position.totalBought) ??
-    toFiniteNumber(position.initialValue) ??
-    (typeof position.total_position_cost === 'number'
-      ? Number(fromMicro(String(position.total_position_cost), 6))
-      : null)
-
-  if (baseCostValue != null && baseCostValue > 0) {
-    return baseCostValue
-  }
-
-  const derivedCost = shares > 0 && typeof avgPrice === 'number' && avgPrice > 0 ? avgPrice * shares : null
-  if (derivedCost != null) {
-    return derivedCost
-  }
-
-  return baseCostValue
-}
-
-export function resolvePositionCurrentValue(
-  position: UserPosition,
-  shares: number,
-  avgPrice: number | null,
-  marketPrice: number | null,
-) {
-  if (shares > 0) {
-    const livePrice = marketPrice ?? normalizePositionPrice(position.curPrice)
-    if (livePrice && livePrice > 0) {
-      return livePrice * shares
-    }
-  }
-
-  let value = toFiniteNumber(position.currentValue) ?? Number(fromMicro(String(position.total_position_value ?? 0), 2))
-
-  if (!(value > 0) && shares > 0) {
-    if (typeof avgPrice === 'number' && avgPrice > 0) {
-      value = avgPrice * shares
-    }
-  }
-
-  return Number.isFinite(value) ? value : 0
-}
-
-export function normalizePositionPnlValue(value: number | null, baseCostValue: number | null) {
-  if (!Number.isFinite(value)) {
-    return 0
-  }
-  if (!baseCostValue || baseCostValue <= 0) {
-    return value ?? 0
-  }
-  if (Math.abs(value ?? 0) <= baseCostValue * 10) {
-    return value ?? 0
-  }
-  const scaled = (value ?? 0) / MICRO_UNIT
-  if (Math.abs(scaled) <= baseCostValue * 10) {
-    return scaled
-  }
-  return 0
 }
 
 export function buildTradeFlowLabel(price: number, size: number) {
