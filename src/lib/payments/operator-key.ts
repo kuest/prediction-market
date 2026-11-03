@@ -9,28 +9,6 @@ export const PAYMENTS_OPERATOR_CHALLENGE_KEY = 'operator_domain_challenge:'
 export const PAYMENTS_OPERATOR_LEGACY_CHALLENGE_KEY = 'operator_domain_challenge'
 export const PAYMENTS_ENABLED_KEY = 'on_off_ramp_enabled'
 
-const UNSUPPORTED_PAYMENT_DOMAIN_SUFFIXES = [
-  '.vercel.app',
-  '.workers.dev',
-  '.pages.dev',
-  '.netlify.app',
-  '.ngrok-free.app',
-  '.ngrok.io',
-  '.trycloudflare.com',
-  '.localtunnel.me',
-  '.loca.lt',
-  '.serveo.net',
-  '.onrender.com',
-  '.fly.dev',
-  '.railway.app',
-  '.herokuapp.com',
-  '.replit.app',
-  '.replit.dev',
-  '.github.io',
-  '.gitlab.io',
-  '.surge.sh',
-]
-
 type RequestHeaders = Pick<Headers, 'get'>
 
 export function getPaymentsCanonicalDomain(requestHeaders: RequestHeaders | null | undefined): string | null {
@@ -40,7 +18,7 @@ export function getPaymentsCanonicalDomain(requestHeaders: RequestHeaders | null
 
   try {
     // Use the request authority itself; forwarded host values may come from an untrusted proxy.
-    // The Worker challenge separately proves that the domain serves the required public HTTPS route.
+    // Payments owns domain eligibility and HTTPS ownership proof; this only canonicalizes the request authority.
     const host = requestHeaders.get('host')?.trim()
     const forwardedProtocol = requestHeaders.get('x-forwarded-proto')?.trim().toLowerCase()
     if (
@@ -61,21 +39,7 @@ export function getPaymentsCanonicalDomain(requestHeaders: RequestHeaders | null
       url.port ||
       url.pathname !== '/' ||
       url.search ||
-      url.hash ||
-      hostname === 'localhost' ||
-      hostname.endsWith('.localhost') ||
-      hostname.endsWith('.local') ||
-      hostname.endsWith('.internal') ||
-      hostname.endsWith('.test') ||
-      hostname.endsWith('.invalid') ||
-      hostname.endsWith('.example') ||
-      hostname.endsWith('.onion') ||
-      hostname.endsWith('.home.arpa') ||
-      hostname === 'kuest.com' ||
-      hostname.endsWith('.kuest.com') ||
-      UNSUPPORTED_PAYMENT_DOMAIN_SUFFIXES.some((suffix) => hostname.endsWith(suffix)) ||
-      hostname.startsWith('[') ||
-      /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(hostname)
+      url.hash
     ) {
       return null
     }

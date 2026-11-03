@@ -382,6 +382,26 @@ describe('updateIntegrationsSettingsAction', () => {
     )
   })
 
+  it('preserves the Payments domain rejection without saving an enabled integration', async () => {
+    mocks.requestHeaders.mockResolvedValue(new Headers({ host: 'fork.vercel.app', 'x-forwarded-proto': 'https' }))
+    const { PaymentsOperatorProvisioningError } = await import('@/lib/payments/worker')
+    mocks.requestPaymentsOperatorChallenge.mockRejectedValueOnce(
+      new PaymentsOperatorProvisioningError('payments_site_url_invalid'),
+    )
+    const data = formData()
+    data.set('payments_enabled', 'true')
+    data.set('payments_enabled_changed', 'true')
+    const { updateIntegrationsSettingsAction } =
+      await import('@/app/[locale]/admin/integrations/_actions/update-integrations-settings')
+
+    await expect(updateIntegrationsSettingsAction({ error: null }, data)).resolves.toEqual({
+      error: 'payments_site_url_invalid',
+    })
+    expect(mocks.requestPaymentsOperatorChallenge).toHaveBeenCalledWith('fork.vercel.app', expect.any(String))
+    expect(mocks.verifyPaymentsOperatorDomain).not.toHaveBeenCalled()
+    expect(mocks.updateSettings).not.toHaveBeenCalled()
+  })
+
   it('fails clearly when the site domain changed and the operator key is missing', async () => {
     mocks.getSettings.mockResolvedValue({
       data: {
@@ -479,6 +499,15 @@ describe('getPaymentsOperatorKey', () => {
 })
 
 describe('getPaymentsCanonicalDomain', () => {
+  it.each(['example.com', 'app.example.com', 'preview.app.example.com'])(
+    'canonicalizes the request domain %s over HTTPS',
+    async (host) => {
+      const { getPaymentsCanonicalDomain } = await import('@/lib/payments/operator-key')
+
+      expect(getPaymentsCanonicalDomain(new Headers({ host, 'x-forwarded-proto': 'https' }))).toBe(host)
+    },
+  )
+
   it('uses the request host and ignores an untrusted forwarded host', async () => {
     const { getPaymentsCanonicalDomain } = await import('@/lib/payments/operator-key')
     const requestHeaders = new Headers({
@@ -500,12 +529,11 @@ describe('getPaymentsCanonicalDomain', () => {
     const { getPaymentsCanonicalDomain } = await import('@/lib/payments/operator-key')
 
     expect(getPaymentsCanonicalDomain(new Headers({ host: 'Fork-Example.com.' }))).toBe('fork-example.com')
-    expect(getPaymentsCanonicalDomain(new Headers({ host: 'fork.vercel.app.' }))).toBeNull()
-    expect(getPaymentsCanonicalDomain(new Headers({ host: 'localhost.' }))).toBeNull()
+    expect(getPaymentsCanonicalDomain(new Headers({ host: 'fork.vercel.app.' }))).toBe('fork.vercel.app')
     expect(getPaymentsCanonicalDomain(new Headers({ host: 'fork-example.com..' }))).toBeNull()
   })
 
-  it('rejects insecure, ambiguous, and local request origins', async () => {
+  it('rejects insecure, ambiguous, and malformed request authorities', async () => {
     const { getPaymentsCanonicalDomain } = await import('@/lib/payments/operator-key')
 
     expect(
@@ -514,11 +542,7 @@ describe('getPaymentsCanonicalDomain', () => {
     expect(
       getPaymentsCanonicalDomain(new Headers({ host: 'fork-example.com', 'x-forwarded-proto': 'https,http' })),
     ).toBeNull()
-    expect(getPaymentsCanonicalDomain(new Headers({ host: 'localhost', 'x-forwarded-proto': 'https' }))).toBeNull()
-    expect(getPaymentsCanonicalDomain(new Headers({ host: '127.0.0.1', 'x-forwarded-proto': 'https' }))).toBeNull()
-    expect(
-      getPaymentsCanonicalDomain(new Headers({ host: 'fork.vercel.app', 'x-forwarded-proto': 'https' })),
-    ).toBeNull()
+    expect(getPaymentsCanonicalDomain(new Headers({ host: 'fork-example.com,attacker-example.com' }))).toBeNull()
     expect(
       getPaymentsCanonicalDomain(new Headers({ host: 'fork-example.com:8443', 'x-forwarded-proto': 'https' })),
     ).toBeNull()
