@@ -4,11 +4,21 @@ import type { DataApiPosition } from '@/lib/data-api/user'
 import type { UserPosition } from '@/types'
 
 import { mapDataApiPositionToUserPosition } from '@/lib/data-api/user'
-import { resolvePositionCostValue, resolvePositionCurrentValue, resolvePositionRealizedPnl } from '@/lib/position-values'
+import {
+  resolvePositionCostValue,
+  resolvePositionCurrentValue,
+  resolvePositionRealizedPnl,
+} from '@/lib/position-values'
 
 const indexedBuy: DataApiPosition = {
-  size: 16, totalBought: 16, avgPrice: 0.896168, initialValue: 14.338688,
-  curPrice: 0.91, currentValue: 14.56, cashPnl: 0.221312, realizedPnl: 0,
+  size: 16,
+  totalBought: 16,
+  avgPrice: 0.896168,
+  initialValue: 14.338688,
+  curPrice: 0.91,
+  currentValue: 14.56,
+  cashPnl: 0.221312,
+  realizedPnl: 0,
 }
 
 describe('position USD values', () => {
@@ -24,7 +34,10 @@ describe('position USD values', () => {
   })
 
   it.each([0, 0.89, 0.99, 1])('keeps an API mark of %s ahead of a stale event quote', (mark) => {
-    const position = mapDataApiPositionToUserPosition({ ...indexedBuy, curPrice: mark, currentValue: 16 * mark }, 'active')
+    const position = mapDataApiPositionToUserPosition(
+      { ...indexedBuy, curPrice: mark, currentValue: 16 * mark },
+      'active',
+    )
     expect(resolvePositionCurrentValue(position, 16, 0.896168, 0.91)).toBeCloseTo(16 * mark, 6)
   })
 
@@ -55,19 +68,29 @@ describe('position USD values', () => {
     expect(resolvePositionRealizedPnl({ cashPnl: 0.221312, realizedPnl: 0 } as UserPosition)).toBe(0)
   })
 
-  it.each([99, -99])('does not rescale a valid realized return of %s USD based on a small remaining basis', (realizedPnl) => {
-    expect(resolvePositionRealizedPnl({ initialValue: 0.01, realizedPnl } as UserPosition)).toBe(realizedPnl)
-  })
+  it.each([99, -99])(
+    'does not rescale a valid realized return of %s USD based on a small remaining basis',
+    (realizedPnl) => {
+      expect(resolvePositionRealizedPnl({ initialValue: 0.01, realizedPnl } as UserPosition)).toBe(realizedPnl)
+    },
+  )
 
   it('adds realized profit from a partial exit exactly once to the remaining unrealized value', () => {
-    const position = mapDataApiPositionToUserPosition({
-      ...indexedBuy, size: 8, initialValue: 7.169344, currentValue: 7.28,
-      cashPnl: 0.110656, realizedPnl: 0.35,
-    }, 'active')
+    const position = mapDataApiPositionToUserPosition(
+      {
+        ...indexedBuy,
+        size: 8,
+        initialValue: 7.169344,
+        currentValue: 7.28,
+        cashPnl: 0.110656,
+        realizedPnl: 0.35,
+      },
+      'active',
+    )
     const cost = resolvePositionCostValue(position, 8, 0.896168)!
     const value = resolvePositionCurrentValue(position, 8, 0.896168)
     const pnl = value - cost + resolvePositionRealizedPnl(position)
     expect(pnl).toBeCloseTo(0.460656, 6)
-    expect(100 * pnl / cost).toBeCloseTo(6.425357, 5)
+    expect((100 * pnl) / cost).toBeCloseTo(6.425357, 5)
   })
 })

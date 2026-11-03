@@ -26,9 +26,7 @@ export function resolvePositionCostValue(position: UserPosition, shares: number,
   if (storedCost != null) {
     return storedCost / MICRO_UNIT
   }
-  return shares > 0 && avgPrice != null && Number.isFinite(avgPrice) && avgPrice >= 0
-    ? shares * avgPrice
-    : null
+  return shares > 0 && avgPrice != null && Number.isFinite(avgPrice) && avgPrice >= 0 ? shares * avgPrice : null
 }
 
 export function resolvePositionCurrentValue(

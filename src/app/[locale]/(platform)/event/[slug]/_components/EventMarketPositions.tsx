@@ -28,7 +28,11 @@ import {
   formatSharesLabel,
   fromMicro,
 } from '@/lib/formatters'
-import { resolvePositionCostValue, resolvePositionCurrentValue, resolvePositionRealizedPnl } from '@/lib/position-values'
+import {
+  resolvePositionCostValue,
+  resolvePositionCurrentValue,
+  resolvePositionRealizedPnl,
+} from '@/lib/position-values'
 import { buildShareCardPayload } from '@/lib/share-card'
 import { getUserPublicAddress } from '@/lib/user-address'
 import { cn } from '@/lib/utils'

@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 
-import type { Event, User } from '@/types'
 import type { DataApiPosition } from '@/lib/data-api/user'
+import type { Event, User } from '@/types'
 
 import EventMarketPositions from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketPositions'
 import { useOrder } from '@/stores/useOrder'
@@ -57,10 +57,13 @@ async function renderBtcPosition(position: DataApiPosition = btcFillPosition, se
   useUser.setState({ deposit_wallet_address: ownerAddress } as User)
   useOrder.setState({ event: { total_markets_count: 1 } as Event })
   const requests: URL[] = []
-  stubGlobal('fetch', mock(async (input: string | URL | Request) => {
-    requests.push(new URL(String(input)))
-    return Response.json([position])
-  }))
+  stubGlobal(
+    'fetch',
+    mock(async (input: string | URL | Request) => {
+      requests.push(new URL(String(input)))
+      return Response.json([position])
+    }),
+  )
   renderPositions(selectedMarket)
   const shares = await screen.findByText(String(position.size))
   const row = shares.closest('tr')!
@@ -183,8 +186,12 @@ describe('event Positions card runtime Data API URL', () => {
 
   it('uses remaining cost after a partial sale and adds only actual realized profit', async () => {
     const { cells } = await renderBtcPosition({
-      ...btcFillPosition, size: 8, initialValue: 7.169344, currentValue: 7.28,
-      realizedPnl: 0.35, cashPnl: 0.110656,
+      ...btcFillPosition,
+      size: 8,
+      initialValue: 7.169344,
+      currentValue: 7.28,
+      realizedPnl: 0.35,
+      cashPnl: 0.110656,
     })
     expect(cells[3]).toHaveTextContent('Cost $7.17')
     expect(cells[3]).toHaveTextContent('$7.28')
