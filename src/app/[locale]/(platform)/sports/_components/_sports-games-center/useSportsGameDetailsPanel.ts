@@ -14,6 +14,7 @@ import { fetchUserPositionsForMarket } from '@/lib/data-api/user'
 import { formatAmountInputValue, formatCentsValueLabel, fromMicro } from '@/lib/formatters'
 import { formatOddsFromCents } from '@/lib/odds-format'
 import { calculateMarketFill, normalizeBookLevels } from '@/lib/order-panel-utils'
+import { resolvePositionRealizedPnl } from '@/lib/position-values'
 import { useOrder } from '@/stores/useOrder'
 import { useUser } from '@/stores/useUser'
 
@@ -29,7 +30,6 @@ import {
   abbreviatePositionMarketLabel,
   buildLinePickerOptions,
   formatCompactCentsLabel,
-  normalizePositionPnlValue,
   normalizePositionPrice,
   resolveMarketTypeLabel,
   resolvePositionCostValue,
@@ -41,7 +41,6 @@ import {
   resolveSelectedOrderBookTradeLabel,
   resolveSelectedOutcome,
   resolveSwitchTooltip,
-  toFiniteNumber,
 } from './sports-games-center-utils'
 
 export function useSportsGameDetailsPanelOrderStore() {
@@ -252,8 +251,7 @@ export function useSportsPositionTags({
       const costValue = resolvePositionCostValue(position, shares, normalizedAvgPrice)
       const normalizedMarketPrice = normalizePositionPrice(outcome.buy_price)
       const currentValue = resolvePositionCurrentValue(position, shares, normalizedAvgPrice, normalizedMarketPrice)
-      const rawRealizedPnl = toFiniteNumber(position.realizedPnl) ?? toFiniteNumber(position.cashPnl) ?? 0
-      const realizedPnl = normalizePositionPnlValue(rawRealizedPnl, costValue)
+      const realizedPnl = resolvePositionRealizedPnl(position)
       const activityMs = Date.parse(position.last_activity_at)
       const normalizedActivityMs = Number.isFinite(activityMs) ? activityMs : 0
       const key = `${conditionId}:${resolvedOutcomeIndex}`
