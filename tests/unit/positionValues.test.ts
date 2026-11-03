@@ -46,6 +46,30 @@ describe('position USD values', () => {
     expect(resolvePositionCurrentValue(position, 16, 0.896168, 0.99)).toBe(0)
   })
 
+  it('preserves an explicit zero API valuation even when its price is nonzero', () => {
+    const position = mapDataApiPositionToUserPosition({ ...indexedBuy, currentValue: 0, curPrice: 0.91 }, 'active')
+    expect(resolvePositionCurrentValue(position, 16, 0.896168, 0.99)).toBe(0)
+  })
+
+  it('preserves a positive API valuation instead of recomputing it from a different mark', () => {
+    const position = mapDataApiPositionToUserPosition({ ...indexedBuy, currentValue: 14.24, curPrice: 0.91 }, 'active')
+    expect(resolvePositionCurrentValue(position, 16, 0.896168, 0.99)).toBe(14.24)
+  })
+
+  it('continues to the quote when the mapper synthesized a zero for a missing API valuation', () => {
+    const position = mapDataApiPositionToUserPosition(
+      { ...indexedBuy, currentValue: undefined, curPrice: undefined },
+      'active',
+    )
+    expect(position.total_position_value).toBe(0)
+    expect(resolvePositionCurrentValue(position, 16, 0.896168, 0.91)).toBe(14.56)
+  })
+
+  it('still accepts an explicit zero API price when currentValue is absent', () => {
+    const position = mapDataApiPositionToUserPosition({ ...indexedBuy, currentValue: undefined, curPrice: 0 }, 'active')
+    expect(resolvePositionCurrentValue(position, 16, 0.896168, 0.91)).toBe(0)
+  })
+
   it('uses legacy micro-USD values without rounding them before the return calculation', () => {
     const position = { total_position_cost: 14_338_690, total_position_value: 14_560_000 } as UserPosition
     expect(resolvePositionCostValue(position, 16, 0.896168)).toBe(14.33869)

@@ -35,18 +35,21 @@ export function resolvePositionCurrentValue(
   avgPrice: number | null,
   marketPrice: number | null = null,
 ) {
-  // Keep the API's payout/live/fallback mark with its position snapshot. A
-  // server-rendered event quote may be older, and zero is a valid losing payout.
-  const apiPrice = nonNegativeNumber(position.curPrice)
-  if (shares > 0 && apiPrice != null && apiPrice <= 1) {
-    return shares * apiPrice
-  }
+  // An explicit API valuation is authoritative, including a zero payout.
+  // Only derive from the API mark when that valuation is absent.
   const apiValue = nonNegativeNumber(position.currentValue)
   if (apiValue != null) {
     return apiValue
   }
+  const apiPrice = nonNegativeNumber(position.curPrice)
+  if (shares > 0 && apiPrice != null && apiPrice <= 1) {
+    return shares * apiPrice
+  }
   const storedValue = nonNegativeNumber(position.total_position_value)
-  if (storedValue != null) {
+  // The API mapper synthesizes a stored zero when currentValue is missing.
+  // That placeholder must not prevent a quote fallback. Explicit API zero
+  // values and prices were already handled above.
+  if (storedValue != null && storedValue > 0) {
     return storedValue / MICRO_UNIT
   }
   // Legacy rows without an API valuation retain their existing quote/cost

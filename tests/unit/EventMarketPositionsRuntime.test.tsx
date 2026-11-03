@@ -140,6 +140,21 @@ describe('event Positions card runtime Data API URL', () => {
     expect(cells[4]).toHaveTextContent('+10%')
   })
 
+  it('keeps the explicit API valuation when its price field disagrees', async () => {
+    const { cells } = await renderBtcPosition({ ...btcFillPosition, currentValue: 14.24, curPrice: 0.91 })
+    expect(cells[3]).toHaveTextContent('$14.24')
+    expect(cells[4]).toHaveTextContent('-9.9¢')
+    expect(cells[4]).toHaveTextContent('-0.7%')
+  })
+
+  it('uses the event quote when the API has neither a valuation nor a mark', async () => {
+    const { cells } = await renderBtcPosition({ ...btcFillPosition, currentValue: undefined, curPrice: undefined })
+    expect(cells[3]).toHaveTextContent('$15.36')
+    expect(cells[3]).toHaveTextContent('Cost $14.34')
+    expect(cells[4]).toHaveTextContent('+$1.02')
+    expect(cells[4]).toHaveTextContent('+7.1%')
+  })
+
   it('marks at the indexed trade price when the API has no live book quote', async () => {
     const { cells } = await renderBtcPosition({ ...btcFillPosition, curPrice: 0.89, currentValue: 14.24 })
     expect(cells[3]).toHaveTextContent('$14.24')
@@ -150,7 +165,7 @@ describe('event Positions card runtime Data API URL', () => {
 
   it('keeps a resolved zero payout instead of reviving a stale nonzero quote', async () => {
     const { cells, row, requests } = await renderBtcPosition(
-      { ...btcFillPosition, curPrice: 0, currentValue: 0 },
+      { ...btcFillPosition, curPrice: 0.91, currentValue: 0 },
       { ...market, is_active: false, is_resolved: true },
     )
     expect(cells[3]).toHaveTextContent('0¢')
