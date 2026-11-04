@@ -62,6 +62,21 @@ describe('arbitrage execution confirmation', () => {
     await expect(read({ trades: [{ ...trade, status: 'MINED' }] })).resolves.toMatchObject({ state: 'pending' })
   })
 
+  it.each(['BUY', 'buy'])('confirms a buy fill with side %s', async (side) => {
+    await expect(read({ trades: [{ ...trade, side }] })).resolves.toMatchObject({
+      state: 'confirmed',
+      shares: 20,
+      orderId: 'order-1',
+    })
+  })
+
+  it.each(['SELL', 'sell', '', 'BUY ', null, undefined, 0, {}])(
+    'does not confirm a buy from a sell or invalid side %j',
+    async (side) => {
+      await expect(read({ trades: [{ ...trade, side }] })).resolves.toMatchObject({ state: 'pending' })
+    },
+  )
+
   it('does not infer success from an empty or incomplete trade lookup', async () => {
     await expect(read({ trades: [] })).resolves.toMatchObject({ state: 'pending' })
     await expect(read({ order: { ...order, associate_trades: [] } })).resolves.toMatchObject({ state: 'pending' })

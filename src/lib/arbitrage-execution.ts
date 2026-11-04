@@ -101,7 +101,8 @@ export async function readArbitrageExecution({
       const pages = await Promise.all(chunk.map((id) => readWithTimeout(readTrade(id))))
       for (let index = 0; index < chunk.length; index += 1) {
         const trade = pages[index]?.map(record).find((item) => item?.id === chunk[index])
-        if (!trade || trade.taker_order_id !== previous.orderId || trade.asset_id !== tokenId || trade.side !== 'BUY') {
+        const isBuy = trade?.side === 'BUY' || trade?.side === 'buy'
+        if (!trade || trade.taker_order_id !== previous.orderId || trade.asset_id !== tokenId || !isBuy) {
           return { ...previous, state: 'pending', error: 'Some fills are still being verified.' }
         }
         trades.push(trade)

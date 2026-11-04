@@ -31,7 +31,7 @@ const order = {
 const trade = {
   id: 'trade-1',
   taker_order_id: 'id-1',
-  side: 'BUY',
+  side: 'buy',
   asset_id: '123',
   size: '20',
   status: 'CONFIRMED',
