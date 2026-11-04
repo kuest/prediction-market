@@ -170,6 +170,7 @@ export function summarizeArbitrageExecution(kuest: ArbitrageExecution, polymarke
 }
 
 export interface ArbitrageAttempt {
+  attemptId?: string
   kuest: ArbitrageExecution
   polymarket: ArbitrageExecution
   kuestTokenId: string
@@ -186,6 +187,8 @@ export function parseStoredArbitrageAttempt(value: unknown): ArbitrageAttempt | 
   const attempt = record(value)
   if (
     !attempt ||
+    (attempt.attemptId !== undefined &&
+      (typeof attempt.attemptId !== 'string' || !attempt.attemptId || attempt.attemptId.length > 128)) ||
     !['kuestTokenId', 'polymarketTokenId', 'connectorId', 'connectorUid'].every(
       (key) => typeof attempt[key] === 'string' && Boolean(attempt[key]),
     )
@@ -206,7 +209,9 @@ export function parseStoredArbitrageAttempt(value: unknown): ArbitrageAttempt | 
       !leg ||
       !['confirmed', 'failed', 'pending', 'unknown'].includes(typeof leg.state === 'string' ? leg.state : '') ||
       (leg.orderId !== undefined && typeof leg.orderId !== 'string') ||
-      (leg.shares !== undefined && amount(leg.shares) === undefined)
+      (leg.shares !== undefined && (typeof leg.shares !== 'number' || amount(leg.shares) === undefined)) ||
+      (leg.error !== undefined && typeof leg.error !== 'string') ||
+      (leg.principal !== undefined && (typeof leg.principal !== 'number' || amount(leg.principal) === undefined))
     ) {
       return null
     }

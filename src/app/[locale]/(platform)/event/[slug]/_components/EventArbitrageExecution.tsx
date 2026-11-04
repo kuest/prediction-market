@@ -13,13 +13,23 @@ export default function EventArbitrageExecution({
   onCheck,
   onDismiss,
 }: {
-  attempt: ArbitrageAttempt
+  attempt: ArbitrageAttempt | null
   siteName: string
   isChecking: boolean
   onCheck: () => void
   onDismiss: () => void
 }) {
   const t = useExtracted()
+  if (!attempt) {
+    return (
+      <div className="mb-4 rounded-xl border border-border p-3 text-sm" role="status">
+        <p>{t('Saved trade details could not be read. Review both positions before clearing them.')}</p>
+        <Button type="button" size="sm" variant="outline" className="mt-3" disabled={isChecking} onClick={onDismiss}>
+          {t('I reviewed both positions')}
+        </Button>
+      </div>
+    )
+  }
   const summary = summarizeArbitrageExecution(attempt.kuest, attempt.polymarket)
   function status(leg: ArbitrageExecution) {
     if (leg.state === 'confirmed') {
@@ -49,7 +59,9 @@ export default function EventArbitrageExecution({
           <p>
             {name}: {status(leg)}
           </p>
-          {leg.error && <p className="break-words text-muted-foreground">{leg.error}</p>}
+          {typeof leg.error === 'string' && leg.error && (
+            <p className="break-words text-muted-foreground">{leg.error}</p>
+          )}
           {leg.orderId && (
             <p className="break-all text-muted-foreground">
               {t('Order')}: {leg.orderId}

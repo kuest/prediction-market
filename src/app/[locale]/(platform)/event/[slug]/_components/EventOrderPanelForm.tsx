@@ -63,6 +63,8 @@ import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { parseStoredArbitrageAttempt, summarizeArbitrageExecution } from '@/lib/arbitrage-execution'
 import {
+  claimArbitrageAttemptSnapshot,
+  dismissArbitrageAttemptSnapshot,
   getArbitrageAttemptSnapshot,
   saveArbitrageAttemptSnapshot,
   subscribeArbitrageAttempt,
@@ -946,14 +948,19 @@ export default function EventOrderPanelForm({
       return null
     }
   }, [savedArbitrageAttempt])
-  function saveArbitrageAttempt(attempt: ArbitrageAttempt) {
-    if (arbitrageStorageKey) {
-      saveArbitrageAttemptSnapshot(arbitrageStorageKey, attempt)
+  async function saveArbitrageAttempt(attempt: ArbitrageAttempt) {
+    if (!arbitrageStorageKey) {
+      throw new Error('Trading session is unavailable.')
     }
+    return saveArbitrageAttemptSnapshot(arbitrageStorageKey, attempt)
   }
-  function dismissArbitrageAttempt() {
-    if (arbitrageStorageKey) {
-      saveArbitrageAttemptSnapshot(arbitrageStorageKey, null)
+  async function dismissArbitrageAttempt() {
+    if (arbitrageStorageKey && savedArbitrageAttempt !== null) {
+      try {
+        await dismissArbitrageAttemptSnapshot(arbitrageStorageKey, savedArbitrageAttempt)
+      } catch {
+        toast.error(t('The trade changed or could not be cleared. Review its latest status and try again.'))
+      }
     }
   }
   const [arbitrageSubmissionStep, setArbitrageSubmissionStep] = useState<0 | 1 | 2 | 3>(0)
@@ -2026,17 +2033,17 @@ export default function EventOrderPanelForm({
         polymarket:
           checks[1].status === 'fulfilled' ? checks[1].value : { ...attempt.polymarket, state: 'unknown' as const },
       }
-      saveArbitrageAttempt(next)
+      const saved = await saveArbitrageAttempt(next)
       refreshTradingPositionsAfterMutation(queryClient)
       void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
-      return next
+      return saved
     } finally {
       setIsArbitrageSubmitting(false)
     }
   }
 
   async function handleArbitrageSubmit(quote: ArbitrageQuote, polymarketMinimumOrderSize: number) {
-    if (arbitrageAttempt || isArbitrageSubmitting || arbitrageSubmissionLock.current) {
+    if (savedArbitrageAttempt !== null || isArbitrageSubmitting || arbitrageSubmissionLock.current) {
       return
     }
     if (!ensureTradingReady() || !activeMarket || !makerAddress || !userAddress) {
@@ -2177,17 +2184,10 @@ export default function EventOrderPanelForm({
       if (!arbitrageStorageKey) {
         throw new Error('Trading session is unavailable.')
       }
-      if (getArbitrageAttemptSnapshot(arbitrageStorageKey)) {
-        toast.info(t('Check the positions below before trading again.'))
-        return
-      }
-      saveArbitrageAttemptSnapshot(arbitrageStorageKey, initialAttempt, true)
-      submittedAttempt = initialAttempt
-      saveArbitrageAttempt(initialAttempt)
-      function recordLeg(venue: 'kuest' | 'polymarket', execution: ArbitrageExecution) {
-        submittedAttempt = { ...submittedAttempt!, [venue]: execution }
-        saveArbitrageAttempt(submittedAttempt)
-        return execution
+      submittedAttempt = await claimArbitrageAttemptSnapshot(arbitrageStorageKey, initialAttempt)
+      async function recordLeg(venue: 'kuest' | 'polymarket', execution: ArbitrageExecution) {
+        submittedAttempt = await saveArbitrageAttempt({ ...submittedAttempt!, [venue]: execution })
+        return submittedAttempt[venue]
       }
       await Promise.all([
         submitOrder({
@@ -2340,12 +2340,13 @@ export default function EventOrderPanelForm({
                     </button>
                   </div>
                 )}
-                {arbitrageAttempt && (
+                {savedArbitrageAttempt !== null && (
                   <EventArbitrageExecution
                     attempt={arbitrageAttempt}
                     siteName={site.name}
                     isChecking={isArbitrageSubmitting}
                     onCheck={() =>
+                      arbitrageAttempt &&
                       void checkArbitrageAttempt(arbitrageAttempt).catch(() =>
                         toast.error(t('The order status is temporarily unavailable.')),
                       )
@@ -2362,7 +2363,7 @@ export default function EventOrderPanelForm({
                   kuestBalance={availableBalanceForOrders}
                   operatorShareBps={affiliateMetadata.builderTakerFeeShareBps}
                   isSubmitting={isArbitrageSubmitting}
-                  hasUnreviewedExecution={Boolean(arbitrageAttempt)}
+                  hasUnreviewedExecution={savedArbitrageAttempt !== null}
                   submissionStep={arbitrageSubmissionStep}
                   onRequireSiteWallet={() => {
                     if (!isInteractiveWalletReady) {
