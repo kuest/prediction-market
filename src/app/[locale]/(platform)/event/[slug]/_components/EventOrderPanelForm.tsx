@@ -2177,6 +2177,10 @@ export default function EventOrderPanelForm({
       if (!arbitrageStorageKey) {
         throw new Error('Trading session is unavailable.')
       }
+      if (getArbitrageAttemptSnapshot(arbitrageStorageKey)) {
+        toast.info(t('Check the positions below before trading again.'))
+        return
+      }
       saveArbitrageAttemptSnapshot(arbitrageStorageKey, initialAttempt, true)
       submittedAttempt = initialAttempt
       saveArbitrageAttempt(initialAttempt)

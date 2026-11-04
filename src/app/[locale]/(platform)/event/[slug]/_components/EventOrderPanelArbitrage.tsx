@@ -808,7 +808,9 @@ function EventOrderPanelPolymarketArbitrage({
   const submitButton = (
     <EventOrderPanelSubmitButton
       type="button"
-      className={cn(executableQuote && submissionStep === 0 && 'animate-arbitrage-glow')}
+      className={cn(
+        executableQuote && !isSubmitting && !hasUnreviewedExecution && submissionStep === 0 && 'animate-arbitrage-glow',
+      )}
       isLoading={isSubmitting}
       isDisabled={isSubmitting || hasUnreviewedExecution || !executableQuote}
       onClick={handleSubmit}

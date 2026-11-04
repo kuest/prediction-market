@@ -4,11 +4,22 @@ const CHANGED_EVENT = 'kuest:arbitrage-execution-changed'
 const inMemory = new Map<string, string | null>()
 
 export function subscribeArbitrageAttempt(onChange: () => void) {
+  function onStorage(event: StorageEvent) {
+    if (event.storageArea !== window.localStorage) {
+      return
+    }
+    if (event.key === null) {
+      inMemory.clear()
+    } else {
+      inMemory.delete(event.key)
+    }
+    onChange()
+  }
   window.addEventListener(CHANGED_EVENT, onChange)
-  window.addEventListener('storage', onChange)
+  window.addEventListener('storage', onStorage)
   return () => {
     window.removeEventListener(CHANGED_EVENT, onChange)
-    window.removeEventListener('storage', onChange)
+    window.removeEventListener('storage', onStorage)
   }
 }
 
@@ -20,7 +31,7 @@ export function getArbitrageAttemptSnapshot(key: string | null) {
     return inMemory.get(key) ?? null
   }
   try {
-    return window.sessionStorage.getItem(key)
+    return window.localStorage.getItem(key)
   } catch {
     return null
   }
@@ -34,16 +45,17 @@ export function saveArbitrageAttemptSnapshot(
   const serialized = attempt ? JSON.stringify(attempt) : null
   try {
     if (serialized) {
-      window.sessionStorage.setItem(key, serialized)
+      window.localStorage.setItem(key, serialized)
     } else {
-      window.sessionStorage.removeItem(key)
+      window.localStorage.removeItem(key)
     }
+    inMemory.delete(key)
   } catch (error) {
     if (requirePersistence) {
       throw error
     }
     // After submission, retain newer IDs in memory even if browser storage becomes unavailable.
+    inMemory.set(key, serialized)
   }
-  inMemory.set(key, serialized)
   window.dispatchEvent(new Event(CHANGED_EVENT))
 }

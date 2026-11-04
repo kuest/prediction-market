@@ -11,7 +11,7 @@ import { getUserTradingAuthSecrets } from '@/lib/trading-auth/server'
 export async function reconcileArbitrageOrder(orderId: string, tokenId: string): Promise<ArbitrageExecution> {
   const previous: ArbitrageExecution = { state: 'pending', orderId }
   if (!/^[a-zA-Z0-9_-]{1,128}$/u.test(orderId) || !/^\d{1,78}$/u.test(tokenId)) {
-    return { state: 'unknown', error: 'Invalid order reference.' }
+    return { ...previous, state: 'unknown', error: 'Invalid order reference.' }
   }
   const user = await UserRepository.getCurrentUser({ minimal: true })
   const auth = user ? await getUserTradingAuthSecrets(user.id) : null

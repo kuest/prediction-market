@@ -49,6 +49,7 @@ export default function EventArbitrageExecution({
           <p>
             {name}: {status(leg)}
           </p>
+          {leg.error && <p className="break-words text-muted-foreground">{leg.error}</p>}
           {leg.orderId && (
             <p className="break-all text-muted-foreground">
               {t('Order')}: {leg.orderId}

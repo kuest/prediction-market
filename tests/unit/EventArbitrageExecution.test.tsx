@@ -23,6 +23,28 @@ const attempt: ArbitrageAttempt = {
   connectorUid: 'wallet-1',
 }
 
+function rejectStorageWrites(error: Error) {
+  const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage')
+  const storage = window.localStorage
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.getItem(key),
+      setItem: () => {
+        throw error
+      },
+      removeItem: (key: string) => storage.removeItem(key),
+    },
+  })
+  return () => {
+    if (descriptor) {
+      Object.defineProperty(window, 'localStorage', descriptor)
+    } else {
+      Reflect.deleteProperty(window, 'localStorage')
+    }
+  }
+}
+
 describe('arbitrage execution review', () => {
   it('shows pending fills without presenting their placement quantity as confirmed', () => {
     const onCheck = mock()
@@ -80,12 +102,101 @@ describe('arbitrage execution review', () => {
     const onChange = mock()
     const unsubscribe = subscribeArbitrageAttempt(onChange)
     saveArbitrageAttemptSnapshot(key, attempt, true)
-    expect(JSON.parse(window.sessionStorage.getItem(key)!)).toEqual(attempt)
+    expect(JSON.parse(window.localStorage.getItem(key)!)).toEqual(attempt)
     expect(JSON.parse(getArbitrageAttemptSnapshot(key)!)).toEqual(attempt)
     expect(onChange).toHaveBeenCalledTimes(1)
     saveArbitrageAttemptSnapshot(key, null)
     expect(getArbitrageAttemptSnapshot(key)).toBeNull()
-    expect(window.sessionStorage.getItem(key)).toBeNull()
+    expect(window.localStorage.getItem(key)).toBeNull()
     unsubscribe()
+  })
+
+  it('shows why each unverified leg needs review', () => {
+    render(
+      <EventArbitrageExecution
+        attempt={{
+          ...attempt,
+          kuest: { state: 'failed', error: 'Not enough funds.' },
+          polymarket: { state: 'unknown', error: 'The submission response was lost.' },
+        }}
+        siteName="Kuest"
+        isChecking={false}
+        onCheck={mock()}
+        onDismiss={mock()}
+      />,
+    )
+    expect(screen.getByText('Not enough funds.')).toBeInTheDocument()
+    expect(screen.getByText('The submission response was lost.')).toBeInTheDocument()
+  })
+
+  it('reads another tab’s updates and removal without a stale successful-write cache', () => {
+    const key = 'arbitrage-other-tab'
+    const onChange = mock()
+    const unsubscribe = subscribeArbitrageAttempt(onChange)
+    try {
+      saveArbitrageAttemptSnapshot(key, null)
+      onChange.mockClear()
+      window.localStorage.setItem(key, JSON.stringify(attempt))
+      window.dispatchEvent(new StorageEvent('storage', { key, storageArea: window.localStorage }))
+      expect(JSON.parse(getArbitrageAttemptSnapshot(key)!)).toEqual(attempt)
+      expect(onChange).toHaveBeenCalledTimes(1)
+      window.localStorage.removeItem(key)
+      window.dispatchEvent(new StorageEvent('storage', { key, storageArea: window.localStorage }))
+      expect(getArbitrageAttemptSnapshot(key)).toBeNull()
+      expect(onChange).toHaveBeenCalledTimes(2)
+      window.dispatchEvent(new StorageEvent('storage', { key, storageArea: window.sessionStorage }))
+      expect(onChange).toHaveBeenCalledTimes(2)
+    } finally {
+      unsubscribe()
+      saveArbitrageAttemptSnapshot(key, null)
+    }
+  })
+
+  it('fails required persistence without changing the stored attempt or notifying subscribers', () => {
+    const key = 'arbitrage-required-persistence'
+    saveArbitrageAttemptSnapshot(key, attempt, true)
+    const previous = getArbitrageAttemptSnapshot(key)
+    const onChange = mock()
+    const unsubscribe = subscribeArbitrageAttempt(onChange)
+    const failure = new Error('Storage unavailable')
+    const restoreStorage = rejectStorageWrites(failure)
+    try {
+      expect(() => saveArbitrageAttemptSnapshot(key, { ...attempt, kuest: { state: 'unknown' } }, true)).toThrow(
+        failure,
+      )
+      expect(getArbitrageAttemptSnapshot(key)).toBe(previous)
+      expect(window.localStorage.getItem(key)).toBe(previous)
+      expect(onChange).not.toHaveBeenCalled()
+    } finally {
+      restoreStorage()
+      unsubscribe()
+      saveArbitrageAttemptSnapshot(key, null)
+    }
+  })
+
+  it('retains newer IDs after a failed post-submission write and accepts later updates from another tab', () => {
+    const key = 'arbitrage-fallback-persistence'
+    saveArbitrageAttemptSnapshot(key, attempt, true)
+    const previous = window.localStorage.getItem(key)
+    const next = { ...attempt, polymarket: { state: 'pending' as const, orderId: 'new-poly-id' } }
+    const onChange = mock()
+    const unsubscribe = subscribeArbitrageAttempt(onChange)
+    const restoreStorage = rejectStorageWrites(new Error('Storage unavailable'))
+    try {
+      saveArbitrageAttemptSnapshot(key, next)
+      expect(JSON.parse(getArbitrageAttemptSnapshot(key)!)).toEqual(next)
+      expect(window.localStorage.getItem(key)).toBe(previous)
+      expect(onChange).toHaveBeenCalledTimes(1)
+    } finally {
+      restoreStorage()
+    }
+    try {
+      window.localStorage.removeItem(key)
+      window.dispatchEvent(new StorageEvent('storage', { key, storageArea: window.localStorage }))
+      expect(getArbitrageAttemptSnapshot(key)).toBeNull()
+    } finally {
+      unsubscribe()
+      saveArbitrageAttemptSnapshot(key, null)
+    }
   })
 })

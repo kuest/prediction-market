@@ -73,4 +73,14 @@ describe('authenticated arbitrage reconciliation', () => {
     fetchSpy.mockResolvedValueOnce(new Response('', { status: 503 }))
     expect(await reconcileArbitrageOrder('id-1', '123')).toMatchObject({ state: 'unknown', orderId: 'id-1' })
   })
+
+  it('keeps the order id when the token reference is invalid', async () => {
+    expect(await reconcileArbitrageOrder('id-1', 'invalid-token')).toEqual({
+      state: 'unknown',
+      orderId: 'id-1',
+      error: 'Invalid order reference.',
+    })
+    expect(getUser).not.toHaveBeenCalled()
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
 })
