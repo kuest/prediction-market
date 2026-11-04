@@ -25,17 +25,22 @@ export interface ArbitrageQuote {
   payout: number
   profit: number
   segments: ArbitrageSegment[]
+  kuestOrder?: {
+    price: number
+    shares: number
+    amount: number
+  }
   polymarketOrder?: {
     price: number
     shares: number
-    maximumCost: number
+    amount: number
     tickSize: PolymarketTickSize
   }
 }
 
 const ARBITRAGE_SHARE_DECIMALS = 2
 const ARBITRAGE_SHARE_SCALE = 10 ** ARBITRAGE_SHARE_DECIMALS
-const KUEST_ORDER_SHARE_SCALE = 1_000_000
+const KUEST_ORDER_AMOUNT_SCALE = 1_000_000
 
 function normalizeExecutableShares(shares: number) {
   if (!Number.isFinite(shares) || shares <= 0) {
@@ -45,30 +50,11 @@ function normalizeExecutableShares(shares: number) {
   return Math.floor((shares + Number.EPSILON) * ARBITRAGE_SHARE_SCALE) / ARBITRAGE_SHARE_SCALE
 }
 
-function greatestCommonDivisor(left: number, right: number) {
-  let a = Math.abs(Math.trunc(left))
-  let b = Math.abs(Math.trunc(right))
-  while (b !== 0) {
-    const remainder = a % b
-    a = b
-    b = remainder
-  }
-  return a
-}
-
 function alignPriceUpToTick(price: number, tickSize: PolymarketTickSize) {
   const tick = Number(tickSize)
   const decimalPlaces = tickSize.split('.')[1]?.length ?? 0
   const tickCount = Math.ceil((price - Number.EPSILON) / tick)
   return Number((tickCount * tick).toFixed(decimalPlaces))
-}
-
-function getWholeCentShareStepHundredths(price: number) {
-  const normalized = price.toFixed(4).replace(/0+$/u, '').replace(/\.$/u, '')
-  const decimalPlaces = normalized.split('.')[1]?.length ?? 0
-  const scale = 10 ** decimalPlaces
-  const priceUnits = Math.round(price * scale)
-  return scale / greatestCommonDivisor(priceUnits, scale)
 }
 
 function trimArbitrageQuote(quote: ArbitrageQuote, targetShares: number): ArbitrageQuote {
@@ -99,46 +85,13 @@ function trimArbitrageQuote(quote: ArbitrageQuote, targetShares: number): Arbitr
     payout: shares,
     profit: shares - totalCost,
     edge: shares > 0 ? (shares - totalCost) / shares : 0,
+    kuestOrder: undefined,
     polymarketOrder: undefined,
   }
 }
 
-function constrainQuoteForKuestFokBalance(quote: ArbitrageQuote, kuestBalance: number) {
-  if (!Number.isFinite(kuestBalance)) {
-    return quote
-  }
-
-  const segmentEnds: number[] = []
-  let cumulativeShares = 0
-  for (const segment of quote.segments) {
-    cumulativeShares += segment.shares
-    segmentEnds.push(cumulativeShares)
-  }
-
-  for (let index = quote.segments.length - 1; index >= 0; index -= 1) {
-    const segment = quote.segments[index]
-    const precedingShares = index > 0 ? (segmentEnds[index - 1] ?? 0) : 0
-    const segmentEnd = segmentEnds[index] ?? 0
-    const rawMaximumShares = Math.min(
-      quote.shares,
-      segmentEnd,
-      segment.kuestUnitCost > 0 ? Math.max(0, kuestBalance) / segment.kuestUnitCost : 0,
-    )
-    if (rawMaximumShares >= quote.shares - 1e-8) {
-      return quote
-    }
-    const maximumShares =
-      Math.floor((rawMaximumShares + Number.EPSILON) * KUEST_ORDER_SHARE_SCALE) / KUEST_ORDER_SHARE_SCALE
-    if (maximumShares > precedingShares + 1e-8) {
-      return trimArbitrageQuote(quote, maximumShares)
-    }
-  }
-
-  return null
-}
-
 export function calculatePolymarketUnitCost(price: number, feeRate = 0, feeExponent = 0) {
-  // Arbitrage submits a marketable FOK limit order. It is therefore the
+  // Arbitrage submits a market FOK order. It is therefore the
   // taker, and Polymarket applies this market fee curve when the order matches.
   return price + Math.max(0, feeRate) * (price * (1 - price)) ** Math.max(0, feeExponent)
 }
@@ -247,7 +200,7 @@ function buildDirectionQuote({
     profit: shares - totalCost,
     segments,
   }
-  return constrainQuoteForKuestFokBalance(quote, kuestBalance)
+  return quote
 }
 
 export function selectBestArbitrageQuote(directions: Parameters<typeof buildDirectionQuote>[0][]) {
@@ -264,11 +217,34 @@ export function scaleArbitrageQuote(quote: ArbitrageQuote, percent: number): Arb
   return trimArbitrageQuote(quote, targetShares)
 }
 
-/**
- * Polymarket FOK buys are fixed-share limit orders, but the CLOB accepts the
- * maker amount with cents precision. Reduce the matched pair to the largest
- * exact share amount whose price cap produces a whole-cent maker amount.
- */
+function floorAmount(value: number, scale: number) {
+  return Math.floor(value * scale + 1e-7) / scale
+}
+
+function simulateBudget(segments: ArbitrageSegment[], venue: 'kuest' | 'polymarket', budget: number) {
+  let remaining = budget
+  let shares = 0
+  let cost = 0
+  let price = 0
+  for (const segment of segments) {
+    if (remaining < 1e-9) {
+      break
+    }
+    const unitPrice = venue === 'kuest' ? segment.kuestPrice : segment.polymarketPrice
+    const unitCost = venue === 'kuest' ? segment.kuestUnitCost : segment.polymarketUnitCost
+    const filled = Math.min(segment.shares, Math.max(0, remaining) / unitPrice)
+    if (!(filled > 0)) {
+      break
+    }
+    shares += filled
+    cost += filled * unitCost
+    remaining = Math.max(0, remaining - filled * unitPrice)
+    price = unitPrice
+  }
+  return { shares, cost, price }
+}
+
+/** Requote the actual BUY budgets, including the SDK's whole-cent rounding. */
 export function constrainArbitrageQuoteForPolymarketFok(
   quote: ArbitrageQuote,
   polymarketBalance = Number.POSITIVE_INFINITY,
@@ -278,56 +254,49 @@ export function constrainArbitrageQuoteForPolymarketFok(
     return null
   }
 
-  const segmentEnds: number[] = []
-  let cumulativeShares = 0
+  let affordableShares = 0
+  let cash = Math.max(0, polymarketBalance)
   for (const segment of quote.segments) {
-    cumulativeShares += segment.shares
-    segmentEnds.push(cumulativeShares)
+    const shares = Math.min(segment.shares, cash / segment.polymarketUnitCost)
+    if (!(shares > 0)) {
+      break
+    }
+    affordableShares += shares
+    cash = Math.max(0, cash - shares * segment.polymarketUnitCost)
   }
-
-  // Evaluate each possible terminal segment from best to worst. This keeps
-  // the signed price at the actual last consumed ask after share quantization,
-  // while still producing a whole-cent maker amount required by the CLOB.
-  for (let index = quote.segments.length - 1; index >= 0; index -= 1) {
-    const segment = quote.segments[index]
-    const precedingShares = index > 0 ? (segmentEnds[index - 1] ?? 0) : 0
-    const segmentEnd = segmentEnds[index] ?? 0
-    const price = alignPriceUpToTick(segment.polymarketPrice, tickSize)
-    if (!(price > 0) || price >= 1) {
-      continue
-    }
-
-    const balanceLimitedShares = Number.isFinite(polymarketBalance)
-      ? Math.max(0, polymarketBalance) / price
-      : quote.shares
-    const maximumShareHundredths = Math.floor(
-      (Math.min(quote.shares, segmentEnd, balanceLimitedShares) + Number.EPSILON) * 100,
-    )
-    const shareStepHundredths = getWholeCentShareStepHundredths(price)
-    const executableShareHundredths = Math.floor(maximumShareHundredths / shareStepHundredths) * shareStepHundredths
-    const shares = executableShareHundredths / 100
-    if (!(shares > precedingShares + 1e-8)) {
-      continue
-    }
-
-    const constrainedQuote = trimArbitrageQuote(quote, shares)
-    const maximumCost = Math.round(price * shares * 100) / 100
-    if (!(constrainedQuote.profit > 0) || Math.abs(maximumCost * 100 - Math.round(maximumCost * 100)) > 1e-7) {
-      continue
-    }
-
-    return {
-      ...constrainedQuote,
-      polymarketOrder: {
-        price,
-        shares,
-        maximumCost,
-        tickSize,
-      },
-    }
+  const affordable = trimArbitrageQuote(quote, affordableShares)
+  const polymarketAmount = floorAmount(
+    affordable.segments.reduce((sum, segment) => sum + segment.shares * segment.polymarketPrice, 0),
+    100,
+  )
+  if (!(polymarketAmount > 0)) {
+    return null
   }
-
-  return null
+  const polymarketFill = simulateBudget(affordable.segments, 'polymarket', polymarketAmount)
+  const paired = trimArbitrageQuote(affordable, polymarketFill.shares)
+  const kuestAmount = floorAmount(
+    paired.segments.reduce((sum, segment) => sum + segment.shares * segment.kuestPrice, 0),
+    KUEST_ORDER_AMOUNT_SCALE,
+  )
+  const kuestFill = simulateBudget(paired.segments, 'kuest', kuestAmount)
+  const shares = Math.min(kuestFill.shares, polymarketFill.shares)
+  const totalCost = kuestFill.cost + polymarketFill.cost
+  const price = alignPriceUpToTick(polymarketFill.price, tickSize)
+  if (!(shares > 0) || !(kuestAmount > 0) || !(price > 0) || price >= 1 || shares <= totalCost) {
+    return null
+  }
+  return {
+    ...trimArbitrageQuote(paired, shares),
+    shares,
+    kuestCost: kuestFill.cost,
+    polymarketCost: polymarketFill.cost,
+    totalCost,
+    payout: shares,
+    profit: shares - totalCost,
+    edge: (shares - totalCost) / shares,
+    kuestOrder: { price: kuestFill.price, shares: kuestFill.shares, amount: kuestAmount },
+    polymarketOrder: { price, shares: polymarketFill.shares, amount: polymarketAmount, tickSize },
+  }
 }
 
 export function findMinimumExecutableArbitrageQuote(
@@ -349,8 +318,8 @@ export function findMinimumExecutableArbitrageQuote(
       return false
     }
 
-    const kuestPrincipal = candidate.segments.reduce((total, segment) => total + segment.shares * segment.kuestPrice, 0)
-    return kuestPrincipal >= minimumKuestAmount && candidate.polymarketOrder.maximumCost >= minimumPolymarketAmount
+    const kuestPrincipal = candidate.kuestOrder?.amount ?? 0
+    return kuestPrincipal >= minimumKuestAmount && candidate.polymarketOrder.amount >= minimumPolymarketAmount
   }
 
   const maximumQuote = constrainArbitrageQuoteForPolymarketFok(quote, Number.POSITIVE_INFINITY, polymarketTickSize)

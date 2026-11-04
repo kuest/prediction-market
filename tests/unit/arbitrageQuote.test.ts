@@ -122,7 +122,7 @@ describe('arbitrage quotes', () => {
     expect(scaled.profit).toBeCloseTo(0.5, 6)
   })
 
-  it('sizes a multi-level Kuest FOK by its terminal price cap', () => {
+  it('uses the weighted principal rather than reserving the terminal price for every share', () => {
     const quote = selectBestArbitrageQuote([
       {
         kuestOutcome: 'YES',
@@ -136,9 +136,13 @@ describe('arbitrage quotes', () => {
       },
     ])
 
-    expect(quote?.shares).toBe(18)
-    expect(quote?.kuestCost).toBe(8)
-    expect((quote?.segments.at(-1)?.kuestPrice ?? 0) * (quote?.shares ?? 0)).toBe(9)
+    expect(quote?.shares).toBe(20)
+    expect(quote?.kuestCost).toBe(9)
+    expect(constrainArbitrageQuoteForPolymarketFok(quote!)?.kuestOrder).toMatchObject({
+      amount: 9,
+      price: 0.5,
+      shares: 20,
+    })
   })
 
   it('rounds matched shares down to the Polymarket order precision', () => {
@@ -160,7 +164,7 @@ describe('arbitrage quotes', () => {
     expect(scaled.shares).toBe(3.33)
   })
 
-  it('keeps the Polymarket FOK leg fixed to the same shares with a whole-cent maker amount', () => {
+  it('requotes shares after rounding the Polymarket principal down to cents', () => {
     const quote = selectBestArbitrageQuote([
       {
         kuestOutcome: 'YES',
@@ -176,14 +180,9 @@ describe('arbitrage quotes', () => {
 
     const constrained = constrainArbitrageQuoteForPolymarketFok(scaleArbitrageQuote(quote!, 51.25))
 
-    expect(constrained?.shares).toBe(10)
-    expect(constrained?.polymarketOrder).toEqual({
-      price: 0.42,
-      shares: 10,
-      maximumCost: 4.2,
-      tickSize: '0.01',
-    })
-    expect((constrained!.polymarketOrder!.maximumCost * 100) % 1).toBeCloseTo(0, 10)
+    expect(constrained?.shares).toBeCloseTo(4.3 / 0.42, 5)
+    expect(constrained?.polymarketOrder).toMatchObject({ price: 0.42, amount: 4.3, tickSize: '0.01' })
+    expect(constrained?.kuestOrder?.amount).toBe(4.095238)
     expect(constrained?.payout).toBe(constrained?.shares)
   })
 
@@ -204,8 +203,8 @@ describe('arbitrage quotes', () => {
     const constrained = constrainArbitrageQuoteForPolymarketFok(quote!, 4.3, '0.001')
 
     expect(constrained?.polymarketOrder?.price).toBe(0.423)
-    expect(constrained?.polymarketOrder?.maximumCost).toBeLessThanOrEqual(4.3)
-    expect(constrained?.shares).toBe(constrained?.polymarketOrder?.shares)
+    expect(constrained?.polymarketOrder?.amount).toBeLessThanOrEqual(4.3)
+    expect(constrained!.shares).toBeLessThanOrEqual(constrained!.polymarketOrder!.shares)
   })
 
   it('recomputes the terminal Polymarket limit after share quantization trims a book level', () => {
@@ -224,10 +223,10 @@ describe('arbitrage quotes', () => {
 
     const constrained = constrainArbitrageQuoteForPolymarketFok(quote!, 100, '0.001')
 
-    expect(constrained?.shares).toBe(9.5)
+    expect(constrained?.shares).toBeCloseTo(4.19 / 0.42, 5)
     expect(constrained?.polymarketOrder).toMatchObject({
       price: 0.42,
-      maximumCost: 3.99,
+      amount: 4.19,
       tickSize: '0.001',
     })
   })
@@ -254,7 +253,7 @@ describe('arbitrage quotes', () => {
 
     expect(minimum?.shares).toBe(50)
     expect(minimum?.kuestCost).toBeCloseTo(48.5, 6)
-    expect(minimum?.polymarketOrder?.maximumCost).toBe(1)
+    expect(minimum?.polymarketOrder?.amount).toBe(1)
     expect(minimum?.totalCost).toBeCloseTo(49.5, 6)
   })
 
@@ -279,5 +278,46 @@ describe('arbitrage quotes', () => {
         minimumPolymarketAmount: 1,
       }),
     ).toBeNull()
+  })
+  it('recomputes a multi-level quote from the SDK budget instead of the old matched quantity', () => {
+    const quote = selectBestArbitrageQuote([
+      {
+        kuestOutcome: 'YES',
+        polymarketOutcome: 'NO',
+        kuestTokenId: '1',
+        polymarketTokenId: '2',
+        kuestAsks: [level(0.3, 20)],
+        polymarketAsks: [level(0.4, 1.01), level(0.5, 18.99)],
+        kuestBalance: 100,
+        polymarketBalance: 100,
+      },
+    ])!
+    const executable = constrainArbitrageQuoteForPolymarketFok(quote)!
+    expect(executable.polymarketOrder).toMatchObject({ amount: 9.89, price: 0.5 })
+    expect(executable.polymarketOrder!.shares).toBeCloseTo(19.982, 6)
+    expect(executable.kuestOrder).toMatchObject({ amount: 5.9946, price: 0.3 })
+    expect(executable.shares).toBeCloseTo(19.982, 6)
+    expect(executable.totalCost).toBeCloseTo(15.8846, 6)
+  })
+
+  it('keeps fee estimates outside both signed principal budgets', () => {
+    const quote = selectBestArbitrageQuote([
+      {
+        kuestOutcome: 'YES',
+        polymarketOutcome: 'NO',
+        kuestTokenId: '1',
+        polymarketTokenId: '2',
+        kuestAsks: [level(0.4, 10), level(0.5, 10)],
+        polymarketAsks: [level(0.3, 20)],
+        kuestBalance: 100,
+        polymarketBalance: 100,
+        kuestFeeSchedule: { rate: 0.04, exponent: 1, takerOnly: true, rebateRate: 0 },
+      },
+    ])!
+    const executable = constrainArbitrageQuoteForPolymarketFok(quote)!
+    expect(executable.kuestOrder?.amount).toBe(9)
+    expect(executable.polymarketOrder?.amount).toBe(6)
+    expect(executable.kuestCost).toBeCloseTo(9.196, 6)
+    expect(executable.totalCost).toBeCloseTo(15.196, 6)
   })
 })

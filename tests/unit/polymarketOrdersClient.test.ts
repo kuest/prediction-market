@@ -4,7 +4,7 @@ import { ApiError } from '@polymarket/clob-client-v2'
 import { afterEach, describe, expect, it, mock, spyOn, jest } from 'bun:test'
 
 import {
-  buildPolymarketLimitOrder,
+  buildPolymarketMarketOrder,
   deriveOrCreatePolymarketCredentials,
   ensurePolymarketOrderReady,
 } from '@/lib/polymarket-orders-client'
@@ -79,54 +79,30 @@ describe('polymarket API credentials', () => {
 })
 
 describe('polymarket arbitrage order', () => {
-  it('uses a fixed matched share size whose FOK maker amount has cents precision', () => {
-    expect(
-      buildPolymarketLimitOrder({
-        tokenId: '123',
-        price: 0.42,
-        shares: 10.5,
-      }),
-    ).toEqual({
+  it('uses a principal budget with a terminal price and FOK', () => {
+    expect(buildPolymarketMarketOrder({ tokenId: '123', price: 0.5, amount: 9 })).toEqual({
       tokenID: '123',
-      price: 0.42,
-      size: 10.5,
+      price: 0.5,
+      amount: 9,
       side: 'BUY',
+      orderType: 'FOK',
     })
   })
 
-  it('preserves a sub-cent market tick in the Polymarket limit price', () => {
-    expect(
-      buildPolymarketLimitOrder({
-        tokenId: '123',
-        price: 0.423,
-        shares: 10,
-      }),
-    ).toEqual({
-      tokenID: '123',
-      price: 0.423,
-      size: 10,
-      side: 'BUY',
-    })
+  it('preserves a sub-cent market tick', () => {
+    expect(buildPolymarketMarketOrder({ tokenId: '123', price: 0.423, amount: 4.23 }).price).toBe(0.423)
   })
 
-  it('rejects a fixed-share FOK order whose maker amount has sub-cent precision', () => {
-    expect(() =>
-      buildPolymarketLimitOrder({
-        tokenId: '123',
-        price: 0.42,
-        shares: 10.25,
-      }),
-    ).toThrow('Polymarket FOK maker amount must use cents precision.')
+  it('requires the quote to be recalculated before signing a rounded budget', () => {
+    expect(() => buildPolymarketMarketOrder({ tokenId: '123', price: 0.5, amount: 9.899 })).toThrow(
+      'Polymarket BUY budget must use cents precision.',
+    )
   })
 
-  it('rejects a marketable buy whose Polymarket maker amount is below one dollar', () => {
-    expect(() =>
-      buildPolymarketLimitOrder({
-        tokenId: '123',
-        price: 0.46,
-        shares: 1,
-      }),
-    ).toThrow('Polymarket marketable BUY amount must be at least $1.')
+  it('rejects a budget below the marketable minimum', () => {
+    expect(() => buildPolymarketMarketOrder({ tokenId: '123', price: 0.5, amount: 0.99 })).toThrow(
+      'Polymarket marketable BUY amount must be at least $1.',
+    )
   })
 
   it('stops before signing when the server-side order preflight fails', async () => {
