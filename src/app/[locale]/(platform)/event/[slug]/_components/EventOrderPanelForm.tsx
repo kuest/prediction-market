@@ -63,6 +63,7 @@ import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { parseStoredArbitrageAttempt, summarizeArbitrageExecution } from '@/lib/arbitrage-execution'
 import {
+  ArbitrageClaimConflictError,
   claimArbitrageAttemptSnapshot,
   dismissArbitrageAttemptSnapshot,
   getArbitrageAttemptSnapshot,
@@ -2235,6 +2236,8 @@ export default function EventOrderPanelForm({
       console.error('Failed to complete arbitrage submission.', error)
       if (submittedAttempt) {
         toast.info(t('The result could not be verified. Check both positions before trading again.'))
+      } else if (error instanceof ArbitrageClaimConflictError) {
+        toast.info(t('Check the positions below before trading again.'))
       } else if (isUserRejectedRequestError(error)) {
         toast.info(t('Order signing was cancelled.'))
       } else if (error instanceof PolymarketAuthenticationError) {

@@ -5,6 +5,13 @@ import { parseStoredArbitrageAttempt } from '@/lib/arbitrage-execution'
 const CHANGED_EVENT = 'kuest:arbitrage-execution-changed'
 const inMemory = new Map<string, string | null>()
 
+export class ArbitrageClaimConflictError extends Error {
+  constructor() {
+    super('Review the previous arbitrage before trading again.')
+    this.name = 'ArbitrageClaimConflictError'
+  }
+}
+
 export function subscribeArbitrageAttempt(onChange: () => void) {
   function onStorage(event: StorageEvent) {
     if (event.storageArea !== window.localStorage) {
@@ -69,7 +76,7 @@ export async function claimArbitrageAttemptSnapshot(key: string, attempt: Arbitr
   return withAttemptLock(key, () => {
     // Read storage directly: a failed read must not allow a new submission.
     if (window.localStorage.getItem(key) !== null || inMemory.has(key)) {
-      throw new Error('Review the previous arbitrage before trading again.')
+      throw new ArbitrageClaimConflictError()
     }
     const claimed = { ...attempt, attemptId: crypto.randomUUID() }
     writeSnapshot(key, claimed, true)

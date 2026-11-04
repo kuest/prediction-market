@@ -6,6 +6,7 @@ import type { ArbitrageAttempt } from '@/lib/arbitrage-execution'
 import EventArbitrageExecution from '@/app/[locale]/(platform)/event/[slug]/_components/EventArbitrageExecution'
 import { parseStoredArbitrageAttempt } from '@/lib/arbitrage-execution'
 import {
+  ArbitrageClaimConflictError,
   claimArbitrageAttemptSnapshot,
   dismissArbitrageAttemptSnapshot,
   getArbitrageAttemptSnapshot,
@@ -216,6 +217,10 @@ describe('arbitrage execution review', () => {
     ])
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1)
+    const conflict = results.find((result) => result.status === 'rejected')
+    expect(conflict?.reason).toBeInstanceOf(ArbitrageClaimConflictError)
+    const winner = results.find((result) => result.status === 'fulfilled')
+    expect(JSON.parse(getArbitrageAttemptSnapshot(key)!)).toEqual(winner?.value)
     expect(requestLock).toHaveBeenCalledTimes(2)
     await dismissArbitrageAttemptSnapshot(key, getArbitrageAttemptSnapshot(key)!)
   })
