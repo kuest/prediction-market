@@ -2201,6 +2201,8 @@ function useHomeFeaturedRolloverItem(item: HomeFeaturedEventCard) {
           timeoutId = window.setTimeout(() => reconcileTime(true), Math.max(0, wakeTimestamp - now))
         }
       }
+      // This schedules a rollover timer, not an external store subscription.
+      // eslint-disable-next-line react-you-might-not-need-an-effect/no-external-store-subscription
       reconcileTime(false)
 
       return function cancelFeaturedSeriesRollover() {
