@@ -14,10 +14,13 @@ import type {
   ResolveDisplayOutcomeLabel,
 } from '@/app/[locale]/(platform)/event/[slug]/_types/EventOrderPanelTypes'
 import type { PortfolioUserOpenOrder } from '@/app/[locale]/(platform)/portfolio/_types/PortfolioOpenOrdersTypes'
+import type { ArbitrageAttempt, ArbitrageExecution } from '@/lib/arbitrage-execution'
 import type { ArbitrageQuote } from '@/lib/arbitrage-quote'
 import type { Event, Market, Outcome, UserPosition } from '@/types'
 
 import { useTradingOnboarding } from '@/app/[locale]/(platform)/_providers/TradingOnboardingProvider'
+import { reconcileArbitrageOrder } from '@/app/[locale]/(platform)/event/[slug]/_actions/reconcile-arbitrage-order'
+import EventArbitrageExecution from '@/app/[locale]/(platform)/event/[slug]/_components/EventArbitrageExecution'
 import { useOrderBookSummaries } from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook'
 import EventOrderPanelArbitrage from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelArbitrage'
 import EventOrderPanelAwaitingResolutionDisplay from '@/app/[locale]/(platform)/event/[slug]/_components/EventOrderPanelAwaitingResolutionDisplay'
@@ -58,6 +61,15 @@ import { useMarketRewards } from '@/hooks/useMarketRewards'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
+import { parseStoredArbitrageAttempt, summarizeArbitrageExecution } from '@/lib/arbitrage-execution'
+import {
+  ArbitrageClaimConflictError,
+  claimArbitrageAttemptSnapshot,
+  dismissArbitrageAttemptSnapshot,
+  getArbitrageAttemptSnapshot,
+  saveArbitrageAttemptSnapshot,
+  subscribeArbitrageAttempt,
+} from '@/lib/arbitrage-execution-store'
 import { addressToBuilderCode } from '@/lib/builder-code'
 import { triggerConfetti } from '@/lib/confetti'
 import { CLOB_ORDER_TYPE, getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE, OUTCOME_INDEX } from '@/lib/constants'
@@ -89,6 +101,7 @@ import {
   POLYMARKET_MIN_MARKETABLE_BUY_AMOUNT,
   PolymarketAuthenticationError,
   preparePolymarketOrder,
+  reconcilePolymarketOrder,
 } from '@/lib/polymarket-orders-client'
 import { isTradingAuthRequiredError } from '@/lib/trading-auth/errors'
 import {
@@ -150,32 +163,6 @@ function getOrderPanelModeSnapshot() {
 
 function getOrderPanelModeServerSnapshot() {
   return 'trade' as const
-}
-
-function getArbitrageSubmissionErrorMessage(error: unknown) {
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>
-    const status = typeof record.status === 'number' ? record.status : null
-    if (status === 403 || (status != null && status >= 500)) {
-      return undefined
-    }
-  }
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-  if (typeof error === 'string') {
-    return error
-  }
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>
-    if (typeof record.errorMsg === 'string') {
-      return record.errorMsg
-    }
-    if (typeof record.error === 'string') {
-      return record.error
-    }
-  }
-  return undefined
 }
 
 const PRICE_SLIPPAGE_WARNING_THRESHOLD = 0.1
@@ -948,6 +935,35 @@ export default function EventOrderPanelForm({
   } = useOrderValidationFeedback()
   const [isClaimSubmitting, setIsClaimSubmitting] = useState(false)
   const [isArbitrageSubmitting, setIsArbitrageSubmitting] = useState(false)
+  const arbitrageSubmissionLock = useRef(false)
+  const arbitrageStorageKey = user?.id ? `kuest:arbitrage-execution:${user.id}` : null
+  const savedArbitrageAttempt = useSyncExternalStore(
+    subscribeArbitrageAttempt,
+    () => getArbitrageAttemptSnapshot(arbitrageStorageKey),
+    () => null,
+  )
+  const arbitrageAttempt = useMemo(() => {
+    try {
+      return savedArbitrageAttempt ? parseStoredArbitrageAttempt(JSON.parse(savedArbitrageAttempt)) : null
+    } catch {
+      return null
+    }
+  }, [savedArbitrageAttempt])
+  async function saveArbitrageAttempt(attempt: ArbitrageAttempt) {
+    if (!arbitrageStorageKey) {
+      throw new Error('Trading session is unavailable.')
+    }
+    return saveArbitrageAttemptSnapshot(arbitrageStorageKey, attempt)
+  }
+  async function dismissArbitrageAttempt() {
+    if (arbitrageStorageKey && savedArbitrageAttempt !== null) {
+      try {
+        await dismissArbitrageAttemptSnapshot(arbitrageStorageKey, savedArbitrageAttempt)
+      } catch {
+        toast.error(t('The trade changed or could not be cleared. Review its latest status and try again.'))
+      }
+    }
+  }
   const [arbitrageSubmissionStep, setArbitrageSubmissionStep] = useState<0 | 1 | 2 | 3>(0)
   const [postOnlyWarmupToast, setPostOnlyWarmupToast] = useState<{ id: string; until: number } | null>(null)
   const postOnlyWarmupToastIdRef = useRef<string | null>(null)
@@ -1987,7 +2003,50 @@ export default function EventOrderPanelForm({
 
   const shouldStickDesktopTabs = !isMobile && stickyDesktopTabs
 
+  async function checkArbitrageAttempt(
+    attempt: ArbitrageAttempt,
+    readPolymarket?: (previous: ArbitrageExecution) => Promise<ArbitrageExecution>,
+  ) {
+    setIsArbitrageSubmitting(true)
+    try {
+      const checks = await Promise.allSettled([
+        attempt.kuest.orderId && !['confirmed', 'failed'].includes(attempt.kuest.state)
+          ? reconcileArbitrageOrder(attempt.kuest.orderId, attempt.kuestTokenId)
+          : Promise.resolve(attempt.kuest),
+        attempt.polymarket.orderId && !['confirmed', 'failed'].includes(attempt.polymarket.state)
+          ? readPolymarket
+            ? readPolymarket(attempt.polymarket)
+            : reconcilePolymarketOrder({
+                wagmiConfig,
+                ownerAddress: attempt.polymarketOwner as `0x${string}`,
+                funderAddress: attempt.polymarketFunder as `0x${string}`,
+                signatureType: attempt.signatureType,
+                connectorId: attempt.connectorId,
+                connectorUid: attempt.connectorUid,
+                tokenId: attempt.polymarketTokenId,
+                orderId: attempt.polymarket.orderId,
+              })
+          : Promise.resolve(attempt.polymarket),
+      ])
+      const next = {
+        ...attempt,
+        kuest: checks[0].status === 'fulfilled' ? checks[0].value : { ...attempt.kuest, state: 'unknown' as const },
+        polymarket:
+          checks[1].status === 'fulfilled' ? checks[1].value : { ...attempt.polymarket, state: 'unknown' as const },
+      }
+      const saved = await saveArbitrageAttempt(next)
+      refreshTradingPositionsAfterMutation(queryClient)
+      void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
+      return saved
+    } finally {
+      setIsArbitrageSubmitting(false)
+    }
+  }
+
   async function handleArbitrageSubmit(quote: ArbitrageQuote, polymarketMinimumOrderSize: number) {
+    if (savedArbitrageAttempt !== null || isArbitrageSubmitting || arbitrageSubmissionLock.current) {
+      return
+    }
     if (!ensureTradingReady() || !activeMarket || !makerAddress || !userAddress) {
       return
     }
@@ -1998,11 +2057,11 @@ export default function EventOrderPanelForm({
       toast.error(t('Enter a valid amount.'))
       return
     }
-    const kuestPrincipal = quote.segments.reduce((total, segment) => total + segment.shares * segment.kuestPrice, 0)
+    const kuestPrincipal = quote.kuestOrder?.amount ?? 0
     if (
       quote.shares < Math.max(MIN_LIMIT_ORDER_SHARES, polymarketMinimumOrderSize) ||
       kuestPrincipal < MIN_MARKET_BUY_AMOUNT ||
-      (quote.polymarketOrder?.maximumCost ?? 0) < POLYMARKET_MIN_MARKETABLE_BUY_AMOUNT
+      (quote.polymarketOrder?.amount ?? 0) < POLYMARKET_MIN_MARKETABLE_BUY_AMOUNT
     ) {
       toast.error(t('The matched amount is below the minimum order size.'))
       return
@@ -2031,7 +2090,7 @@ export default function EventOrderPanelForm({
     const kuestOutcome = activeMarket.outcomes.find((outcome) => outcome.outcome_index === kuestOutcomeIndex)
     const polymarketOutcomeIndex = quote.polymarketOutcome === 'YES' ? OUTCOME_INDEX.YES : OUTCOME_INDEX.NO
     const polymarketOutcome = activeMarket.outcomes.find((outcome) => outcome.outcome_index === polymarketOutcomeIndex)
-    const lastSegment = quote.segments.at(-1)
+    const kuestBudgetOrder = quote.kuestOrder
     const polymarketOrder = quote.polymarketOrder
     if (
       !polymarketOwner ||
@@ -2041,14 +2100,15 @@ export default function EventOrderPanelForm({
       !siteConnection ||
       !kuestOutcome ||
       !polymarketOutcome ||
-      !lastSegment ||
+      !kuestBudgetOrder ||
       !polymarketOrder
     ) {
       toast.error(t('The arbitrage order could not be prepared.'))
       return
     }
-    const kuestMaximumCost = lastSegment.kuestPrice * quote.shares
+    let submittedAttempt: ArbitrageAttempt | null = null
 
+    arbitrageSubmissionLock.current = true
     setIsArbitrageSubmitting(true)
     setArbitrageSubmissionStep(1)
     try {
@@ -2065,11 +2125,10 @@ export default function EventOrderPanelForm({
         outcome: kuestOutcome,
         side: ORDER_SIDE.BUY,
         orderType: ORDER_TYPE.MARKET,
-        amount: kuestMaximumCost.toString(),
+        amount: kuestBudgetOrder.amount.toFixed(6),
         limitPrice: '',
         limitShares: '',
-        marketPriceCents: lastSegment.kuestPrice * 100,
-        marketMinimumShares: quote.shares,
+        marketPriceCents: kuestBudgetOrder.price * 100,
         builder: builderCode,
       })
       const kuestSignature = await runWithSignaturePrompt(
@@ -2099,7 +2158,7 @@ export default function EventOrderPanelForm({
             connectorUid: polymarketConnectorUid,
             tokenId: quote.polymarketTokenId,
             price: polymarketOrder.price,
-            shares: polymarketOrder.shares,
+            amount: polymarketOrder.amount,
             tickSize: polymarketOrder.tickSize,
           }),
         { title: t('Sign Polymarket order · 2/2') },
@@ -2110,7 +2169,28 @@ export default function EventOrderPanelForm({
         return
       }
 
-      const [kuestResult, polymarketResult] = await Promise.allSettled([
+      const initialAttempt: ArbitrageAttempt = {
+        kuest: { state: 'unknown' },
+        polymarket: { state: 'unknown' },
+        kuestTokenId: quote.kuestTokenId,
+        polymarketTokenId: quote.polymarketTokenId,
+        kuestMaker: makerAddress,
+        polymarketOwner,
+        polymarketFunder,
+        signatureType: polymarketWallet.signatureType,
+        connectorId: polymarketConnectorId,
+        connectorUid: polymarketConnectorUid,
+      }
+      // Persist before sending either leg. A lost response must not invite a duplicate order.
+      if (!arbitrageStorageKey) {
+        throw new Error('Trading session is unavailable.')
+      }
+      submittedAttempt = await claimArbitrageAttemptSnapshot(arbitrageStorageKey, initialAttempt)
+      async function recordLeg(venue: 'kuest' | 'polymarket', execution: ArbitrageExecution) {
+        submittedAttempt = await saveArbitrageAttempt({ ...submittedAttempt!, [venue]: execution })
+        return submittedAttempt[venue]
+      }
+      await Promise.all([
         submitOrder({
           order: kuestOrder,
           signature: kuestSignature,
@@ -2119,106 +2199,46 @@ export default function EventOrderPanelForm({
           conditionId: activeMarket.condition_id,
           slug: event.slug,
           locale,
-        }),
-        preparedPolymarketOrder.post(),
+        })
+          .then((result) =>
+            recordLeg(
+              'kuest',
+              result.execution ?? {
+                state: 'unknown',
+                orderId: result.orderId ?? undefined,
+                error: result.error ?? undefined,
+              },
+            ),
+          )
+          .catch(() => recordLeg('kuest', { state: 'unknown', error: 'The submission response was lost.' })),
+        preparedPolymarketOrder
+          .post()
+          .then((result) => recordLeg('polymarket', result))
+          .catch(() => recordLeg('polymarket', { state: 'unknown' })),
       ])
-      const kuestError = kuestResult.status === 'rejected' ? kuestResult.reason : kuestResult.value?.error
-      const polymarketError =
-        polymarketResult.status === 'rejected'
-          ? polymarketResult.reason
-          : polymarketResult.value?.success === false
-            ? polymarketResult.value?.errorMsg || 'Polymarket rejected the order.'
-            : null
-
       scheduleOrderBookRefresh(queryClient)
       void queryClient.invalidateQueries({ queryKey: ['polymarket-order-books'] })
-      if (!kuestError) {
-        refreshTradingPositionsAfterMutation(queryClient)
-        void queryClient.invalidateQueries({ queryKey: [DEPOSIT_WALLET_BALANCE_QUERY_KEY] })
+      const checked = await checkArbitrageAttempt(submittedAttempt, preparedPolymarketOrder.reconcile)
+      const summary = summarizeArbitrageExecution(checked.kuest, checked.polymarket)
+      if (summary.balanced) {
+        toast.success(
+          t('Arbitrage confirmed: {shares} shares per side', {
+            shares: formatSharesLabel(summary.matchedShares ?? 0, { maximumFractionDigits: 6 }),
+          }),
+        )
+        triggerConfetti('primary')
+      } else if (summary.finalized) {
+        toast.info(t('Review the executed quantities before trading again.'))
+      } else {
+        toast.info(t('Confirmation is pending. Check the order status before trading again.'))
       }
-      if (kuestError || polymarketError) {
-        console.error('Arbitrage submission completed with an unmatched leg.', { kuestError, polymarketError })
-        const errorDescription = getArbitrageSubmissionErrorMessage(kuestError || polymarketError)
-        if (kuestError && polymarketError) {
-          toast.error(t('Both orders failed. No trade was completed.'), {
-            content: (
-              <EventTradeToast
-                title={event.title}
-                marketImage={activeMarket.icon_url ?? undefined}
-                marketTitle={activeMarket.short_title || activeMarket.title}
-              >
-                {errorDescription}
-              </EventTradeToast>
-            ),
-          })
-        } else if (kuestError) {
-          toast.error(
-            t('The {siteName} order failed. Check Polymarket before trying again.', {
-              siteName: site.name,
-            }),
-            {
-              content: (
-                <EventTradeToast
-                  title={event.title}
-                  marketImage={activeMarket.icon_url ?? undefined}
-                  marketTitle={activeMarket.short_title || activeMarket.title}
-                >
-                  {errorDescription}
-                </EventTradeToast>
-              ),
-            },
-          )
-        } else {
-          toast.error(
-            t('The Polymarket order failed. Check {siteName} before trying again.', {
-              siteName: site.name,
-            }),
-            {
-              content: (
-                <EventTradeToast
-                  title={event.title}
-                  marketImage={activeMarket.icon_url ?? undefined}
-                  marketTitle={activeMarket.short_title || activeMarket.title}
-                >
-                  {errorDescription}
-                </EventTradeToast>
-              ),
-            },
-          )
-        }
-        return
-      }
-
-      const sharesLabel = formatSharesLabel(quote.shares, {
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      })
-      toast.success(t('Arbitrage matched! {shares} shares per side', { shares: sharesLabel }), {
-        content: (
-          <EventTradeToast
-            title={event.title}
-            marketImage={activeMarket.icon_url}
-            marketTitle={activeMarket.short_title || activeMarket.title}
-          >
-            <div className="grid gap-0.5">
-              <div>
-                <span className="font-semibold text-primary">{site.name}</span>
-                {' · '}
-                {sharesLabel} {kuestOutcome.outcome_text}
-              </div>
-              <div>
-                <span className="font-semibold text-[#2E5CFF]">Polymarket</span>
-                {' · '}
-                {sharesLabel} {polymarketOutcome.outcome_text}
-              </div>
-            </div>
-          </EventTradeToast>
-        ),
-      })
-      triggerConfetti('primary')
     } catch (error) {
-      console.error('Failed to sign arbitrage orders.', error)
-      if (isUserRejectedRequestError(error)) {
+      console.error('Failed to complete arbitrage submission.', error)
+      if (submittedAttempt) {
+        toast.info(t('The result could not be verified. Check both positions before trading again.'))
+      } else if (error instanceof ArbitrageClaimConflictError) {
+        toast.info(t('Check the positions below before trading again.'))
+      } else if (isUserRejectedRequestError(error)) {
         toast.info(t('Order signing was cancelled.'))
       } else if (error instanceof PolymarketAuthenticationError) {
         toast.error(t('Polymarket authentication failed. Please sign again and try once more.'))
@@ -2226,6 +2246,7 @@ export default function EventOrderPanelForm({
         toast.error(t('We could not prepare both orders. Please try again.'))
       }
     } finally {
+      arbitrageSubmissionLock.current = false
       setArbitrageSubmissionStep(0)
       setIsArbitrageSubmitting(false)
     }
@@ -2322,6 +2343,20 @@ export default function EventOrderPanelForm({
                     </button>
                   </div>
                 )}
+                {savedArbitrageAttempt !== null && (
+                  <EventArbitrageExecution
+                    attempt={arbitrageAttempt}
+                    siteName={site.name}
+                    isChecking={isArbitrageSubmitting}
+                    onCheck={() =>
+                      arbitrageAttempt &&
+                      void checkArbitrageAttempt(arbitrageAttempt).catch(() =>
+                        toast.error(t('The order status is temporarily unavailable.')),
+                      )
+                    }
+                    onDismiss={dismissArbitrageAttempt}
+                  />
+                )}
                 <EventOrderPanelArbitrage
                   key={activeMarket.condition_id}
                   event={event}
@@ -2331,6 +2366,7 @@ export default function EventOrderPanelForm({
                   kuestBalance={availableBalanceForOrders}
                   operatorShareBps={affiliateMetadata.builderTakerFeeShareBps}
                   isSubmitting={isArbitrageSubmitting}
+                  hasUnreviewedExecution={savedArbitrageAttempt !== null}
                   submissionStep={arbitrageSubmissionStep}
                   onRequireSiteWallet={() => {
                     if (!isInteractiveWalletReady) {

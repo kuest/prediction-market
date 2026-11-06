@@ -64,6 +64,7 @@ interface EventOrderPanelArbitrageProps {
   kuestBalance: number
   operatorShareBps: number
   isSubmitting: boolean
+  hasUnreviewedExecution?: boolean
   submissionStep: 0 | 1 | 2 | 3
   onRequireSiteWallet: () => void
   onSubmit: (quote: ArbitrageQuote, polymarketMinimumOrderSize: number) => void
@@ -163,6 +164,7 @@ type EventOrderPanelPolymarketArbitrageProps = Pick<
   | 'kuestBalance'
   | 'operatorShareBps'
   | 'isSubmitting'
+  | 'hasUnreviewedExecution'
   | 'submissionStep'
   | 'onRequireSiteWallet'
   | 'onSubmit'
@@ -176,6 +178,7 @@ function EventOrderPanelPolymarketArbitrage({
   kuestBalance,
   operatorShareBps,
   isSubmitting,
+  hasUnreviewedExecution = false,
   submissionStep,
   onRequireSiteWallet,
   onSubmit,
@@ -409,10 +412,8 @@ function EventOrderPanelPolymarketArbitrage({
       minimumTickSize,
     )
   }, [effectivePercent, minimumTickSize, polymarketBalance, quote, walletsReady])
-  const selectedKuestPrice =
-    selectedQuote?.segments.reduce((total, segment) => total + segment.shares * segment.kuestPrice, 0) ?? 0
-  const selectedPolymarketPrice =
-    selectedQuote?.segments.reduce((total, segment) => total + segment.shares * segment.polymarketPrice, 0) ?? 0
+  const selectedKuestPrice = selectedQuote?.kuestOrder?.amount ?? 0
+  const selectedPolymarketPrice = selectedQuote?.polymarketOrder?.amount ?? 0
   const displayQuote = quote ?? marketQuote
   const displaySegment = displayQuote?.segments[0] ?? null
   const displayPreview = displayQuote
@@ -732,9 +733,11 @@ function EventOrderPanelPolymarketArbitrage({
   }
 
   function handleSubmit() {
-    const kuestPrincipal =
-      selectedQuote?.segments.reduce((total, segment) => total + segment.shares * segment.kuestPrice, 0) ?? 0
-    const polymarketMaximumCost = selectedQuote?.polymarketOrder?.maximumCost ?? 0
+    if (hasUnreviewedExecution || isSubmitting) {
+      return
+    }
+    const kuestPrincipal = selectedQuote?.kuestOrder?.amount ?? 0
+    const polymarketMaximumCost = selectedQuote?.polymarketOrder?.amount ?? 0
     const minimumShares = Math.max(MIN_LIMIT_ORDER_SHARES, minimumOrderSize)
     const displayedAmount = Number.parseFloat(amountInputValue)
 
@@ -805,9 +808,11 @@ function EventOrderPanelPolymarketArbitrage({
   const submitButton = (
     <EventOrderPanelSubmitButton
       type="button"
-      className={cn(executableQuote && submissionStep === 0 && 'animate-arbitrage-glow')}
+      className={cn(
+        executableQuote && !isSubmitting && !hasUnreviewedExecution && submissionStep === 0 && 'animate-arbitrage-glow',
+      )}
       isLoading={isSubmitting}
-      isDisabled={isSubmitting || !executableQuote}
+      isDisabled={isSubmitting || hasUnreviewedExecution || !executableQuote}
       onClick={handleSubmit}
       label={submitButtonLabel}
       loadingLabel={submitButtonLabel}

@@ -312,6 +312,34 @@ describe('storeOrderAction', () => {
     )
   })
 
+  it('retains actual FOK execution details without calling matching a confirmed settlement', async () => {
+    process.env.CLOB_URL = 'https://clob.local'
+    const depositWallet = address('01')
+    mocks.getCurrentUser.mockResolvedValueOnce({
+      id: 'user-1',
+      address: address('aa'),
+      deposit_wallet_address: depositWallet,
+      settings: {},
+    })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({ clob: { key: 'k', passphrase: 'p', secret: 's' } })
+    mocks.createOrder.mockResolvedValueOnce({})
+    globalThis.fetch = mock().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          orderID: 'clob-fok',
+          status: 'matched',
+          makingAmount: '9000000',
+          takingAmount: '20000000',
+        }),
+      ),
+    ) as any
+    const { storeOrderAction } = await import('@/app/[locale]/(platform)/event/[slug]/_actions/store-order')
+    expect(
+      await storeOrderAction(basePayload({ clob_type: 'FOK', maker: depositWallet, signer: depositWallet })),
+    ).toMatchObject({ error: null, orderId: 'clob-fok', execution: { state: 'pending', principal: 9, shares: 20 } })
+  })
+
   it('submits signed orders through the existing CLOB batch endpoint', async () => {
     process.env.CLOB_URL = 'https://clob.local'
     const depositWallet = address('01')

@@ -1,6 +1,6 @@
 'use client'
 
-import type { ApiKeyCreds, OrderResponse } from '@polymarket/clob-client-v2'
+import type { ApiKeyCreds } from '@polymarket/clob-client-v2'
 import type { Address } from 'viem'
 import type { Config } from 'wagmi'
 
@@ -18,8 +18,10 @@ import {
 } from '@polymarket/clob-client-v2'
 import { getConnections, getWalletClient, switchChain } from 'wagmi/actions'
 
+import type { ArbitrageExecution } from '@/lib/arbitrage-execution'
 import type { PolymarketTickSize } from '@/lib/polymarket-market'
 
+import { parseArbitragePlacement, readArbitrageExecution } from '@/lib/arbitrage-execution'
 import { POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 import { runOnPolymarketChain, selectPolymarketConnection } from '@/lib/polymarket-connection'
 
@@ -107,31 +109,25 @@ interface PreparePolymarketOrderArgs {
   connectorUid: string
   tokenId: string
   price: number
-  shares: number
+  amount: number
   tickSize: PolymarketTickSize
 }
 
-export function buildPolymarketLimitOrder({
+export function buildPolymarketMarketOrder({
   tokenId,
   price,
-  shares,
-}: Pick<PreparePolymarketOrderArgs, 'tokenId' | 'price' | 'shares'>) {
-  const normalizedPrice = price
-  const normalizedShares = Number(shares.toFixed(2))
-  const makerAmountCents = normalizedPrice * normalizedShares * 100
-  if (Math.abs(makerAmountCents - Math.round(makerAmountCents)) > 1e-7) {
-    throw new Error('Polymarket FOK maker amount must use cents precision.')
+  amount,
+}: Pick<PreparePolymarketOrderArgs, 'tokenId' | 'price' | 'amount'>) {
+  if (!Number.isFinite(amount) || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-7) {
+    throw new Error('Polymarket BUY budget must use cents precision.')
   }
-  if (makerAmountCents < POLYMARKET_MIN_MARKETABLE_BUY_AMOUNT * 100) {
+  if (amount < POLYMARKET_MIN_MARKETABLE_BUY_AMOUNT) {
     throw new Error('Polymarket marketable BUY amount must be at least $1.')
   }
-
-  return {
-    tokenID: tokenId,
-    price: normalizedPrice,
-    size: normalizedShares,
-    side: Side.BUY,
+  if (!Number.isFinite(price) || price <= 0 || price >= 1) {
+    throw new Error('Invalid Polymarket price limit.')
   }
+  return { tokenID: tokenId, price, amount, side: Side.BUY, orderType: OrderType.FOK as const }
 }
 
 export async function ensurePolymarketOrderReady(tokenId: string) {
@@ -149,20 +145,14 @@ export async function ensurePolymarketOrderReady(tokenId: string) {
   }
 }
 
-export async function preparePolymarketOrder({
-  wagmiConfig,
-  ownerAddress,
-  funderAddress,
-  signatureType,
-  connectorId,
-  connectorUid,
-  tokenId,
-  price,
-  shares,
-  tickSize,
-}: PreparePolymarketOrderArgs) {
-  await ensurePolymarketOrderReady(tokenId)
-
+async function withPolymarketClient<T>(
+  { wagmiConfig, ownerAddress, funderAddress, signatureType, connectorId, connectorUid }: PolymarketSessionArgs,
+  operation: (
+    client: ClobClient,
+    signer: Awaited<ReturnType<typeof getWalletClient>>,
+    creds: ApiKeyCreds,
+  ) => Promise<T>,
+) {
   const connection = selectPolymarketConnection(getConnections(wagmiConfig), {
     ownerAddress,
     connectorId,
@@ -216,17 +206,54 @@ export async function preparePolymarketOrder({
         useServerTime: true,
         throwOnError: true,
       })
-      const negRisk = await client.getNegRisk(tokenId)
-      const order = await client.createOrder(buildPolymarketLimitOrder({ tokenId, price, shares }), {
-        tickSize,
-        negRisk,
-      })
-      const orderPayload = isV2Order(order)
-        ? orderToJsonV2(order, creds.key, OrderType.FOK)
-        : orderToJsonV1(order, creds.key, OrderType.FOK)
+      return operation(client, signer, creds)
+    },
+  })
+}
 
-      return {
-        post: async () => {
+type PolymarketSessionArgs = Omit<PreparePolymarketOrderArgs, 'tokenId' | 'price' | 'amount' | 'tickSize'>
+
+export async function reconcilePolymarketOrder(
+  args: PolymarketSessionArgs & { tokenId: string; orderId: string },
+): Promise<ArbitrageExecution> {
+  const previous: ArbitrageExecution = { state: 'pending', orderId: args.orderId }
+  try {
+    return await withPolymarketClient(args, async (client) =>
+      readArbitrageExecution({
+        previous,
+        tokenId: args.tokenId,
+        readOrder: (id) => client.getOrder(id),
+        readTrade: (id) => client.getTrades({ id }, true),
+      }),
+    )
+  } catch (error) {
+    return {
+      ...previous,
+      state: 'unknown',
+      error: error instanceof Error ? error.message : 'The order could not be verified.',
+    }
+  }
+}
+
+export async function preparePolymarketOrder(args: PreparePolymarketOrderArgs) {
+  await ensurePolymarketOrderReady(args.tokenId)
+  return withPolymarketClient(args, async (client, signer, creds) => {
+    const negRisk = await client.getNegRisk(args.tokenId)
+    const order = await client.createMarketOrder(buildPolymarketMarketOrder(args), { tickSize: args.tickSize, negRisk })
+    if (BigInt(order.makerAmount) !== BigInt(Math.round(args.amount * 1_000_000))) {
+      throw new Error('The signed budget changed. Refresh the arbitrage quote before signing again.')
+    }
+    const orderPayload = isV2Order(order)
+      ? orderToJsonV2(order, creds.key, OrderType.FOK)
+      : orderToJsonV1(order, creds.key, OrderType.FOK)
+    let submitted = false
+    return {
+      post: async (): Promise<ArbitrageExecution> => {
+        if (submitted) {
+          return { state: 'unknown', error: 'This order was already submitted. Check its status before trading again.' }
+        }
+        submitted = true
+        try {
           const body = JSON.stringify(orderPayload)
           const headers = await createL2Headers(
             signer,
@@ -242,25 +269,28 @@ export async function preparePolymarketOrder({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ headers, body }),
+            signal: AbortSignal.timeout(20_000),
           })
-          const responseText = await response.text()
-          const data = (() => {
-            try {
-              return JSON.parse(responseText) as Partial<OrderResponse> & { error?: unknown }
-            } catch {
-              return { error: responseText || 'Polymarket returned an invalid response.' }
-            }
-          })()
+          const data: unknown = await response.json().catch(() => null)
           if (!response.ok) {
-            throw new ApiError(
-              typeof data.error === 'string' ? data.error : 'Polymarket rejected the order.',
-              response.status,
-              data,
-            )
+            return {
+              ...parseArbitragePlacement(data, 'polymarket'),
+              state: 'unknown',
+              error: 'The submission response could not be verified. Check the order before trading again.',
+            }
           }
-          return data
-        },
-      }
-    },
+          return parseArbitragePlacement(data, 'polymarket')
+        } catch {
+          return { state: 'unknown', error: 'The submission response was lost. The order may have executed.' }
+        }
+      },
+      reconcile: (previous: ArbitrageExecution) =>
+        readArbitrageExecution({
+          previous,
+          tokenId: args.tokenId,
+          readOrder: (id) => client.getOrder(id),
+          readTrade: (id) => client.getTrades({ id }, true),
+        }),
+    }
   })
 }

@@ -5,8 +5,10 @@ import { updateTag } from 'next/cache'
 import { z } from 'zod'
 
 import type { SupportedLocale } from '@/i18n/locales'
+import type { ArbitrageExecution } from '@/lib/arbitrage-execution'
 
 import { DEFAULT_LOCALE, resolveSupportedLocale, SUPPORTED_LOCALES } from '@/i18n/locales'
+import { parseArbitragePlacement } from '@/lib/arbitrage-execution'
 import { cacheTags } from '@/lib/cache-tags'
 import { CLOB_ORDER_TYPE, MAX_CLOB_BATCH_ORDERS, MAX_ORDER_SUBMISSION_ORDERS, ORDER_TYPE } from '@/lib/constants'
 import { OrderRepository } from '@/lib/db/queries/order'
@@ -59,6 +61,7 @@ export type StoreOrderActionResult = {
   orderId?: string | null
   code?: string
   retryAfterSeconds?: number
+  execution?: ArbitrageExecution
 }
 
 const CLOB_REQUEST_TIMEOUT_MS = 20_000
@@ -500,7 +503,14 @@ export async function storeOrderAction(payload: StoreOrderInput): Promise<StoreO
       const humanMessage = await getLocalizedClobError(responseError, retryAfterSeconds)
       const message = `Status ${clobStoreOrderResponse.status} (${clobStoreOrderResponse.statusText})`
       console.error('Failed to send order to CLOB.', message, responseError ?? responseText)
-      return buildClobActionError(humanMessage, responseCode, retryAfterSeconds)
+      return {
+        ...buildClobActionError(humanMessage, responseCode, retryAfterSeconds),
+        ...(validated.data.clob_type === CLOB_ORDER_TYPE.FOK
+          ? {
+              execution: { ...parseArbitragePlacement(clobStoreOrderResponseJson, 'kuest'), state: 'unknown' as const },
+            }
+          : {}),
+      }
     }
 
     if (!clobStoreOrderResponseJson) {
@@ -516,11 +526,16 @@ export async function storeOrderAction(payload: StoreOrderInput): Promise<StoreO
         getStringField(clobStoreOrderResponseJson, 'code')
       const responseCode = getStringField(clobStoreOrderResponseJson, 'code')
       const retryAfterSeconds = getNonNegativeIntegerField(clobStoreOrderResponseJson, 'retry_after_seconds')
-      return buildClobActionError(
-        await getLocalizedClobError(responseError, retryAfterSeconds),
-        responseCode,
-        retryAfterSeconds,
-      )
+      return {
+        ...buildClobActionError(
+          await getLocalizedClobError(responseError, retryAfterSeconds),
+          responseCode,
+          retryAfterSeconds,
+        ),
+        ...(validated.data.clob_type === CLOB_ORDER_TYPE.FOK
+          ? { execution: parseArbitragePlacement(clobStoreOrderResponseJson, 'kuest') }
+          : {}),
+      }
     }
 
     const clobOrderId =
@@ -551,6 +566,9 @@ export async function storeOrderAction(payload: StoreOrderInput): Promise<StoreO
     return {
       error: null,
       orderId: clobOrderId,
+      ...(validated.data.clob_type === CLOB_ORDER_TYPE.FOK
+        ? { execution: parseArbitragePlacement(clobStoreOrderResponseJson, 'kuest') }
+        : {}),
     }
   } catch (error) {
     console.error('Failed to create order.', error)
