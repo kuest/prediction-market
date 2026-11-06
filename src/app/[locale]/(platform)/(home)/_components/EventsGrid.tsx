@@ -726,6 +726,8 @@ export default function EventsGrid({
         }
       }
 
+      // This schedules a rollover timer, not an external store subscription.
+      // eslint-disable-next-line react-you-might-not-need-an-effect/no-external-store-subscription
       reconcileTime()
       return function cancelHomeLiveSeriesRollover() {
         if (timeoutId != null) {

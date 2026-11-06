@@ -903,7 +903,7 @@ export function useSportsGameGraphHeroLegend({
     chartXDomain,
     heroLegendSeriesWithValues,
     canRenderPositionedSeriesLegend,
-    legendCursorSnapshot?.date,
+    legendCursorSnapshot,
     positionedLegendLayout,
   ])
 
