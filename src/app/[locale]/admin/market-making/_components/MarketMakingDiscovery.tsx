@@ -78,6 +78,7 @@ import {
 import {
   DEFAULT_SPONSORSHIP_OPTIONS,
   multiMarketDiscountBps,
+  resolveSponsorshipSelection,
   type SponsorshipOptions,
 } from '@/lib/market-making-pricing'
 import {
@@ -386,8 +387,6 @@ interface EscrowImportResponse {
   message: string | null
 }
 
-const DEPTH_OPTIONS = DEFAULT_SPONSORSHIP_OPTIONS.depthPerSideUsdc
-const SPREAD_OPTIONS = DEFAULT_SPONSORSHIP_OPTIONS.maxSpreadBps
 const USDC_ATOMIC_SCALE = 1_000_000n
 const MAX_USDC_ALLOWANCE = (1n << 256n) - 1n
 
@@ -747,15 +746,19 @@ function DepthPreview({
   buyOrders,
   sellOrders,
   maxLabel,
+  maximumDepth,
+  maximumSpread,
 }: {
   depth: number
   spread: number
   buyOrders: string
   sellOrders: string
   maxLabel: string
+  maximumDepth: number
+  maximumSpread: number
 }) {
-  const width = 18 + (depth / Math.max(...DEPTH_OPTIONS)) * 82
-  const gap = 4 + (spread / Math.max(...SPREAD_OPTIONS)) * 18
+  const width = 18 + (depth / maximumDepth) * 82
+  const gap = 4 + (spread / maximumSpread) * 18
   return (
     <div className="mt-3" aria-hidden="true">
       <div
@@ -1203,12 +1206,13 @@ function CampaignDialog({
       }),
     [item.markets, usesImportFlow],
   )
-  const [depth, setDepth] = useState(1000)
-  const [spread, setSpread] = useState(300)
+  const [requestedDepth, setDepth] = useState(1000)
+  const [requestedSpread, setSpread] = useState(300)
   const [sponsorPremiumPercent, setSponsorPremiumPercent] = useState('0')
   const [serviceEnd, setServiceEnd] = useState(initialServiceEnd)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [issuedQuote, setIssuedQuote] = useState<EscrowIssuedQuoteResponse | null>(null)
+  const [issuedQuoteInput, setIssuedQuoteInput] = useState<string | null>(null)
   const [issueError, setIssueError] = useState<string | null>(null)
   const [isIssuing, setIsIssuing] = useState(false)
   const [importId, setImportId] = useState<string | null>(null)
@@ -1255,6 +1259,19 @@ function CampaignDialog({
     }
   }, [address])
 
+  const configQuery = useQuery({
+    queryKey: ['market-making-escrow-config', escrowBaseUrl],
+    enabled: open,
+    staleTime: 5 * 60_000,
+    retry: false,
+    queryFn: () => fetchEscrowJson<EscrowConfigResponse>(`${escrowBaseUrl}/api/config`),
+  })
+  const selection = resolveSponsorshipSelection(configQuery.data, requestedDepth, requestedSpread)
+  const sponsorshipOptions = selection?.options ?? DEFAULT_SPONSORSHIP_OPTIONS
+  const depth = selection?.depth ?? 1000
+  const spread = selection?.spread ?? 300
+  const pricingConfigReady = configQuery.isSuccess && selection !== null
+
   const quoteInput = useMemo(
     () =>
       buildMarketMakerQuoteInput({
@@ -1284,19 +1301,12 @@ function CampaignDialog({
       usesImportFlow,
     ],
   )
-  const configQuery = useQuery({
-    queryKey: ['market-making-escrow-config', escrowBaseUrl],
-    enabled: open,
-    staleTime: 5 * 60_000,
-    retry: false,
-    queryFn: () => fetchEscrowJson<EscrowConfigResponse>(`${escrowBaseUrl}/api/config`),
-  })
-  const sponsorshipOptions = configQuery.data?.sponsorshipOptions ?? DEFAULT_SPONSORSHIP_OPTIONS
   const minimumServiceEndDate = getMinimumServiceEndDate(configQuery.data, Boolean(item.seriesSlug))
   const hasSelectableServiceWindow = sponsorSeries
     ? Boolean(item.seriesSlug && item.creatorFilter)
     : marketEndDate >= minimumServiceEndDate
   const canRequestQuote =
+    pricingConfigReady &&
     open &&
     isConnected &&
     Boolean(address) &&
@@ -1308,12 +1318,16 @@ function CampaignDialog({
     enabled: canRequestQuote,
     staleTime: 15_000,
     retry: false,
-    queryFn: () =>
-      fetchEscrowJson<EscrowPreviewResponse>(`${escrowBaseUrl}/api/quote/preview`, {
+    queryFn: () => {
+      if (!pricingConfigReady) {
+        throw new Error(copy.quoteUnavailable)
+      }
+      return fetchEscrowJson<EscrowPreviewResponse>(`${escrowBaseUrl}/api/quote/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteInput),
-      }),
+      })
+    },
   })
   const refetchPreview = previewQuery.refetch
   const preview = previewQuery.data
@@ -1540,6 +1554,7 @@ function CampaignDialog({
 
   function clearIssuedQuote() {
     setIssuedQuote(null)
+    setIssuedQuoteInput(null)
     setIssueError(null)
   }
 
@@ -1828,7 +1843,7 @@ function CampaignDialog({
       }
       return
     }
-    if (quoteConditionIds.length !== item.markets.length || preview?.status !== 'priced') {
+    if (!canRequestQuote || preview?.status !== 'priced') {
       return
     }
     if (!transactionWalletClient || !publicClient) {
@@ -2035,7 +2050,11 @@ function CampaignDialog({
         throw new Error(copy.quoteUnavailable)
       }
 
-      const canReuseIssuedQuote = issuedQuote && issuedQuote.quote.validUntil > Math.floor(Date.now() / 1000) + 15
+      const currentQuoteInput = JSON.stringify(quoteInput)
+      const canReuseIssuedQuote =
+        issuedQuote &&
+        issuedQuoteInput === currentQuoteInput &&
+        issuedQuote.quote.validUntil > Math.floor(Date.now() / 1000) + 15
       const issued = canReuseIssuedQuote
         ? issuedQuote
         : await fetchEscrowJson<EscrowIssuedQuoteResponse>(
@@ -2069,6 +2088,7 @@ function CampaignDialog({
         throw new Error('Signed quote does not match the expected sponsor, chain, or escrow proxy.')
       }
       setIssuedQuote(issued)
+      setIssuedQuoteInput(currentQuoteInput)
 
       const sponsor = address as `0x${string}`
       const reward = BigInt(issued.quote.reward)
@@ -2248,6 +2268,8 @@ function CampaignDialog({
                   buyOrders={copy.buyOrders}
                   sellOrders={copy.sellOrders}
                   maxLabel={copy.max}
+                  maximumDepth={selection?.maximumDepth ?? depth}
+                  maximumSpread={selection?.maximumSpread ?? spread}
                 />
               </div>
             </section>
@@ -2427,6 +2449,8 @@ function CampaignDialog({
                   <div className="flex min-h-[96px] items-center rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
                     {previewQuery.isError ? quoteErrorMessage(previewQuery.error, copy) : copy.quoteUnavailable}
                   </div>
+                ) : configQuery.isError || (configQuery.isSuccess && selection === null) ? (
+                  <p className="text-muted-foreground">{copy.quoteUnavailable}</p>
                 ) : (!canRequestQuote || previewQuery.isLoading) && !breakdown ? (
                   <div className="flex min-h-[96px] items-center justify-center gap-2 rounded-lg bg-background/60 p-3 text-sm text-muted-foreground">
                     <LoaderCircleIcon className="size-4 animate-spin" />
@@ -2507,7 +2531,8 @@ function CampaignDialog({
               isIssuing ||
               !sponsorPremiumValid ||
               (isConnected &&
-                (preview?.status !== 'priced' ||
+                (!canRequestQuote ||
+                  preview?.status !== 'priced' ||
                   previewQuery.isLoading ||
                   previewQuery.isFetching ||
                   !transactionWalletClient ||
