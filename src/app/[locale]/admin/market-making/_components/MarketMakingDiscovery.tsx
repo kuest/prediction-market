@@ -76,6 +76,11 @@ import {
   shouldResetImportActions,
 } from '@/lib/market-making-discovery'
 import {
+  DEFAULT_SPONSORSHIP_OPTIONS,
+  multiMarketDiscountBps,
+  type SponsorshipOptions,
+} from '@/lib/market-making-pricing'
+import {
   buildMarketMakerQuoteInput,
   displayedCostAtomic,
   marketImportStorageKey,
@@ -132,6 +137,7 @@ interface MarketMakingCopy {
   duration: string
   dayCount: string
   untilDate: string
+  multiMarketDiscount: string
   makerReward: string
   sponsorPremium: string
   sponsorPremiumHelp: string
@@ -213,6 +219,7 @@ interface MarketMakingDiscoveryProps {
 }
 
 interface EscrowPricingBreakdown {
+  multiMarketDiscountBps?: number
   marketMakerReward: string
   protocolFee: string
   total: string
@@ -242,6 +249,7 @@ interface EscrowPreviewResponse {
 }
 
 interface EscrowConfigResponse {
+  sponsorshipOptions?: SponsorshipOptions
   pricingConfig: {
     acceptDeadlineLeadSeconds?: number
     baseCoverageBps?: number
@@ -378,8 +386,8 @@ interface EscrowImportResponse {
   message: string | null
 }
 
-const DEPTH_OPTIONS = [500, 1000, 2500, 5000]
-const SPREAD_OPTIONS = [100, 200, 300, 500]
+const DEPTH_OPTIONS = DEFAULT_SPONSORSHIP_OPTIONS.depthPerSideUsdc
+const SPREAD_OPTIONS = DEFAULT_SPONSORSHIP_OPTIONS.maxSpreadBps
 const USDC_ATOMIC_SCALE = 1_000_000n
 const MAX_USDC_ALLOWANCE = (1n << 256n) - 1n
 
@@ -1283,6 +1291,7 @@ function CampaignDialog({
     retry: false,
     queryFn: () => fetchEscrowJson<EscrowConfigResponse>(`${escrowBaseUrl}/api/config`),
   })
+  const sponsorshipOptions = configQuery.data?.sponsorshipOptions ?? DEFAULT_SPONSORSHIP_OPTIONS
   const minimumServiceEndDate = getMinimumServiceEndDate(configQuery.data, Boolean(item.seriesSlug))
   const hasSelectableServiceWindow = sponsorSeries
     ? Boolean(item.seriesSlug && item.creatorFilter)
@@ -2159,7 +2168,7 @@ function CampaignDialog({
         <div className="min-h-0 flex-1 overflow-y-auto lg:contents">
           <div className="space-y-3 pb-3 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
             <section className="rounded-xl border p-3">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3">
                 <div>
                   <div className="mb-2 flex items-center gap-1.5">
                     <h3 className="font-semibold">{copy.depth}</h3>
@@ -2178,13 +2187,13 @@ function CampaignDialog({
                       <TooltipContent className="max-w-72 text-sm">{copy.depthHelp}</TooltipContent>
                     </Tooltip>
                   </div>
-                  <div className="grid grid-cols-4 gap-1.5">
-                    {DEPTH_OPTIONS.map((option) => (
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(5.5rem,1fr))] gap-1.5">
+                    {sponsorshipOptions.depthPerSideUsdc.map((option) => (
                       <Button
                         key={option}
                         type="button"
                         variant={depth === option ? 'default' : 'outline'}
-                        className="h-9 px-1.5 text-xs"
+                        className="h-9 min-w-0 px-1.5 text-sm"
                         onClick={() => {
                           setDepth(option)
                           clearIssuedQuote()
@@ -2215,12 +2224,12 @@ function CampaignDialog({
                     </Tooltip>
                   </div>
                   <div className="grid grid-cols-4 gap-1.5">
-                    {SPREAD_OPTIONS.map((option) => (
+                    {sponsorshipOptions.maxSpreadBps.map((option) => (
                       <Button
                         key={option}
                         type="button"
                         variant={spread === option ? 'default' : 'outline'}
-                        className="h-9 px-1.5 text-xs"
+                        className="h-9 min-w-0 px-1.5 text-sm"
                         onClick={() => {
                           setSpread(option)
                           clearIssuedQuote()
@@ -2343,6 +2352,18 @@ function CampaignDialog({
           <aside className="mt-4 flex flex-col gap-3 lg:sticky lg:top-0 lg:col-start-2 lg:row-start-1 lg:mt-0 lg:min-h-0 lg:overflow-y-auto">
             <section className="relative rounded-xl border bg-muted/60 p-3.5 sm:p-4">
               <div className="space-y-3 text-sm">
+                {item.markets.length > 1 && (
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">{copy.multiMarketDiscount}</span>
+                    <span className="shrink-0 font-medium">
+                      {breakdown
+                        ? new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 2 }).format(
+                            multiMarketDiscountBps(breakdown) / 10_000,
+                          )
+                        : '—'}
+                    </span>
+                  </div>
+                )}
                 <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5 border-b pb-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
