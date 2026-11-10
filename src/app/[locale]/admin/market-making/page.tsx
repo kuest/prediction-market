@@ -60,6 +60,7 @@ export default async function AdminMarketMakingPage({ searchParams }: AdminMarke
         duration: t('Duration'),
         dayCount: t('{count} days', { count: '__COUNT__' }),
         untilDate: t('Until {date}', { date: '__DATE__' }),
+        multiMarketDiscount: t('Multi-market discount'),
         makerReward: t('Market maker payment'),
         sponsorPremium: t('Extra (optional)'),
         sponsorPremiumHelp: t('Higher payments can make campaigns more attractive to market makers'),
