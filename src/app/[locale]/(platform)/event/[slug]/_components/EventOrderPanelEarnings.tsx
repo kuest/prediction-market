@@ -23,8 +23,6 @@ interface EventOrderPanelEarningsProps {
   buyChangePct: number
   buyMultiplier: number
   totalFee: number | null
-  kuestFee: number | null
-  operatorFee: number | null
 }
 
 export default function EventOrderPanelEarnings({
@@ -40,8 +38,6 @@ export default function EventOrderPanelEarnings({
   buyChangePct,
   buyMultiplier,
   totalFee,
-  kuestFee,
-  operatorFee,
 }: EventOrderPanelEarningsProps) {
   const t = useExtracted()
   const [isPricePopoverOpen, setIsPricePopoverOpen] = useState(false)
@@ -73,8 +69,6 @@ export default function EventOrderPanelEarnings({
   const sellChangeLabel = '+0%'
   const sellMultiplierLabel = decimalOdds != null ? `${decimalOdds.toFixed(3)}x` : '—'
   const totalFeeLabel = totalFee == null ? '—' : formatCurrency(totalFee)
-  const kuestFeeLabel = kuestFee == null ? '—' : formatCurrency(kuestFee)
-  const operatorFeeLabel = operatorFee == null ? '—' : formatCurrency(operatorFee)
   const avgPriceLabel = t('Avg. price {price}', {
     price: side === ORDER_SIDE.SELL ? avgSellPriceLabel : avgBuyPriceLabel,
   })
@@ -216,16 +210,8 @@ export default function EventOrderPanelEarnings({
                     </div>
                   </div>
                   <div className="grid gap-1.5 border-t p-3 text-xs">
-                    <div className="flex items-center justify-between gap-3 text-muted-foreground">
-                      <span>{t('Kuest fee')}</span>
-                      <span>{kuestFeeLabel}</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 text-muted-foreground">
-                      <span>{t('Operator fee')}</span>
-                      <span>{operatorFeeLabel}</span>
-                    </div>
                     <div className="flex items-center justify-between gap-3 font-semibold">
-                      <span>{t('Total fee')}</span>
+                      <span>{t('Fee')}</span>
                       <span>{totalFeeLabel}</span>
                     </div>
                   </div>

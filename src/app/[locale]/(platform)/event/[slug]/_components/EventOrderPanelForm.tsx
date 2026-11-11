@@ -2440,20 +2440,6 @@ export default function EventOrderPanelForm({
                         : estimatedMarketBuyFees.totalFee
                       : null
                   }
-                  kuestFee={
-                    kuestFeeScheduleQuery.data
-                      ? state.side === ORDER_SIDE.SELL
-                        ? estimatedMarketSellFees.kuestFee
-                        : estimatedMarketBuyFees.kuestFee
-                      : null
-                  }
-                  operatorFee={
-                    kuestFeeScheduleQuery.data
-                      ? state.side === ORDER_SIDE.SELL
-                        ? estimatedMarketSellFees.operatorFee
-                        : estimatedMarketBuyFees.operatorFee
-                      : null
-                  }
                   shouldShowResolvedMarketMinimumWarning={shouldShowResolvedMarketMinimumWarning}
                   shouldShowResolvedNoLiquidityWarning={shouldShowResolvedNoLiquidityWarning}
                   showInsufficientSharesWarning={showInsufficientSharesWarning}
