@@ -210,6 +210,34 @@ function readLivePrice(point: DataPoint) {
 }
 
 describe('resolveLiveSeriesRealtimeFeed', () => {
+  it.each([60, 1440])('preserves explicitly configured Chainlink TWAP-60 for %s-minute markets', (minutes) => {
+    expect(
+      resolveLiveSeriesRealtimeFeed({
+        seriesSlug: 'configured-crypto-series',
+        configuredTopic: 'price.crypto.twap',
+        provider: 'chainlink',
+        windowSeconds: 60,
+        activeWindowMinutes: minutes,
+        eventStartTimestamp: Date.parse('2026-11-18T17:00:00Z'),
+        eventEndTimestamp: Date.parse('2026-11-18T17:00:00Z') + minutes * 60 * 1000,
+      }),
+    ).toEqual({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60 })
+  })
+
+  it.each([60, 1440])('does not switch existing Binance %s-minute markets based on the date alone', (minutes) => {
+    expect(
+      resolveLiveSeriesRealtimeFeed({
+        seriesSlug: 'existing-crypto-series',
+        configuredTopic: 'price.crypto',
+        provider: 'binance',
+        windowSeconds: null,
+        activeWindowMinutes: minutes,
+        eventStartTimestamp: Date.parse('2026-11-19T17:00:00Z'),
+        eventEndTimestamp: Date.parse('2026-11-19T17:00:00Z') + minutes * 60 * 1000,
+      }),
+    ).toEqual({ topic: 'price.crypto', provider: 'binance', window_seconds: null })
+  })
+
   it('keeps legacy Chainlink markets on the spot topic before the cutover', () => {
     expect(
       resolveLiveSeriesRealtimeFeed({

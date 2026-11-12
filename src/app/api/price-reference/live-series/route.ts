@@ -113,7 +113,7 @@ function selectClosingRow(
   interval: Interval,
   seriesSlug: string,
 ) {
-  if (interval === '1d' && (source === 'binance' || seriesSlug === 'gold-daily-up-or-down')) {
+  if (interval === '1d' && (source === 'binance' || source === 'chainlink' || seriesSlug === 'gold-daily-up-or-down')) {
     return rows.find((row) => row.window_end_ms === targetMs) ?? null
   }
 
@@ -224,14 +224,18 @@ export async function GET(request: Request) {
     const openingPreferredInterval: Interval = seriesEntry.interval === '1d' ? '5m' : seriesEntry.interval
     const openingPreferredIntervalMs = intervalToMs(openingPreferredInterval)
     const openingHistoryTargetMs = alignWindowEnd(eventWindowStartMs, openingPreferredIntervalMs)
-    const closingHistoryTargetMs = alignWindowEnd(eventWindowEndMs, intervalMs)
+    const isChainlinkDaily = seriesEntry.source === 'chainlink' && seriesEntry.interval === '1d'
+    const closingHistoryTargetMs = isChainlinkDaily ? eventWindowEndMs : alignWindowEnd(eventWindowEndMs, intervalMs)
     const shouldFetchOpeningFallback = openingPreferredInterval !== seriesEntry.interval
     const openingFallbackTargetMs = shouldFetchOpeningFallback
-      ? alignWindowEnd(eventWindowStartMs, intervalMs)
+      ? isChainlinkDaily
+        ? eventWindowStartMs
+        : alignWindowEnd(eventWindowStartMs, intervalMs)
       : openingHistoryTargetMs
 
     const openingHistoryParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: openingPreferredInterval,
       from: String(Math.max(0, openingHistoryTargetMs - openingPreferredIntervalMs * 24)),
       to: String(openingHistoryTargetMs),
@@ -240,6 +244,7 @@ export async function GET(request: Request) {
 
     const openingFallbackParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: seriesEntry.interval,
       from: String(Math.max(0, openingFallbackTargetMs - intervalMs * 6)),
       to: String(openingFallbackTargetMs),
@@ -248,6 +253,7 @@ export async function GET(request: Request) {
 
     const closingHistoryParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: seriesEntry.interval,
       from: String(Math.max(0, closingHistoryTargetMs - intervalMs * 4)),
       to: String(closingHistoryTargetMs),
@@ -257,6 +263,7 @@ export async function GET(request: Request) {
     const chartHistoryIntervalMs = intervalToMs(chartHistoryInterval)
     const chartHistoryParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: chartHistoryInterval,
       from: String(eventWindowStartMs),
       to: String(eventWindowEndMs),

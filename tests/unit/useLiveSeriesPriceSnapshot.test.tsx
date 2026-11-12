@@ -302,6 +302,52 @@ describe('useLiveSeriesPriceSnapshot', () => {
     expect(result.current.referenceSnapshot?.opening_price).toBe(101.94)
   })
 
+  it.each([60, 1440])('keeps checking a Chainlink %s-minute close until available', async (minutes) => {
+    useFakeTimers()
+    const eventEndTimestamp = now + 10_000
+    function snapshot(closingPrice: number | null) {
+      return {
+        source: 'chainlink',
+        opening_price: 100,
+        closing_price: closingPrice,
+        event_window_end_ms: eventEndTimestamp,
+      }
+    }
+    const fetchMock = mock()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot(105) })
+    stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config: {
+          series_slug: `chainlink-close-test-${minutes}`,
+          topic: 'price.crypto.twap',
+          provider: 'chainlink',
+          window_seconds: 60,
+          active_window_minutes: minutes,
+        } as EventLiveChartConfig,
+        subscriptionSymbol: 'BTC',
+        explicitEndTimestamp: eventEndTimestamp,
+        startTimestamp: eventEndTimestamp - minutes * 60_000,
+      }),
+    )
+    await act(async () => {
+      await advanceTimersByTimeAsync(0)
+    })
+    now = eventEndTimestamp + 65_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(75_000)
+    })
+    expect(result.current.referenceSnapshot?.closing_price).toBeNull()
+    now += 10_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(10_000)
+    })
+    expect(result.current.referenceSnapshot?.closing_price).toBe(105)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
   it('keeps checking HOOD after a non-canonical close until the event close arrives', async () => {
     useFakeTimers()
     const eventEndTimestamp = now + 10_000

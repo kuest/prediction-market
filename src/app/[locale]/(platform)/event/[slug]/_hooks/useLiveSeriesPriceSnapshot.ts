@@ -349,7 +349,7 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
         ? snapshot?.source === 'pyth' &&
           snapshot.interval === '1d' &&
           snapshot.instrument === request.subscriptionSymbol.toUpperCase()
-        : snapshot?.source === 'binance'
+        : snapshot?.source === 'binance' || snapshot?.source === 'chainlink'
     if (
       !isSubscribed ||
       (snapshot != null && !hasExpectedSource) ||
