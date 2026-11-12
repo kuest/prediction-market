@@ -9,7 +9,7 @@ const order = {
   side: 'BUY',
   status: 'MATCHED',
   size_matched: '20',
-  associate_trades: ['trade-1'],
+  market: 'market-1',
 }
 const trade = {
   id: 'trade-1',
@@ -27,7 +27,7 @@ function read(overrides: { order?: unknown; trades?: unknown[] } = {}) {
     previous: pending,
     tokenId: '123',
     readOrder: async () => overrides.order ?? order,
-    readTrade: async () => overrides.trades ?? [trade],
+    readTrades: async () => ({ trades: overrides.trades ?? [trade], nextCursor: 'LTE=' }),
   })
 }
 
@@ -79,7 +79,6 @@ describe('arbitrage execution confirmation', () => {
 
   it('does not infer success from an empty or incomplete trade lookup', async () => {
     await expect(read({ trades: [] })).resolves.toMatchObject({ state: 'pending' })
-    await expect(read({ order: { ...order, associate_trades: [] } })).resolves.toMatchObject({ state: 'pending' })
     await expect(read({ order: { ...order, size_matched: '21' } })).resolves.toMatchObject({ state: 'pending' })
   })
 
@@ -101,7 +100,7 @@ describe('arbitrage execution confirmation', () => {
       readOrder: async () => {
         throw new Error('network')
       },
-      readTrade: async () => [],
+      readTrades: async () => ({ trades: [], nextCursor: 'LTE=' }),
     })
     expect(result).toMatchObject({ state: 'unknown', orderId: 'order-1' })
   })
@@ -117,7 +116,7 @@ describe('arbitrage execution confirmation', () => {
     const second = { ...trade, id: 'trade-2', size: '10', status: 'FAILED' }
     await expect(
       read({
-        order: { ...order, associate_trades: ['trade-1', 'trade-2'] },
+        order,
         trades: [{ ...trade, size: '10' }, second],
       }),
     ).resolves.toMatchObject({ state: 'confirmed', shares: 10 })
@@ -132,10 +131,78 @@ describe('arbitrage execution confirmation', () => {
   it('does not retry an unknown submission without an id', async () => {
     const readOrder = mock()
     const previous = { state: 'unknown' as const }
-    await expect(readArbitrageExecution({ previous, tokenId: '123', readOrder, readTrade: mock() })).resolves.toEqual(
+    await expect(readArbitrageExecution({ previous, tokenId: '123', readOrder, readTrades: mock() })).resolves.toEqual(
       previous,
     )
     expect(readOrder).not.toHaveBeenCalled()
+  })
+
+  it('finalizes an unmatched terminal order without reading trade history', async () => {
+    const pages = mock()
+    expect(
+      await readArbitrageExecution({
+        previous: pending,
+        tokenId: '123',
+        readOrder: async () => ({ ...order, status: 'CANCELED', size_matched: '0' }),
+        readTrades: pages,
+      }),
+    ).toMatchObject({ state: 'failed', shares: 0, principal: 0 })
+    expect(pages).not.toHaveBeenCalled()
+  })
+
+  it('paginates market history, ignores other orders and deduplicates fills', async () => {
+    const pages = mock()
+      .mockResolvedValueOnce({ trades: [{ ...trade, taker_order_id: 'other' }], nextCursor: 'page-2' })
+      .mockResolvedValueOnce({ trades: [trade, trade], nextCursor: 'LTE=' })
+    expect(
+      await readArbitrageExecution({
+        previous: pending,
+        tokenId: '123',
+        readOrder: async () => order,
+        readTrades: pages,
+      }),
+    ).toMatchObject({ state: 'confirmed', shares: 20 })
+    expect(pages).toHaveBeenNthCalledWith(1, 'market-1', undefined)
+    expect(pages).toHaveBeenNthCalledWith(2, 'market-1', 'page-2')
+  })
+
+  it('stops once all matched quantity is found without scanning older market trades', async () => {
+    const pages = mock().mockResolvedValueOnce({ trades: [trade], nextCursor: 'older-history' })
+    expect(
+      await readArbitrageExecution({
+        previous: pending,
+        tokenId: '123',
+        readOrder: async () => order,
+        readTrades: pages,
+      }),
+    ).toMatchObject({ state: 'confirmed', shares: 20 })
+    expect(pages).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not confirm an incomplete or repeating cursor history', async () => {
+    const pages = mock().mockResolvedValue({ trades: [{ ...trade, size: '10' }], nextCursor: 'same-page' })
+    expect(
+      await readArbitrageExecution({
+        previous: pending,
+        tokenId: '123',
+        readOrder: async () => order,
+        readTrades: pages,
+      }),
+    ).toMatchObject({ state: 'pending' })
+    expect(pages).toHaveBeenCalledTimes(2)
+  })
+
+  it('bounds history reads without falsely confirming a truncated scan', async () => {
+    let calls = 0
+    expect(
+      await readArbitrageExecution({
+        previous: pending,
+        tokenId: '123',
+        readOrder: async () => order,
+        readTrades: async () => ({ trades: [{ ...trade, size: '10' }], nextCursor: String(++calls) }),
+      }),
+    ).toMatchObject({ state: 'pending' })
+    expect(calls).toBe(20)
   })
 
   it('only concludes a balanced hedge from both confirmed actual quantities', () => {

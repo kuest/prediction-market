@@ -6,6 +6,7 @@ const mocks = hoisted(() => ({
   buildClobHmacSignature: mock(() => 'sig'),
   fetch: mock(),
   findMany: mock(),
+  findOutcome: mock(),
   getCurrentUser: mock(),
   getEventMarketMetadata: mock(),
   getPublicAssetUrl: mock((path: string) => `https://assets.test/${path}`),
@@ -32,6 +33,7 @@ void mock.module('@/lib/db/utils/run-query', () => ({
 void mock.module('@/lib/drizzle', () => ({
   db: {
     query: {
+      outcomes: { findFirst: mocks.findOutcome },
       markets: {
         findMany: mocks.findMany,
       },
@@ -64,6 +66,7 @@ describe('open orders routes', () => {
     mocks.buildClobHmacSignature.mockReturnValue('sig')
     mocks.fetch.mockReset()
     mocks.findMany.mockReset()
+    mocks.findOutcome.mockReset()
     mocks.getCurrentUser.mockReset()
     mocks.getEventMarketMetadata.mockReset()
     mocks.getPublicAssetUrl.mockReset()
@@ -183,6 +186,52 @@ describe('open orders routes', () => {
       }),
     )
   })
+
+  it('resolves the real condition for a portfolio asset-only filter', async () => {
+    mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1', address: address('01') })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'api-key', secret: 'secret', passphrase: 'passphrase' },
+    })
+    mocks.findOutcome.mockResolvedValueOnce({ condition_id: 'cond-1' })
+    mocks.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ data: [], next_cursor: 'LTE=' }) })
+    const { GET } = await import('@/app/api/open-orders/route')
+    const response = await GET(new Request('https://example.com/api/open-orders?asset_id=123&next_cursor=cursor-1'))
+    expect(response.status).toBe(200)
+    expect(mocks.findOutcome).toHaveBeenCalledWith({ where: { token_id: '123' }, columns: { condition_id: true } })
+    expect(mocks.fetch).toHaveBeenCalledWith(
+      'https://clob.local/data/orders?market=cond-1&asset_id=123&next_cursor=cursor-1',
+      expect.objectContaining({
+        headers: expect.objectContaining({ KUEST_ADDRESS: address('01'), KUEST_API_KEY: 'api-key' }),
+      }),
+    )
+  })
+
+  it('rejects an unresolved asset without broadening the authenticated request', async () => {
+    mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1', address: address('01') })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'api-key', secret: 'secret', passphrase: 'passphrase' },
+    })
+    mocks.findOutcome.mockResolvedValueOnce(undefined)
+    const { GET } = await import('@/app/api/open-orders/route')
+    const response = await GET(new Request('https://example.com/api/open-orders?asset_id=123'))
+    expect(response.status).toBe(400)
+    expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+
+  it.each(['', '?market=cond-1&asset_id=123'])(
+    'does not look up metadata for supplied or unfiltered markets: %s',
+    async (query) => {
+      mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1', address: address('01') })
+      mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+        clob: { key: 'api-key', secret: 'secret', passphrase: 'passphrase' },
+      })
+      mocks.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ data: [], next_cursor: 'LTE=' }) })
+      const { GET } = await import('@/app/api/open-orders/route')
+      const response = await GET(new Request(`https://example.com/api/open-orders${query}`))
+      expect(response.status).toBe(200)
+      expect(mocks.findOutcome).not.toHaveBeenCalled()
+    },
+  )
 
   it('normalizes event open orders and keeps GTD intact', async () => {
     const userAddress = address('03')

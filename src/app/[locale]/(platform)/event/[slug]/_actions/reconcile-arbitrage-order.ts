@@ -52,9 +52,13 @@ export async function reconcileArbitrageOrder(orderId: string, tokenId: string):
       }
       return order
     },
-    readTrade: async (id) => {
-      const page = await read('/data/trades', `?id=${encodeURIComponent(id)}`)
-      return Array.isArray(page?.data) ? page.data : []
+    readTrades: async (market, cursor) => {
+      const query = new URLSearchParams({ market })
+      if (cursor) {
+        query.set('next_cursor', cursor)
+      }
+      const page = await read('/data/trades', `?${query}`)
+      return { trades: page?.data, nextCursor: page?.next_cursor }
     },
   })
 }

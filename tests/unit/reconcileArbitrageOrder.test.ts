@@ -26,7 +26,7 @@ const order = {
   asset_id: '123',
   status: 'MATCHED',
   size_matched: '20',
-  associate_trades: ['trade-1'],
+  market: 'market-1',
 }
 const trade = {
   id: 'trade-1',
@@ -42,14 +42,14 @@ describe('authenticated arbitrage reconciliation', () => {
   it('reads the existing order and trade endpoints with server-held credentials', async () => {
     fetchSpy
       .mockResolvedValueOnce(new Response(JSON.stringify(order)))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [trade] })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: [trade], next_cursor: 'LTE=' })))
     expect(await reconcileArbitrageOrder('id-1', '123')).toMatchObject({
       state: 'confirmed',
       orderId: 'id-1',
       shares: 20,
     })
     expect(fetchSpy.mock.calls[0][0]).toBe('https://clob.test/data/order/id-1')
-    expect(fetchSpy.mock.calls[1][0]).toBe('https://clob.test/data/trades?id=trade-1')
+    expect(fetchSpy.mock.calls[1][0]).toBe('https://clob.test/data/trades?market=market-1')
     expect(fetchSpy.mock.calls[1][1]?.headers).toMatchObject({
       KUEST_API_KEY: 'key',
       KUEST_SIGNATURE: 'test-signature',

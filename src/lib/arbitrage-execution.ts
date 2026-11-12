@@ -66,12 +66,12 @@ export async function readArbitrageExecution({
   previous,
   tokenId,
   readOrder,
-  readTrade,
+  readTrades,
 }: {
   previous: ArbitrageExecution
   tokenId: string
   readOrder: (id: string) => Promise<unknown>
-  readTrade: (id: string) => Promise<unknown[]>
+  readTrades: (market: string, cursor?: string) => Promise<{ trades: unknown[]; nextCursor: string }>
 }): Promise<ArbitrageExecution> {
   if (!previous.orderId || previous.state === 'failed' || previous.state === 'confirmed') {
     return previous
@@ -83,30 +83,57 @@ export async function readArbitrageExecution({
     }
     const status = (typeof order.status === 'string' ? order.status : '').toUpperCase()
     const matched = amount(order.size_matched)
-    const ids = Array.isArray(order.associate_trades)
-      ? [...new Set(order.associate_trades.filter((id): id is string => typeof id === 'string' && Boolean(id)))]
-      : []
-    if (matched === undefined || ids.length > 500) {
+    if (matched === undefined || typeof order.market !== 'string' || !order.market) {
       throw new Error('The order execution could not be verified.')
     }
-    if (!ids.length) {
-      if (matched === 0 && ['UNMATCHED', 'CANCELED', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(status)) {
+    if (matched === 0) {
+      if (['UNMATCHED', 'CANCELED', 'CANCELLED', 'EXPIRED', 'REJECTED'].includes(status)) {
         return { state: 'failed', orderId: previous.orderId, shares: 0, principal: 0 }
       }
       return { ...previous, state: 'pending' }
     }
     const trades: RecordValue[] = []
-    for (let offset = 0; offset < ids.length; offset += 8) {
-      const chunk = ids.slice(offset, offset + 8)
-      const pages = await Promise.all(chunk.map((id) => readWithTimeout(readTrade(id))))
-      for (let index = 0; index < chunk.length; index += 1) {
-        const trade = pages[index]?.map(record).find((item) => item?.id === chunk[index])
-        const isBuy = trade?.side === 'BUY' || trade?.side === 'buy'
-        if (!trade || trade.taker_order_id !== previous.orderId || trade.asset_id !== tokenId || !isBuy) {
+    const seenTrades = new Set<string>()
+    const seenCursors = new Set<string>()
+    let cursor: string | undefined
+    let complete = false
+    let discoveredShares = 0
+    for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
+      const page = await readWithTimeout(readTrades(order.market, cursor))
+      if (!Array.isArray(page.trades) || typeof page.nextCursor !== 'string') {
+        throw new Error('The trade history could not be verified.')
+      }
+      for (const value of page.trades) {
+        const trade = record(value)
+        if (trade?.taker_order_id !== previous.orderId) {
+          continue
+        }
+        const isBuy = trade.side === 'BUY' || trade.side === 'buy'
+        if (trade.asset_id !== tokenId || !isBuy || typeof trade.id !== 'string' || !trade.id) {
           return { ...previous, state: 'pending', error: 'Some fills are still being verified.' }
         }
-        trades.push(trade)
+        if (!seenTrades.has(trade.id)) {
+          seenTrades.add(trade.id)
+          trades.push(trade)
+          const size = amount(trade.size)
+          if (size === undefined || size <= 0) {
+            throw new Error('A fill is missing its execution quantity.')
+          }
+          discoveredShares += size
+        }
       }
+      if (discoveredShares >= matched || page.nextCursor === 'LTE=') {
+        complete = true
+        break
+      }
+      if (!page.nextCursor || seenCursors.has(page.nextCursor)) {
+        break
+      }
+      seenCursors.add(page.nextCursor)
+      cursor = page.nextCursor
+    }
+    if (!complete || !trades.length) {
+      return { ...previous, state: 'pending', error: 'The order and its fills are still synchronizing.' }
     }
     if (
       trades.some(

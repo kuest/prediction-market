@@ -48,9 +48,20 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const idFilter = searchParams.get('id')?.trim() || undefined
-    const marketFilter = searchParams.get('market')?.trim() || undefined
+    let marketFilter = searchParams.get('market')?.trim() || undefined
     const assetIdFilter = searchParams.get('asset_id')?.trim() || undefined
     const nextCursor = searchParams.get('next_cursor')?.trim() || undefined
+
+    if (assetIdFilter && !marketFilter) {
+      const outcome = await db.query.outcomes.findFirst({
+        where: { token_id: assetIdFilter },
+        columns: { condition_id: true },
+      })
+      if (!outcome?.condition_id) {
+        return NextResponse.json({ error: 'A market is required for this asset filter.' }, { status: 400 })
+      }
+      marketFilter = outcome.condition_id
+    }
 
     const { data: clobOrders, next_cursor } = await fetchClobOpenOrders({
       clobUrl,

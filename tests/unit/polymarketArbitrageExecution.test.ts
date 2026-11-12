@@ -13,7 +13,7 @@ void mock.module('@polymarket/clob-client-v2', () => ({
     getServerTime = async () => 123
     createMarketOrder = createMarketOrder
     getOrder = readOrder
-    getTrades = readTrades
+    getTradesPaginated = readTrades
   },
   createL2Headers: async () => ({ POLY_API_KEY: 'key' }),
   isV2Order: () => true,
@@ -106,19 +106,22 @@ describe('Polymarket arbitrage submission', () => {
       side: 'BUY',
       status: 'MATCHED',
       size_matched: '22',
-      associate_trades: ['trade-1'],
+      market: 'market-1',
     })
-    readTrades.mockResolvedValueOnce([
-      {
-        id: 'trade-1',
-        taker_order_id: 'id-1',
-        asset_id: '123',
-        side: 'BUY',
-        size: '22',
-        status: 'CONFIRMED',
-        transaction_hash: `0x${'a'.repeat(64)}`,
-      },
-    ])
+    readTrades.mockResolvedValueOnce({
+      trades: [
+        {
+          id: 'trade-1',
+          taker_order_id: 'id-1',
+          asset_id: '123',
+          side: 'BUY',
+          size: '22',
+          status: 'CONFIRMED',
+          transaction_hash: `0x${'a'.repeat(64)}`,
+        },
+      ],
+      next_cursor: 'LTE=',
+    })
     expect(await prepared.reconcile({ state: 'pending', orderId: 'id-1', shares: 18 })).toMatchObject({
       state: 'confirmed',
       shares: 22,
