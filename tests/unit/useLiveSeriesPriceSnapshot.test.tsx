@@ -57,7 +57,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'snapshot-resume-test',
-      topic: 'crypto_prices',
+      topic: 'price.crypto',
+      provider: 'chainlink',
+      window_seconds: null,
       active_window_minutes: 60,
     } as EventLiveChartConfig
 
@@ -87,13 +89,13 @@ describe('useLiveSeriesPriceSnapshot', () => {
   it.each(['reference-first', 'websocket-first'] as const)(
     'keeps the live WebSocket price when a stale reference arrives %s',
     async (arrivalOrder) => {
-      const storageKey = 'kuest-live-ws-last-price:crypto_prices:BTC'
+      const storageKey = 'kuest-live-ws-last-price:price.crypto:chainlink:spot:BTC'
       window.localStorage.setItem(
-        'kuest-live-last-price:crypto_prices:BTC',
+        'kuest-live-last-price:price.crypto:chainlink:spot:BTC',
         JSON.stringify({ price: 80_811, timestamp: now - 1_000 }),
       )
       if (arrivalOrder === 'websocket-first') {
-        writePersistedLivePrice('crypto_prices', 'BTC', 80_732, now - 1_000)
+        writePersistedLivePrice('price.crypto:chainlink:spot', 'BTC', 80_732, now - 1_000)
       }
 
       let resolveFetch: ((value: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
@@ -109,7 +111,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
         useLiveSeriesPriceSnapshot({
           config: {
             series_slug: `snapshot-arrival-order-${arrivalOrder}`,
-            topic: 'crypto_prices',
+            topic: 'price.crypto',
+            provider: 'chainlink',
+            window_seconds: null,
             active_window_minutes: 15,
           } as EventLiveChartConfig,
           subscriptionSymbol: 'BTC',
@@ -136,7 +140,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       if (arrivalOrder === 'reference-first') {
         expect(result.current.persistedFallbackPrice).toBeNull()
         act(() => {
-          writePersistedLivePrice('crypto_prices', 'BTC', 80_732, now - 1_000)
+          writePersistedLivePrice('price.crypto:chainlink:spot', 'BTC', 80_732, now - 1_000)
           window.dispatchEvent(new StorageEvent('storage', { key: storageKey }))
         })
       }
@@ -161,7 +165,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'snapshot-status-test',
-      topic: 'crypto_prices_chainlink',
+      topic: 'price.crypto',
+      provider: 'chainlink',
+      window_seconds: null,
       active_window_minutes: 1440,
     } as EventLiveChartConfig
 
@@ -212,7 +218,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'snapshot-opening-retry-test',
-      topic: 'crypto_prices_chainlink',
+      topic: 'price.crypto',
+      provider: 'chainlink',
+      window_seconds: null,
       active_window_minutes: 5,
     } as EventLiveChartConfig
 
@@ -264,7 +272,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       useLiveSeriesPriceSnapshot({
         config: {
           series_slug: 'hood-daily-up-or-down',
-          topic: 'equity_prices',
+          topic: 'price.equity',
           active_window_minutes: 390,
         } as EventLiveChartConfig,
         eventSlug: 'hood-up-or-down-on-october-22-2026',
@@ -322,7 +330,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       useLiveSeriesPriceSnapshot({
         config: {
           series_slug: 'hood-daily-up-or-down',
-          topic: 'equity_prices',
+          topic: 'price.equity',
           active_window_minutes: 390,
         } as EventLiveChartConfig,
         eventSlug: 'hood-up-or-down-on-october-22-2026',
@@ -381,7 +389,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'gold-daily-up-or-down',
-      topic: 'equity_prices',
+      topic: 'price.equity',
       active_window_minutes: 450,
     } as EventLiveChartConfig
     const { result } = renderHook(() =>
@@ -444,7 +452,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'gold-daily-up-or-down',
-      topic: 'equity_prices',
+      topic: 'price.equity',
       active_window_minutes: 450,
     } as EventLiveChartConfig
     const { result } = renderHook(() =>

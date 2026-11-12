@@ -27,6 +27,16 @@ export const LIVE_TARGET_MAX_BOTTOM_OFFSET = 10
 export const LIVE_CURRENT_MARKER_OFFSET_X = -34
 export const LIVE_PLOT_CLIP_RIGHT_PADDING = 22
 export const POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS = Date.parse('2026-08-07T00:00:00Z')
+export const POLYMARKET_CHAINLINK_5M_TWAP60_CUTOVER_MS = Date.parse('2026-08-14T00:00:00Z')
+const CHAINLINK_FIVE_MINUTE_SERIES = new Set([
+  'bnb-up-or-down-5m',
+  'btc-up-or-down-5m',
+  'doge-up-or-down-5m',
+  'eth-up-or-down-5m',
+  'hype-up-or-down-5m',
+  'sol-up-or-down-5m',
+  'xrp-up-or-down-5m',
+])
 export const LIVE_PRICE_STORAGE_PREFIX = 'kuest-live-ws-last-price'
 
 export interface PersistedLivePrice {
@@ -228,7 +238,7 @@ export function classifyLiveSeriesReference({
   const normalizedTopic = topic.trim().toLowerCase()
   const normalizedWindowMinutes = Number(activeWindowMinutes)
 
-  return normalizedTopic.startsWith('crypto_prices') && normalizedWindowMinutes === 24 * 60 ? 'binance_daily' : 'other'
+  return normalizedTopic.startsWith('price.crypto') && normalizedWindowMinutes === 24 * 60 ? 'binance_daily' : 'other'
 }
 
 export function isCanonicalBinanceDailySnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
@@ -386,153 +396,49 @@ function matchesSymbol(symbol: string | null, targetSymbol: string) {
   return symbolsAreEquivalent(symbol, targetSymbol)
 }
 
-function extractPointsFromArray(entries: any[], fallbackSymbol: string | null = null, fallbackTimestamp = 0) {
-  if (!Array.isArray(entries) || entries.length === 0) {
+export function extractLivePriceUpdates(
+  message: any,
+  channel: string,
+  symbol: string,
+  provider?: string | null,
+  windowSeconds?: number | null,
+) {
+  if (message?.v !== 1 || message.channel !== channel || !message.payload || message.dropped) {
     return []
   }
-
-  const points: Array<{ price: number; timestamp: number; symbol: string | null }> = []
-
-  for (const point of entries) {
-    if (!point || typeof point !== 'object') {
-      continue
-    }
-
-    const price = Number(point.value ?? point.price ?? point.p)
-    if (!Number.isFinite(price) || price <= 0) {
-      continue
-    }
-
-    const rawSymbol = point.symbol ?? point.pair ?? point.asset ?? point.base ?? fallbackSymbol
-    const symbol = typeof rawSymbol === 'string' ? rawSymbol : null
-    const timestamp = normalizeTimestamp(point.timestamp ?? point.ts ?? point.t, fallbackTimestamp)
-
-    points.push({ price, timestamp, symbol })
-  }
-
-  return points
-}
-
-export function extractLivePriceUpdates(payload: any, topic: string, symbol: string, fallbackTimestamp = 0) {
-  if (!payload || typeof payload !== 'object') {
+  const payload = message.payload
+  if (provider && payload.source !== provider) {
     return []
   }
-
+  if (windowSeconds != null && payload.window_seconds !== windowSeconds) {
+    return []
+  }
+  const entries = message.snapshot === true ? payload.data : [payload]
+  if (!Array.isArray(entries)) {
+    return []
+  }
   const updates: Array<{ price: number; timestamp: number; symbol: string | null }> = []
-  const candidates: any[] = []
-  if (Array.isArray(payload)) {
-    candidates.push(...payload)
-  } else {
-    candidates.push(payload)
-  }
-
-  if (payload?.payload && typeof payload.payload === 'object') {
-    candidates.push(payload.payload)
-  }
-
-  if (Array.isArray(payload?.data)) {
-    candidates.push(...payload.data)
-  } else if (payload?.data && typeof payload.data === 'object') {
-    candidates.push(payload.data)
-  }
-
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== 'object') {
+  for (const point of entries) {
+    const pointSymbol = point?.symbol ?? payload.symbol
+    const price = Number(point?.full_accuracy_value ?? point?.value)
+    const timestamp = normalizeTimestamp(point?.timestamp, NaN)
+    if (
+      typeof pointSymbol !== 'string' ||
+      !matchesSymbol(pointSymbol, symbol) ||
+      !Number.isFinite(price) ||
+      price <= 0 ||
+      !Number.isFinite(timestamp) ||
+      timestamp <= 0
+    ) {
       continue
     }
-
-    const candidateTopic = candidate.topic ?? candidate?.data?.topic ?? candidate?.payload?.topic ?? candidate?.stream
-    if (typeof candidateTopic === 'string' && candidateTopic !== topic) {
-      continue
-    }
-
-    const rawSymbol =
-      candidate?.data?.symbol ??
-      candidate?.symbol ??
-      candidate?.data?.pair ??
-      candidate?.pair ??
-      candidate?.data?.asset ??
-      candidate?.asset ??
-      candidate?.data?.base ??
-      candidate?.base ??
-      candidate?.payload?.symbol
-
-    const candidateSymbol = typeof rawSymbol === 'string' ? rawSymbol : null
-
-    if (Array.isArray(candidate?.data)) {
-      updates.push(...extractPointsFromArray(candidate.data, candidateSymbol, fallbackTimestamp))
-    }
-
-    if (Array.isArray(candidate?.payload?.data)) {
-      updates.push(...extractPointsFromArray(candidate.payload.data, candidateSymbol, fallbackTimestamp))
-    }
-
-    const rawPrice =
-      candidate?.data?.price ??
-      candidate?.price ??
-      candidate?.data?.value ??
-      candidate?.value ??
-      candidate?.data?.p ??
-      candidate?.p ??
-      candidate?.payload?.value ??
-      candidate?.payload?.price
-
-    const price = Number(rawPrice)
-    if (!Number.isFinite(price) || price <= 0) {
-      continue
-    }
-
-    const timestamp = normalizeTimestamp(
-      candidate?.data?.timestamp ??
-        candidate?.timestamp ??
-        candidate?.data?.ts ??
-        candidate?.ts ??
-        candidate?.data?.t ??
-        candidate?.t ??
-        candidate?.payload?.timestamp,
-      fallbackTimestamp,
-    )
-
-    updates.push({
-      price,
-      timestamp,
-      symbol: candidateSymbol,
-    })
+    updates.push({ price, timestamp, symbol: pointSymbol })
   }
-
-  const filtered = updates.filter((update) => !update.symbol || matchesSymbol(update.symbol, symbol))
-  if (!filtered.length) {
-    return []
-  }
-
-  const sorted = filtered.sort((a, b) => a.timestamp - b.timestamp)
-  const deduped: Array<{ price: number; timestamp: number; symbol: string | null }> = []
-
-  for (const update of sorted) {
-    const last = deduped.at(-1)
-    if (last && last.timestamp === update.timestamp) {
-      deduped[deduped.length - 1] = update
-      continue
-    }
-    deduped.push(update)
-  }
-
-  return deduped
+  return updates.sort((a, b) => a.timestamp - b.timestamp)
 }
 
 export function isSnapshotMessage(payload: any) {
-  if (!payload || typeof payload !== 'object') {
-    return false
-  }
-
-  const messageType = String(payload?.type ?? '')
-    .trim()
-    .toLowerCase()
-  if (messageType !== 'subscribe') {
-    return false
-  }
-
-  return Array.isArray(payload?.payload?.data) || Array.isArray(payload?.data)
+  return payload?.v === 1 && payload.snapshot === true && Array.isArray(payload.payload?.data)
 }
 
 export function keepWithinLiveWindow(points: DataPoint[], cutoffMs: number) {
@@ -748,11 +654,11 @@ export function normalizeSubscriptionSymbol(topic: string, symbol: string) {
     return trimmed
   }
 
-  if (topic.trim().toLowerCase() === 'equity_prices') {
-    return trimmed.split(/[/-]/)[0]?.trim().toUpperCase() || trimmed.toUpperCase()
+  if (topic.trim().toLowerCase() === 'price.equity') {
+    return trimmed.split(/[/-]/)[0]?.trim().toLowerCase() || trimmed.toLowerCase()
   }
 
-  return trimmed.toLowerCase()
+  return trimmed.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
 const GOLD_DAILY_SERIES_SLUG = 'gold-daily-up-or-down'
@@ -786,48 +692,54 @@ export function resolveLiveSeriesStartTimestamp({
   return eventStartTimestamp
 }
 
-export function resolveLiveSeriesRealtimeTopic({
+export function resolveLiveSeriesRealtimeFeed({
+  seriesSlug,
   configuredTopic,
+  provider,
+  windowSeconds,
   activeWindowMinutes,
   eventStartTimestamp,
   eventEndTimestamp,
 }: {
+  seriesSlug: string
   configuredTopic: string
+  provider: string | null
+  windowSeconds: number | null
   activeWindowMinutes: number
   eventStartTimestamp?: number | null
   eventEndTimestamp: number | null
 }) {
-  const normalizedTopic = configuredTopic.trim().toLowerCase()
-  const normalizedWindowMinutes = Number(activeWindowMinutes)
+  const feed = { topic: configuredTopic, provider, window_seconds: windowSeconds }
   if (
-    normalizedTopic !== 'crypto_prices_chainlink' ||
-    !Number.isFinite(normalizedWindowMinutes) ||
-    normalizedWindowMinutes <= 0 ||
+    (activeWindowMinutes === 5 && !CHAINLINK_FIVE_MINUTE_SERIES.has(seriesSlug)) ||
+    configuredTopic !== 'price.crypto' ||
+    provider !== 'chainlink' ||
+    !Number.isFinite(activeWindowMinutes) ||
+    activeWindowMinutes <= 0 ||
     eventEndTimestamp == null ||
     !Number.isFinite(eventEndTimestamp)
   ) {
-    return configuredTopic
+    return feed
   }
-
-  const eventWindowStartTimestamp =
+  const start =
     eventStartTimestamp != null && Number.isFinite(eventStartTimestamp)
       ? eventStartTimestamp
-      : eventEndTimestamp - normalizedWindowMinutes * 60 * 1000
-  if (eventWindowStartTimestamp < POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS) {
-    return configuredTopic
+      : eventEndTimestamp - activeWindowMinutes * 60 * 1000
+  if (start < POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS) {
+    return feed
   }
-
-  // RTDS currently publishes only these two TWAP cadences. The supported
-  // market windows intentionally mirror the upstream Polymarket templates.
-  if (normalizedWindowMinutes === 5) {
-    return 'crypto_prices_twap_thirty'
+  if (activeWindowMinutes === 5 || activeWindowMinutes === 15 || activeWindowMinutes === 240) {
+    return {
+      ...feed,
+      topic: 'price.crypto.twap',
+      window_seconds: activeWindowMinutes === 5 && start < POLYMARKET_CHAINLINK_5M_TWAP60_CUTOVER_MS ? 30 : 60,
+    }
   }
+  return feed
+}
 
-  if (normalizedWindowMinutes === 15 || normalizedWindowMinutes === 4 * 60) {
-    return 'crypto_prices_twap_sixty'
-  }
-
-  return configuredTopic
+export function livePriceFeedKey(config: { topic: string; provider: string | null; window_seconds: number | null }) {
+  return `${config.topic}:${config.provider ?? 'auto'}:${config.window_seconds ?? 'spot'}`
 }
 
 function normalizeComparableSymbol(symbol: string) {
@@ -841,13 +753,7 @@ function symbolsAreEquivalent(symbol: string, target: string) {
     return false
   }
 
-  if (normalizedSymbol === normalizedTarget) {
-    return true
-  }
-
-  const symbolNoQuote = normalizedSymbol.replace(/(usd|usdt)$/i, '')
-  const targetNoQuote = normalizedTarget.replace(/(usd|usdt)$/i, '')
-  return symbolNoQuote === targetNoQuote
+  return normalizedSymbol === normalizedTarget
 }
 
 export function hexToRgba(color: string, alpha: number) {

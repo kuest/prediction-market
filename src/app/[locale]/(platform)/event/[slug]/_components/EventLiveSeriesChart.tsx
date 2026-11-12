@@ -55,7 +55,7 @@ import {
   resolveEventEndTimestamp,
   resolveLiveSeriesCountdown,
   resolveLiveSeriesDisplayPrice,
-  resolveLiveSeriesRealtimeTopic,
+  resolveLiveSeriesRealtimeFeed,
   resolveLiveSeriesStartTimestamp,
   SERIES_KEY,
   toCountdownLeftLabel,
@@ -238,8 +238,8 @@ export default function EventLiveSeriesChart({
     [config.symbol, config.topic],
   )
   const resetKey = preserveSeriesContinuity
-    ? `${config.topic}:${config.event_type}:${subscriptionSymbol}`
-    : `${event.id}:${config.topic}:${config.event_type}:${subscriptionSymbol}`
+    ? `${config.topic}:${config.provider}:${config.window_seconds}:${subscriptionSymbol}`
+    : `${event.id}:${config.topic}:${config.provider}:${config.window_seconds}:${subscriptionSymbol}`
 
   return (
     <EventLiveSeriesChartContent
@@ -328,20 +328,29 @@ function EventLiveSeriesChartContent({
       }),
     [config.active_window_minutes, config.series_slug, scheduledEndTimestamp, startTimestamp],
   )
-  const realtimeTopic = useMemo(
+  const realtimeFeed = useMemo(
     () =>
-      resolveLiveSeriesRealtimeTopic({
+      resolveLiveSeriesRealtimeFeed({
+        seriesSlug: config.series_slug,
         configuredTopic: config.topic,
+        provider: config.provider,
+        windowSeconds: config.window_seconds,
         activeWindowMinutes: config.active_window_minutes,
         eventStartTimestamp: liveSeriesStartTimestamp,
         eventEndTimestamp: scheduledEndTimestamp,
       }),
-    [config.active_window_minutes, config.topic, liveSeriesStartTimestamp, scheduledEndTimestamp],
+    [
+      config.series_slug,
+      config.active_window_minutes,
+      config.topic,
+      config.provider,
+      config.window_seconds,
+      liveSeriesStartTimestamp,
+      scheduledEndTimestamp,
+    ],
   )
-  const realtimeConfig = useMemo(
-    () => (realtimeTopic === config.topic ? config : { ...config, topic: realtimeTopic }),
-    [config, realtimeTopic],
-  )
+  const realtimeTopic = realtimeFeed.topic
+  const realtimeConfig = useMemo(() => ({ ...config, ...realtimeFeed }), [config, realtimeFeed])
   const hasExplicitEndTimestamp = explicitEndTimestamp != null
   const resolvedMarketsCount = event.markets.filter((market) => market.is_resolved || market.condition?.resolved).length
   const hasResolvedState = Boolean(
@@ -371,7 +380,6 @@ function EventLiveSeriesChartContent({
     (hasResolvedState || Boolean(referenceSnapshot?.is_event_closed) || nowMs >= endTimestamp)
   const chartNowMs = isEventClosed ? endTimestamp : nowMs
 
-  const persistedFallbackPrice = snapshotFallbackPrice
   const seriesReferenceClassification = useMemo(
     () =>
       classifyLiveSeriesReference({
@@ -381,23 +389,30 @@ function EventLiveSeriesChartContent({
     [config.active_window_minutes, realtimeTopic],
   )
 
-  const { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status } = useLiveSeriesWebSocket({
-    topic: realtimeTopic,
-    eventType: config.event_type,
-    eventEndTimestamp: explicitEndTimestamp,
-    subscriptionSymbol,
-    isLiveView: isLiveView && !isEventClosed,
-  })
+  const { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status, feedUnavailable, marketStatus } =
+    useLiveSeriesWebSocket({
+      topic: realtimeTopic,
+      provider: realtimeFeed.provider,
+      windowSeconds: realtimeFeed.window_seconds,
+      eventEndTimestamp: explicitEndTimestamp,
+      subscriptionSymbol,
+      isLiveView: isLiveView && !isEventClosed,
+    })
+
+  const persistedFallbackPrice = feedUnavailable ? null : snapshotFallbackPrice
 
   const isMarketClosed = useMemo(() => {
-    if (realtimeTopic.trim().toLowerCase() !== 'equity_prices') {
+    if (marketStatus != null) {
+      return marketStatus === 'closed'
+    }
+    if (realtimeTopic.trim().toLowerCase() !== 'price.equity') {
       return false
     }
     if (isGoldDailySeries(config.series_slug)) {
       return !isGoldMarketSessionOpen(nowMs)
     }
     return !isUsEquityMarketOpen(nowMs)
-  }, [config.series_slug, nowMs, realtimeTopic])
+  }, [config.series_slug, nowMs, realtimeTopic, marketStatus])
 
   const series = useMemo<SeriesConfig[]>(
     () => [
@@ -770,8 +785,8 @@ function EventLiveSeriesChartContent({
   const axisInitializationPhase =
     data.length > 0 ? 'realtime-ready' : dataSource.length > 0 ? `fallback-ready:${fallbackCurrentPrice}` : 'empty'
   const chartScopeKey = preserveSeriesContinuity
-    ? `${config.series_slug}:${config.topic}:${config.event_type}:${subscriptionSymbol}`
-    : `${event.id}:${realtimeTopic}:${subscriptionSymbol}`
+    ? `${config.series_slug}:${config.topic}:${config.provider}:${config.window_seconds}:${subscriptionSymbol}`
+    : `${event.id}:${realtimeTopic}:${realtimeFeed.provider}:${realtimeFeed.window_seconds}:${subscriptionSymbol}`
   const axisValues = useStableLiveChartAxis(
     candidateAxisValues,
     `${chartScopeKey}:${axisInitializationPhase}:${idleRecoveryVersion}`,
@@ -953,11 +968,21 @@ function EventLiveSeriesChartContent({
       <div className="min-h-96">
         {isLiveView ? (
           <div className="grid gap-1">
+            {feedUnavailable && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {t('Live price unavailable for this market’s configured source or TWAP window. Contact the operator.')}
+              </p>
+            )}
+            {realtimeTopic === 'price.equity' && !isEventClosed && !feedUnavailable && marketStatus !== 'open' && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {marketStatus === 'closed' ? t('Market closed') : t('Market status unavailable')}
+              </p>
+            )}
             <EventLiveSeriesChartHeader
               resolvedBaselinePrice={displayedBaselinePrice}
               headerPriceDisplayDigits={headerPriceDisplayDigits}
-              currentPrice={currentPrice}
-              delta={delta}
+              currentPrice={feedUnavailable ? null : currentPrice}
+              delta={feedUnavailable ? null : delta}
               deltaDisplayDigits={deltaDisplayDigits}
               liveColor={liveColor}
               shouldShowCountdown={shouldShowCountdown}

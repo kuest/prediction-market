@@ -13,6 +13,7 @@ import {
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
   LIVE_PRICE_STORAGE_PREFIX,
+  livePriceFeedKey,
   readPersistedLivePrice,
 } from '../_utils/eventLiveSeriesChartUtils'
 
@@ -511,7 +512,11 @@ export function useLiveSeriesPriceSnapshot({
     return {
       seriesSlug,
       eventSlug,
-      topic: config.topic,
+      topic: livePriceFeedKey({
+        topic: config.topic,
+        provider: config.provider,
+        window_seconds: config.window_seconds,
+      }),
       subscriptionSymbol,
       activeWindowMinutes: config.active_window_minutes,
       explicitEndTimestamp,
@@ -520,6 +525,8 @@ export function useLiveSeriesPriceSnapshot({
   }, [
     config.active_window_minutes,
     config.topic,
+    config.provider,
+    config.window_seconds,
     eventSlug,
     explicitEndTimestamp,
     seriesSlug,

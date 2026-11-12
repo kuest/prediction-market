@@ -56,8 +56,19 @@ class MockWebSocket {
     this.onopen?.(new Event('open'))
   }
 
-  emitMessage(payload: unknown) {
-    this.onmessage?.({ data: JSON.stringify(payload) } as MessageEvent<string>)
+  private sequence = 0
+  emitMessage(frame: { snapshot?: boolean; channel?: string; payload?: unknown; [key: string]: unknown }) {
+    const { snapshot, channel = 'price.crypto', payload, ...data } = frame
+    this.onmessage?.({
+      data: JSON.stringify({
+        v: 1,
+        channel,
+        seq: ++this.sequence,
+        ts: 1_800_000_000_000,
+        snapshot,
+        payload: { source: 'chainlink', ...((payload as object) ?? data) },
+      }),
+    } as MessageEvent<string>)
   }
 
   emitRawMessage(data: string) {
@@ -87,8 +98,9 @@ describe('useLiveSeriesWebSocket', () => {
   function mountHook(eventEndTimestamp: number | null = null) {
     const view = renderHook(() =>
       useLiveSeriesWebSocket({
-        topic: 'crypto_prices',
-        eventType: 'price',
+        topic: 'price.crypto',
+        provider: 'chainlink',
+        windowSeconds: null,
         eventEndTimestamp,
         subscriptionSymbol: 'BTC',
         isLiveView: true,
@@ -99,6 +111,70 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => socket.emitOpen())
     return { ...view, socket }
   }
+
+  it('sends a public price subscription without credentials', () => {
+    const { socket } = mountHook()
+    expect(JSON.parse(socket.sentMessages[0]!)).toEqual({
+      op: 'subscribe',
+      subscriptions: [{ channel: 'price.crypto', filter: { symbol: 'BTC', provider: 'chainlink' } }],
+    })
+  })
+
+  it('rejects an acknowledgment for a different price source', () => {
+    const { socket, result } = mountHook()
+    act(() =>
+      socket.emitRawMessage('{"op":"subscribed","channel":"price.crypto","provider":"pyth","filter":{"symbol":"BTC"}}'),
+    )
+    expect(result.current.feedUnavailable).toBe(true)
+    expect(result.current.status).toBe('offline')
+  })
+
+  it('preserves closed and unknown source status without treating absence as open', () => {
+    const { socket, result } = mountHook()
+    act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now, market_status: 'closed' }))
+    expect(result.current.marketStatus).toBe('closed')
+    act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now, market_status: 'unknown' }))
+    expect(result.current.marketStatus).toBe('unknown')
+    act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now }))
+    expect(result.current.marketStatus).toBeNull()
+  })
+
+  it('clears a discontinuous stream and reconnects for a snapshot', () => {
+    useFakeTimers()
+    const { socket, result, unmount } = mountHook()
+    act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now }))
+    act(() =>
+      socket.emitRawMessage(
+        JSON.stringify({
+          v: 1,
+          channel: 'price.crypto',
+          seq: 3,
+          ts: now,
+          payload: { symbol: 'BTC', source: 'chainlink', value: 101, timestamp: now },
+        }),
+      ),
+    )
+    expect(result.current.data).toEqual([])
+    expect(result.current.status).toBe('connecting')
+    act(() => jest.advanceTimersByTime(2_000))
+    expect(MockWebSocket.instances).toHaveLength(2)
+    unmount()
+    useRealTimers()
+  })
+
+  it('does not retry unsupported feeds or retain their live prices', () => {
+    useFakeTimers()
+    const { socket, result, unmount } = mountHook()
+    act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now }))
+    act(() => socket.emitRawMessage('{"op":"error","code":"bad_filter","channel":"price.crypto"}'))
+    expect(result.current.data).toEqual([])
+    expect(result.current.status).toBe('offline')
+    expect(result.current.feedUnavailable).toBe(true)
+    act(() => jest.advanceTimersByTime(120_000))
+    expect(MockWebSocket.instances).toHaveLength(1)
+    unmount()
+    useRealTimers()
+  })
 
   it.each([{ prices: [100] }, { prices: [100, 101] }])(
     'loads a $prices.length-point subscribe payload as the initial snapshot',
@@ -112,7 +188,7 @@ describe('useLiveSeriesWebSocket', () => {
 
       act(() =>
         socket.emitMessage({
-          type: 'subscribe',
+          snapshot: true,
           payload: { data: snapshot },
         }),
       )
@@ -124,7 +200,7 @@ describe('useLiveSeriesWebSocket', () => {
     },
   )
 
-  it('keeps the RTDS connection alive with application heartbeats', () => {
+  it('keeps the price connection alive with application heartbeats', () => {
     useFakeTimers()
     const { socket, unmount } = mountHook()
 
@@ -132,12 +208,12 @@ describe('useLiveSeriesWebSocket', () => {
       jest.advanceTimersByTime(25_000)
     })
 
-    expect(socket.sentMessages.at(-1)).toBe('PING')
+    expect(socket.sentMessages.at(-1)).toBe('{"op":"ping"}')
     unmount()
     useRealTimers()
   })
 
-  it('reconnects a stale RTDS stream even when the socket still answers PONG', () => {
+  it('reconnects a stale price stream even when the socket still answers PONG', () => {
     useFakeTimers()
     jest.setSystemTime(now)
     const { result, socket, unmount } = mountHook()
@@ -145,7 +221,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => {
       jest.advanceTimersByTime(25_000)
     })
-    act(() => socket.emitRawMessage('PONG'))
+    act(() => socket.emitRawMessage('{"op":"pong"}'))
     now += 75_000
     act(() => {
       jest.advanceTimersByTime(25_000)
@@ -173,18 +249,18 @@ describe('useLiveSeriesWebSocket', () => {
 
     expect(MockWebSocket.instances).toHaveLength(1)
     expect(jest.getTimerCount()).toBe(3)
-    act(() => socket.emitRawMessage('PONG'))
+    act(() => socket.emitRawMessage('{"op":"pong"}'))
     unmount()
     useRealTimers()
   })
 
-  it('uses the latest batch value and retargets from the in-flight visual price', () => {
+  it('uses each price update and retargets from the in-flight visual price', () => {
     const { result, socket } = mountHook()
     const initialNow = now
 
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 100, timestamp: initialNow - 500 }],
       }),
     )
@@ -193,8 +269,8 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => {
       now = initialNow + 100
       socket.emitMessage({
-        type: 'update',
-        topic: 'crypto_prices',
+        snapshot: false,
+        topic: 'price.crypto',
         symbol: 'BTC',
         value: 110,
         timestamp: now,
@@ -202,11 +278,10 @@ describe('useLiveSeriesWebSocket', () => {
 
       now = initialNow + 200
       socket.emitMessage({
-        type: 'update',
-        data: [
-          { symbol: 'BTC', value: 90, timestamp: initialNow + 195 },
-          { symbol: 'BTC', value: 92, timestamp: initialNow + 190 },
-        ],
+        snapshot: false,
+        symbol: 'BTC',
+        value: 90,
+        timestamp: initialNow + 195,
       })
     })
 
@@ -231,7 +306,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 100, timestamp: initialNow - 500 }],
       }),
     )
@@ -239,7 +314,7 @@ describe('useLiveSeriesWebSocket', () => {
     now = initialNow + 100
     act(() =>
       socket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 110,
         timestamp: now,
@@ -253,7 +328,7 @@ describe('useLiveSeriesWebSocket', () => {
     now = eventEndTimestamp + 1
     act(() =>
       socket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 120,
         timestamp: now,
@@ -270,7 +345,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 100, timestamp: initialNow - 500 }],
       }),
     )
@@ -278,7 +353,7 @@ describe('useLiveSeriesWebSocket', () => {
     now = eventEndTimestamp + 1_000
     act(() =>
       socket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 110,
         timestamp: eventEndTimestamp - 1,
@@ -289,7 +364,9 @@ describe('useLiveSeriesWebSocket', () => {
       date: new Date(eventEndTimestamp),
       [SERIES_KEY]: 110,
     })
-    expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
+    expect(
+      JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:price.crypto:chainlink:spot:BTC')!),
+    ).toEqual({
       price: 110,
       timestamp: eventEndTimestamp - 1,
     })
@@ -300,8 +377,9 @@ describe('useLiveSeriesWebSocket', () => {
     const { result, rerender } = renderHook(
       ({ eventEndTimestamp }) =>
         useLiveSeriesWebSocket({
-          topic: 'crypto_prices',
-          eventType: 'price',
+          topic: 'price.crypto',
+          provider: 'chainlink',
+          windowSeconds: null,
           eventEndTimestamp,
           subscriptionSymbol: 'BTC',
           isLiveView: true,
@@ -312,7 +390,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => socket.emitOpen())
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 100, timestamp: now - 50 }],
       }),
     )
@@ -321,7 +399,7 @@ describe('useLiveSeriesWebSocket', () => {
     now = initialEndTimestamp + 200
     act(() =>
       socket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 110,
         timestamp: now,
@@ -344,10 +422,10 @@ describe('useLiveSeriesWebSocket', () => {
     expect(socket.readyState).toBe(MockWebSocket.OPEN)
     expect(MockWebSocket.instances).toHaveLength(1)
     expect(JSON.parse(socket.sentMessages[0]!)).toMatchObject({
-      action: 'subscribe',
+      op: 'subscribe',
     })
-    expect(socket.sentMessages.at(-1)).toBe('PING')
-    act(() => socket.emitRawMessage('PONG'))
+    expect(socket.sentMessages.at(-1)).toBe('{"op":"ping"}')
+    act(() => socket.emitRawMessage('{"op":"pong"}'))
     hiddenSpy.mockRestore()
   })
 
@@ -357,7 +435,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [
           { symbol: 'BTC', value: 100, timestamp: now - 1_000 },
           { symbol: 'BTC', value: 101, timestamp: now },
@@ -380,7 +458,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 100, timestamp: now - 1_000 }],
       }),
     )
@@ -394,7 +472,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         payload: { data: snapshot },
       }),
     )
@@ -416,7 +494,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       socket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 100, timestamp: now - 1_000 }],
       }),
     )
@@ -426,7 +504,7 @@ describe('useLiveSeriesWebSocket', () => {
       document.dispatchEvent(new Event('visibilitychange'))
       now += LIVE_DATA_RETENTION_MS + 1_000
       socket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 120,
         timestamp: now,
@@ -440,7 +518,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => resumedSocket.emitOpen())
     act(() =>
       resumedSocket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         payload: {
           data: [
             { symbol: 'BTC', value: 150, timestamp: now - 1_000 },
@@ -460,7 +538,7 @@ describe('useLiveSeriesWebSocket', () => {
     let isHidden = false
     const hiddenSpy = spyOnAccessor(document, 'hidden', 'get').mockImplementation(() => isHidden)
     const { result, socket } = mountHook()
-    act(() => socket.emitMessage({ type: 'subscribe', data: [{ symbol: 'BTC', value: 100, timestamp: now }] }))
+    act(() => socket.emitMessage({ snapshot: true, data: [{ symbol: 'BTC', value: 100, timestamp: now }] }))
 
     act(() => {
       isHidden = true
@@ -477,7 +555,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => {
       resumedSocket.emitOpen()
       resumedSocket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [
           { symbol: 'BTC', value: 110, timestamp: now - 45_000 },
           { symbol: 'BTC', value: 120, timestamp: now - 20_000 },
@@ -498,7 +576,7 @@ describe('useLiveSeriesWebSocket', () => {
     let isHidden = false
     const hiddenSpy = spyOnAccessor(document, 'hidden', 'get').mockImplementation(() => isHidden)
     const { result, socket, unmount } = mountHook()
-    act(() => socket.emitMessage({ type: 'subscribe', data: [{ symbol: 'BTC', value: 100, timestamp: now - 1_000 }] }))
+    act(() => socket.emitMessage({ snapshot: true, data: [{ symbol: 'BTC', value: 100, timestamp: now - 1_000 }] }))
 
     act(() => {
       isHidden = true
@@ -512,7 +590,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => {
       firstResumedSocket.emitOpen()
       firstResumedSocket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [
           { symbol: 'BTC', value: 101, timestamp: now - 1_000 },
           { symbol: 'BTC', value: 102, timestamp: latestTimestamp },
@@ -535,7 +613,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => {
       secondResumedSocket.emitOpen()
       secondResumedSocket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [
           { symbol: 'BTC', value: 101, timestamp: latestTimestamp - 1_000 },
           { symbol: 'BTC', value: 102.5, timestamp: latestTimestamp },
@@ -546,7 +624,9 @@ describe('useLiveSeriesWebSocket', () => {
       [latestTimestamp - 1_000, 101],
       [latestTimestamp, 102.5],
     ])
-    expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
+    expect(
+      JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:price.crypto:chainlink:spot:BTC')!),
+    ).toEqual({
       price: 102,
       timestamp: latestTimestamp,
     })
@@ -554,7 +634,7 @@ describe('useLiveSeriesWebSocket', () => {
     const restoredData = result.current.data
     act(() =>
       secondResumedSocket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 1,
         timestamp: latestTimestamp - 1,
@@ -564,7 +644,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       secondResumedSocket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 103,
         timestamp: now,
@@ -573,14 +653,16 @@ describe('useLiveSeriesWebSocket', () => {
     const newerData = result.current.data
     act(() =>
       secondResumedSocket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 1,
         timestamp: latestTimestamp + 1,
       }),
     )
     expect(result.current.data).toBe(newerData)
-    expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
+    expect(
+      JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:price.crypto:chainlink:spot:BTC')!),
+    ).toEqual({
       price: 103,
       timestamp: now,
     })
@@ -597,7 +679,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => {
       thirdResumedSocket.emitOpen()
       thirdResumedSocket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 103.5, timestamp: acceptedTimestamp }],
       })
     })
@@ -606,7 +688,7 @@ describe('useLiveSeriesWebSocket', () => {
     now += LIVE_DATA_RETENTION_MS + 1_000
     act(() =>
       thirdResumedSocket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 105,
         timestamp: now,
@@ -625,7 +707,7 @@ describe('useLiveSeriesWebSocket', () => {
     const { result, socket: initialSocket, unmount } = mountHook()
     let socket = initialSocket
 
-    act(() => socket.emitMessage({ type: 'subscribe', data: [{ symbol: 'BTC', value: 100, timestamp: now }] }))
+    act(() => socket.emitMessage({ snapshot: true, data: [{ symbol: 'BTC', value: 100, timestamp: now }] }))
 
     for (const [hiddenPrice, firstPrice, lastPrice] of [
       [110, 120, 130],
@@ -635,7 +717,7 @@ describe('useLiveSeriesWebSocket', () => {
         isHidden = true
         document.dispatchEvent(new Event('visibilitychange'))
         now += 2_000
-        socket.emitMessage({ type: 'update', symbol: 'BTC', value: hiddenPrice, timestamp: now })
+        socket.emitMessage({ snapshot: false, symbol: 'BTC', value: hiddenPrice, timestamp: now })
       })
       expect(result.current.data.at(-1)?.[SERIES_KEY]).not.toBe(hiddenPrice)
 
@@ -653,9 +735,9 @@ describe('useLiveSeriesWebSocket', () => {
       }))
       act(() => {
         socket.emitOpen()
-        socket.emitMessage({ type: 'subscribe', data: snapshot })
-        socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice + 1, timestamp: now + 1 })
-        socket.emitMessage({ type: 'update', symbol: 'BTC', value: lastPrice, timestamp: now + 2 })
+        socket.emitMessage({ snapshot: true, data: snapshot })
+        socket.emitMessage({ snapshot: false, symbol: 'BTC', value: firstPrice + 1, timestamp: now + 1 })
+        socket.emitMessage({ snapshot: false, symbol: 'BTC', value: lastPrice, timestamp: now + 2 })
       })
 
       expect(result.current.data).toHaveLength(40)
@@ -669,15 +751,17 @@ describe('useLiveSeriesWebSocket', () => {
       expect(result.current.data.at(-1)?.[SERIES_KEY]).toBe(lastPrice)
       expect(result.current.data.some((point) => point[SERIES_KEY] === firstPrice + 1)).toBe(false)
       const resumedData = result.current.data
-      act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: firstPrice + 1, timestamp: now - 1_249 }))
+      act(() => socket.emitMessage({ snapshot: false, symbol: 'BTC', value: firstPrice + 1, timestamp: now - 1_249 }))
       expect(result.current.data).toBe(resumedData)
 
-      act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: lastPrice + 10, timestamp: now }))
+      act(() => socket.emitMessage({ snapshot: false, symbol: 'BTC', value: lastPrice + 10, timestamp: now }))
       const newerData = result.current.data
       expect(newerData.at(-1)?.[SERIES_KEY]).toBe(lastPrice + 10)
-      act(() => socket.emitMessage({ type: 'update', symbol: 'BTC', value: 1, timestamp: now - 500 }))
+      act(() => socket.emitMessage({ snapshot: false, symbol: 'BTC', value: 1, timestamp: now - 500 }))
       expect(result.current.data).toBe(newerData)
-      expect(JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:crypto_prices:BTC')!)).toEqual({
+      expect(
+        JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:price.crypto:chainlink:spot:BTC')!),
+      ).toEqual({
         price: lastPrice + 10,
         timestamp: now,
       })
@@ -693,8 +777,9 @@ describe('useLiveSeriesWebSocket', () => {
     const view = renderHook(
       ({ subscriptionSymbol }) =>
         useLiveSeriesWebSocket({
-          topic: 'crypto_prices',
-          eventType: 'price',
+          topic: 'price.crypto',
+          provider: 'chainlink',
+          windowSeconds: null,
           eventEndTimestamp: null,
           subscriptionSymbol,
           isLiveView: true,
@@ -706,7 +791,7 @@ describe('useLiveSeriesWebSocket', () => {
 
     act(() =>
       firstSocket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'BTC', value: 100, timestamp: now - 1_000 }],
       }),
     )
@@ -714,7 +799,7 @@ describe('useLiveSeriesWebSocket', () => {
     now += LIVE_DATA_RETENTION_MS + 1_000
     act(() =>
       firstSocket.emitMessage({
-        type: 'update',
+        snapshot: false,
         symbol: 'BTC',
         value: 120,
         timestamp: now,
@@ -733,7 +818,7 @@ describe('useLiveSeriesWebSocket', () => {
     act(() => nextSocket.emitOpen())
     act(() =>
       nextSocket.emitMessage({
-        type: 'subscribe',
+        snapshot: true,
         data: [{ symbol: 'ETH', value: 200, timestamp: now }],
       }),
     )

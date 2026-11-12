@@ -4337,7 +4337,8 @@ export const EventRepository = {
         .select({
           series_slug: event_live_chart_configs.series_slug,
           topic: event_live_chart_configs.topic,
-          event_type: event_live_chart_configs.event_type,
+          provider: event_live_chart_configs.provider,
+          window_seconds: event_live_chart_configs.window_seconds,
           symbol: event_live_chart_configs.symbol,
           display_name: event_live_chart_configs.display_name,
           display_symbol: event_live_chart_configs.display_symbol,
