@@ -402,11 +402,11 @@ function EventLiveSeriesChartContent({
   const persistedFallbackPrice = feedUnavailable ? null : snapshotFallbackPrice
 
   const isMarketClosed = useMemo(() => {
-    if (marketStatus != null) {
-      return marketStatus === 'closed'
-    }
     if (realtimeTopic.trim().toLowerCase() !== 'price.equity') {
       return false
+    }
+    if (marketStatus != null) {
+      return marketStatus === 'closed'
     }
     if (isGoldDailySeries(config.series_slug)) {
       return !isGoldMarketSessionOpen(nowMs)

@@ -133,10 +133,12 @@ describe('useLiveSeriesWebSocket', () => {
     const { socket, result } = mountHook()
     act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now, market_status: 'closed' }))
     expect(result.current.marketStatus).toBe('closed')
+    act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now }))
+    expect(result.current.marketStatus).toBe('closed')
     act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now, market_status: 'unknown' }))
     expect(result.current.marketStatus).toBe('unknown')
     act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now }))
-    expect(result.current.marketStatus).toBeNull()
+    expect(result.current.marketStatus).toBe('unknown')
   })
 
   it('clears a discontinuous stream and reconnects for a snapshot', () => {

@@ -259,10 +259,10 @@ export function useLiveSeriesWebSocket({
         }
         heartbeatController?.markActivity(socket, arrivalTimestamp)
         const sourceMarketStatus = payload.payload?.market_status
-        setMarketStatus(
+        setMarketStatus((previous) =>
           sourceMarketStatus === 'open' || sourceMarketStatus === 'closed' || sourceMarketStatus === 'unknown'
             ? sourceMarketStatus
-            : null,
+            : previous,
         )
 
         const latest = wsUpdatesForRender.at(-1)
