@@ -340,9 +340,10 @@ describe('useLiveSeriesPriceSnapshot', () => {
       await advanceTimersByTimeAsync(75_000)
     })
     expect(result.current.referenceSnapshot?.closing_price).toBeNull()
-    now += 10_000
+    const refreshInterval = minutes === 1440 ? 60_000 : 10_000
+    now += refreshInterval
     await act(async () => {
-      await advanceTimersByTimeAsync(10_000)
+      await advanceTimersByTimeAsync(refreshInterval)
     })
     expect(result.current.referenceSnapshot?.closing_price).toBe(105)
     expect(fetchMock).toHaveBeenCalledTimes(3)
@@ -522,5 +523,58 @@ describe('useLiveSeriesPriceSnapshot', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(result.current.referenceSnapshot?.closing_price).toBe(4150)
+  })
+  it('keeps polling a delayed daily Chainlink close beyond five minutes and stops when available', async () => {
+    useFakeTimers()
+    const eventEndTimestamp = now - 10 * 60_000
+    const eventStartTimestamp = eventEndTimestamp - 24 * 60 * 60_000
+    function snapshot(closingPrice: number | null) {
+      return {
+        instrument: 'BTC',
+        interval: '1d',
+        source: 'chainlink',
+        event_window_start_ms: eventStartTimestamp,
+        event_window_end_ms: eventEndTimestamp,
+        opening_price: 100,
+        closing_price: closingPrice,
+        is_event_closed: true,
+      }
+    }
+    const fetchMock = mock()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot(101) })
+    stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config: {
+          series_slug: 'chainlink-daily-delayed-close-test',
+          topic: 'price.crypto.twap',
+          provider: 'chainlink',
+          window_seconds: 60,
+          active_window_minutes: 1440,
+        } as EventLiveChartConfig,
+        subscriptionSymbol: 'BTC',
+        explicitEndTimestamp: eventEndTimestamp,
+        startTimestamp: eventStartTimestamp,
+      }),
+    )
+    await act(async () => {
+      await advanceTimersByTimeAsync(0)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.current.referenceSnapshot?.closing_price).toBeNull()
+
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.referenceSnapshot?.closing_price).toBe(101)
+
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

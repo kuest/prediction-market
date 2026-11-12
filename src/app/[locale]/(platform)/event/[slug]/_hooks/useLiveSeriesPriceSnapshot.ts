@@ -308,13 +308,17 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   const isGoldDaily = isGoldDailySeries(request.seriesSlug)
   const isEventBoundEquity =
     request.seriesSlug === 'hood-daily-up-or-down' || request.seriesSlug === 'coin-daily-up-or-down'
-  const closeRefreshWindowMs =
-    isGoldDaily || isEventBoundEquity ? GOLD_CLOSE_REFRESH_WINDOW_MS : BINANCE_CLOSE_REFRESH_WINDOW_MS
-  const closeRefreshIntervalMs =
-    isGoldDaily || isEventBoundEquity ? GOLD_CLOSE_REFRESH_INTERVAL_MS : BINANCE_CLOSE_REFRESH_INTERVAL_MS
+  const isChainlinkDaily = request.activeWindowMinutes === 1440 && request.topic === 'price.crypto.twap:chainlink:60'
+  const needsExtendedCloseRefresh = isGoldDaily || isEventBoundEquity || isChainlinkDaily
+  const closeRefreshWindowMs = needsExtendedCloseRefresh
+    ? GOLD_CLOSE_REFRESH_WINDOW_MS
+    : BINANCE_CLOSE_REFRESH_WINDOW_MS
+  const closeRefreshIntervalMs = needsExtendedCloseRefresh
+    ? GOLD_CLOSE_REFRESH_INTERVAL_MS
+    : BINANCE_CLOSE_REFRESH_INTERVAL_MS
 
   function getCloseRefreshIntervalMs(eventEndTimestamp: number) {
-    return (isGoldDaily || isEventBoundEquity) && Date.now() >= eventEndTimestamp + GOLD_CLOSE_FAST_REFRESH_WINDOW_MS
+    return needsExtendedCloseRefresh && Date.now() >= eventEndTimestamp + GOLD_CLOSE_FAST_REFRESH_WINDOW_MS
       ? GOLD_CLOSE_SLOW_REFRESH_INTERVAL_MS
       : closeRefreshIntervalMs
   }
