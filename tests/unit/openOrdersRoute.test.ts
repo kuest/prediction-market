@@ -187,7 +187,7 @@ describe('open orders routes', () => {
     )
   })
 
-  it('resolves the real condition for a portfolio asset-only filter', async () => {
+  it.each(['123', '123:0'])('resolves the real condition for a portfolio asset-only filter: %s', async (assetId) => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1', address: address('01') })
     mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
       clob: { key: 'api-key', secret: 'secret', passphrase: 'passphrase' },
@@ -195,7 +195,9 @@ describe('open orders routes', () => {
     mocks.findOutcome.mockResolvedValueOnce({ condition_id: 'cond-1' })
     mocks.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ data: [], next_cursor: 'LTE=' }) })
     const { GET } = await import('@/app/api/open-orders/route')
-    const response = await GET(new Request('https://example.com/api/open-orders?asset_id=123&next_cursor=cursor-1'))
+    const response = await GET(
+      new Request(`https://example.com/api/open-orders?asset_id=${assetId}&next_cursor=cursor-1`),
+    )
     expect(response.status).toBe(200)
     expect(mocks.findOutcome).toHaveBeenCalledWith({ where: { token_id: '123' }, columns: { condition_id: true } })
     expect(mocks.fetch).toHaveBeenCalledWith(
@@ -204,6 +206,28 @@ describe('open orders routes', () => {
         headers: expect.objectContaining({ KUEST_ADDRESS: address('01'), KUEST_API_KEY: 'api-key' }),
       }),
     )
+  })
+
+  it.each([false, true])('normalizes a suffixed asset with a supplied market (invalid=%s)', async (invalid) => {
+    mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1', address: address('01') })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'api-key', secret: 'secret', passphrase: 'passphrase' },
+    })
+    mocks.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ data: [], next_cursor: 'LTE=' }) })
+    const { GET } = await import('@/app/api/open-orders/route')
+    const assetId = invalid ? ':0' : '123:0'
+    const response = await GET(new Request(`https://example.com/api/open-orders?market=cond-1&asset_id=${assetId}`))
+    expect(mocks.findOutcome).not.toHaveBeenCalled()
+    if (invalid) {
+      expect(response.status).toBe(400)
+      expect(mocks.fetch).not.toHaveBeenCalled()
+    } else {
+      expect(response.status).toBe(200)
+      expect(mocks.fetch).toHaveBeenCalledWith(
+        'https://clob.local/data/orders?market=cond-1&asset_id=123',
+        expect.any(Object),
+      )
+    }
   })
 
   it('rejects an unresolved asset without broadening the authenticated request', async () => {
