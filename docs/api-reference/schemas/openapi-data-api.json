@@ -103,9 +103,7 @@
                 "INITIAL",
                 "TOKENS",
                 "CASHPNL",
-                "PERCENTPNL",
                 "TITLE",
-                "RESOLVING",
                 "PRICE",
                 "AVGPRICE"
               ],
@@ -330,7 +328,7 @@
             "schema": {
               "type": "string",
               "enum": ["REALIZEDPNL", "TITLE", "PRICE", "AVGPRICE", "TIMESTAMP"],
-              "default": "REALIZEDPNL"
+              "default": "TIMESTAMP"
             }
           },
           {
@@ -788,7 +786,7 @@
     "/activity": {
       "get": {
         "summary": "Get wallet activity",
-        "description": "Returns the cached user activity feed. Today it only surfaces trade rows and ignores other filters such as `type` and `side`.",
+        "description": "Returns wallet trades and activity events with market, activity type, time range, and sorting filters. The `side` filter applies only to trade rows.",
         "tags": ["Activity"],
         "parameters": [
           {
@@ -819,6 +817,77 @@
             "schema": {
               "type": "integer",
               "example": 0
+            }
+          },
+          {
+            "name": "market",
+            "in": "query",
+            "description": "Comma-separated condition IDs. Also accepts conditionId or marketId as aliases.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Comma-separated activity types, for example TRADE, SPLIT, MERGE, or REDEEM. Omit to return all types.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "side",
+            "in": "query",
+            "description": "Limit trade rows to BUY or SELL. Does not filter non-trade activity.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "BUY",
+                "SELL"
+              ]
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "description": "Inclusive start timestamp in Unix seconds.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "description": "Inclusive end timestamp in Unix seconds.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "sortBy",
+            "in": "query",
+            "description": "Sort column for the response.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "TIMESTAMP",
+                "TOKENS",
+                "CASH"
+              ],
+              "default": "TIMESTAMP"
+            }
+          },
+          {
+            "name": "sortDirection",
+            "in": "query",
+            "description": "Sort direction.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "default": "DESC"
             }
           }
         ],
@@ -951,11 +1020,11 @@
           {
             "name": "limit",
             "in": "query",
-            "description": "Maximum rows to return (max 10,000).",
+            "description": "Maximum rows to return (max 1,000).",
             "schema": {
               "type": "integer",
               "minimum": 0,
-              "maximum": 10000,
+              "maximum": 1000,
               "default": 100
             }
           },
@@ -1026,6 +1095,30 @@
             "schema": {
               "type": "string",
               "enum": ["BUY", "SELL"]
+            }
+          },
+          {
+            "name": "cursorTimestamp",
+            "in": "query",
+            "description": "Timestamp of the last trade from the previous page. Supply cursorTimestamp, cursorId, and cursorUser together; cursor pagination ignores offset.",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursorId",
+            "in": "query",
+            "description": "ID of the last trade from the previous page. Requires cursorTimestamp and cursorUser.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursorUser",
+            "in": "query",
+            "description": "proxyWallet of the last trade from the previous page. Requires cursorTimestamp and cursorId.",
+            "schema": {
+              "type": "string"
             }
           }
         ],

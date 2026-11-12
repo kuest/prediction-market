@@ -830,7 +830,7 @@
     "/comments": {
       "get": {
         "summary": "List comments",
-        "description": "Lists Gamma-compatible comments by event, market, or series scope. Backed by community.kuest.com.",
+        "description": "Lists Gamma-compatible comments by event, market, or series scope.",
         "tags": ["Comments"],
         "parameters": [
           {

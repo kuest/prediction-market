@@ -20,7 +20,7 @@ The channel is public and does not require CLOB credentials.
 | ------------------------ | -------- | ---------------------------------------------- |
 | `type`                   | string   | Must be `market`                               |
 | `assets_ids`             | string[] | Outcome token IDs to stream                    |
-| `custom_feature_enabled` | boolean  | Enables `best_bid_ask` and `new_market` events |
+| `custom_feature_enabled` | boolean  | Enables `best_bid_ask`, `new_market`, and `market_resolved` events |
 
 Use one connection for multiple token IDs when possible.
 
@@ -34,6 +34,7 @@ Use one connection for multiple token IDs when possible.
 | `last_trade_price` | Latest matched trade                                            |
 | `best_bid_ask`     | Top-of-book update; requires custom features                    |
 | `new_market`       | Newly ingested market metadata; requires custom features        |
+| `market_resolved`  | Resolution update with `winning_asset_id` and `winning_outcome`; requires custom features |
 
 ## Keep local state consistent
 

@@ -1,14 +1,14 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Kuest CLOB API",
+    "title": "CLOB API",
     "version": "1.0.0",
-    "description": "Specification for the Kuest central limit order book service. Import this file into Paw (RapidAPI Client) to explore and test the available endpoints."
+    "description": "Specification for the central limit order book service. Import this file into Paw (RapidAPI Client) to explore and test the available endpoints."
   },
   "servers": [
     {
-      "url": "http://localhost:3000",
-      "description": "Local development"
+      "url": "https://clob.kuest.com",
+      "description": "Production"
     }
   ],
   "tags": [

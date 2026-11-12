@@ -2,6 +2,6 @@
   "title": "Getting Started",
   "description": "Create your account, fund your wallet, and claim winnings.",
   "icon": "CirclePlay",
-  "pages": ["how-to-sign-up", "how-to-deposit", "how-to-claim"],
+  "pages": ["how-to-sign-up", "how-to-deposit", "how-to-withdraw", "how-to-claim"],
   "defaultOpen": true
 }

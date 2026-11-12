@@ -34,9 +34,7 @@ lower-level control.
 
 ## Unified TypeScript and Python quickstart
 
-For registry installs, the packages are `@kuest/sdk` (TypeScript) and `kuest-sdk`
-(Python, imported as `market_sdk`). Downloaded operator bundles use neutral package
-names: `@market-sdk/client` in the TypeScript workspace and `market-sdk` as the
+Downloaded operator bundles use neutral package names: `@market-sdk/client` in the TypeScript workspace and `market-sdk` as the
 Python distribution. A bundle includes `.sdk/site-config.json` for its
 public builder attribution, market scope, and optional geoblock settings. Keep signing
 keys and API credentials outside that file. Supply approved service URLs and a Polygon
@@ -65,8 +63,6 @@ can run `python3 -m pip install -e .` from the extracted bundle.
     console.log(book)
     ```
 
-    If installed from npm instead, use `@kuest/sdk` and `@kuest/sdk/node` for these imports.
-
   </Tab>
 
   <Tab>
@@ -90,53 +86,34 @@ can run `python3 -m pip install -e .` from the extracted bundle.
   </Tab>
 
   <Tab>
-    The Rust example uses the separate CLOB package on Polygon. Rust does not have a unified SDK bundle.
+    Use the extracted Rust CLOB bundle. Save the example below as
+    `examples/read_order_book.rs`, then run this from the bundle root with
+    `CLOB_URL` and `CLOB_TOKEN_ID` set:
 
-    ```toml
-    [dependencies]
-    kuest-client-sdk = { version = "2", features = ["clob"] }
-    rust_decimal = "1"
-    rust_decimal_macros = "1"
-    tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+    ```bash
+    cargo run --example read_order_book --features clob
     ```
+
+    The imports below match the crate name in the downloaded bundle.
 
     ```rust
     use std::str::FromStr as _;
 
-    use alloy::signers::{local::LocalSigner, Signer as _};
-    use kuest_client_sdk::clob::types::{OrderType, Side, SignatureType};
+    use kuest_client_sdk::clob::types::request::OrderBookSummaryRequest;
     use kuest_client_sdk::clob::{Client, Config};
-    use kuest_client_sdk::types::{Address, U256};
-    use kuest_client_sdk::POLYGON;
-    use rust_decimal::Decimal;
-    use rust_decimal_macros::dec;
+    use kuest_client_sdk::types::U256;
 
     #[tokio::main]
     async fn main() -> kuest_client_sdk::Result<()> {
-        let signer = LocalSigner::from_str(&std::env::var("PRIVATE_KEY")?)?
-            .with_chain_id(Some(POLYGON));
-        let funder = Address::from_str(&std::env::var("DEPOSIT_WALLET")?)?;
         let token_id = U256::from_str(&std::env::var("CLOB_TOKEN_ID")?)?;
         let clob_url = std::env::var("CLOB_URL")?;
-
-        let client = Client::new(&clob_url, Config::default())?
-            .authentication_builder(&signer)
-            .signature_type(SignatureType::DepositWallet)
-            .funder(funder)
-            .authenticate()
-            .await?;
-
-        let order = client.limit_order()
+        let client = Client::new(&clob_url, Config::default())?;
+        let request = OrderBookSummaryRequest::builder()
             .token_id(token_id)
-            .side(Side::Buy)
-            .price(dec!(0.42))
-            .size(Decimal::new(5, 0))
-            .order_type(OrderType::GTC)
-            .build()
-            .await?;
+            .build();
 
-        let result = client.post_order(client.sign(&signer, order).await?).await?;
-        println!("{result:?}");
+        let book = client.order_book(&request).await?;
+        println!("{book:?}");
         Ok(())
     }
     ```
