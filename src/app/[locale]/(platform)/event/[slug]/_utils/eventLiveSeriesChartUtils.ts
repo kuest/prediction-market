@@ -239,6 +239,12 @@ export function classifyLiveSeriesReference({
       : 'other'
 }
 
+export function resolveLiveSeriesReferenceStart(start: number | null, end: number, activeWindowMinutes: number) {
+  return start != null && Number.isFinite(start) && start > 0 && start < end
+    ? start
+    : Math.max(0, end - activeWindowMinutes * 60_000)
+}
+
 export function isCanonicalChainlinkCloseSnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
   return snapshot?.source === 'chainlink' && (snapshot.interval === '1d' || snapshot.interval === '1h')
 }
