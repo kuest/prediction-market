@@ -482,7 +482,7 @@
             "name": "market",
             "in": "query",
             "required": false,
-            "description": "Filter by market/condition identifier.",
+            "description": "Filter by market/condition identifier. Required when asset_id is provided.",
             "schema": {
               "type": "string"
             }
@@ -491,7 +491,7 @@
             "name": "asset_id",
             "in": "query",
             "required": false,
-            "description": "Filter by asset (token) identifier.",
+            "description": "Filter by asset (token) identifier. Requires market.",
             "schema": {
               "type": "string"
             }
@@ -5910,7 +5910,6 @@
       "Order": {
         "type": "object",
         "required": [
-          "associateTrades",
           "id",
           "status",
           "market",
@@ -5925,13 +5924,6 @@
           "createdAt"
         ],
         "properties": {
-          "associateTrades": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Identifiers of trades that include this order."
-          },
           "id": {
             "type": "string",
             "description": "Order ULID assigned by the engine."
