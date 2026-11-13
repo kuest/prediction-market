@@ -2,7 +2,7 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM public.event_live_chart_configs
-    WHERE topic LIKE 'crypto_prices%'
+    WHERE starts_with(topic, 'crypto_prices')
       AND topic NOT IN ('crypto_prices', 'crypto_prices_binance', 'crypto_prices_chainlink', 'crypto_prices_twap_thirty', 'crypto_prices_twap_sixty')
   ) THEN
     RAISE EXCEPTION 'Unsupported custom crypto price topic: choose a supported source before migrating live price feeds';
@@ -11,10 +11,10 @@ END $$;
 ALTER TABLE public.event_live_chart_configs ADD COLUMN provider text;
 ALTER TABLE public.event_live_chart_configs ADD COLUMN window_seconds integer;
 UPDATE public.event_live_chart_configs SET
-  provider = CASE WHEN topic = 'equity_prices' THEN 'pyth' WHEN topic IN ('crypto_prices', 'crypto_prices_binance') THEN 'binance' WHEN topic LIKE 'crypto_prices%' THEN 'chainlink' ELSE NULL END,
+  provider = CASE WHEN topic = 'equity_prices' THEN 'pyth' WHEN topic IN ('crypto_prices', 'crypto_prices_binance') THEN 'binance' WHEN starts_with(topic, 'crypto_prices') THEN 'chainlink' ELSE NULL END,
   window_seconds = CASE WHEN topic = 'crypto_prices_twap_thirty' THEN 30 WHEN topic = 'crypto_prices_twap_sixty' THEN 60 ELSE NULL END,
-  symbol = CASE WHEN topic LIKE 'crypto_prices%' THEN regexp_replace(regexp_replace(lower(symbol), '[^a-z0-9]', '', 'g'), 'usdt$', 'usd') ELSE symbol END,
-  topic = CASE WHEN topic = 'equity_prices' THEN 'price.equity' WHEN topic IN ('crypto_prices_twap_thirty', 'crypto_prices_twap_sixty') THEN 'price.crypto.twap' WHEN topic LIKE 'crypto_prices%' THEN 'price.crypto' ELSE topic END;
+  symbol = CASE WHEN starts_with(topic, 'crypto_prices') THEN regexp_replace(regexp_replace(lower(symbol), '[^a-z0-9]', '', 'g'), 'usdt$', 'usd') ELSE symbol END,
+  topic = CASE WHEN topic = 'equity_prices' THEN 'price.equity' WHEN topic IN ('crypto_prices_twap_thirty', 'crypto_prices_twap_sixty') THEN 'price.crypto.twap' WHEN starts_with(topic, 'crypto_prices') THEN 'price.crypto' ELSE topic END;
 UPDATE public.event_live_chart_configs SET topic = 'price.crypto.twap', provider = 'chainlink', window_seconds = 60
 WHERE topic LIKE 'price.crypto%' AND (series_slug, active_window_minutes) IN (
   ('bnb-up-or-down-daily', 1440),
