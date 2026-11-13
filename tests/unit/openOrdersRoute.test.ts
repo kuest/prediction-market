@@ -230,6 +230,20 @@ describe('open orders routes', () => {
     }
   })
 
+  it.each(['', '   ', ':0'])('rejects a present asset filter without a token ID: %j', async (assetId) => {
+    mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1', address: address('01') })
+    mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({
+      clob: { key: 'api-key', secret: 'secret', passphrase: 'passphrase' },
+    })
+    const { GET } = await import('@/app/api/open-orders/route')
+    const response = await GET(
+      new Request(`https://example.com/api/open-orders?asset_id=${encodeURIComponent(assetId)}`),
+    )
+    expect(response.status).toBe(400)
+    expect(mocks.findOutcome).not.toHaveBeenCalled()
+    expect(mocks.fetch).not.toHaveBeenCalled()
+  })
+
   it('rejects an unresolved asset without broadening the authenticated request', async () => {
     mocks.getCurrentUser.mockResolvedValueOnce({ id: 'user-1', address: address('01') })
     mocks.getUserTradingAuthSecrets.mockResolvedValueOnce({

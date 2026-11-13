@@ -49,9 +49,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const idFilter = searchParams.get('id')?.trim() || undefined
     let marketFilter = searchParams.get('market')?.trim() || undefined
-    const rawAssetIdFilter = searchParams.get('asset_id')?.trim() || undefined
+    const rawAssetIdFilter = searchParams.get('asset_id')
     const assetIdFilter = rawAssetIdFilter?.split(':')[0]?.trim()
-    if (rawAssetIdFilter && !assetIdFilter) {
+    if (rawAssetIdFilter !== null && !assetIdFilter) {
       return NextResponse.json({ error: 'An asset filter must include a token ID.' }, { status: 400 })
     }
     const nextCursor = searchParams.get('next_cursor')?.trim() || undefined
