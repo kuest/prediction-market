@@ -71,7 +71,7 @@ export async function readArbitrageExecution({
   previous: ArbitrageExecution
   tokenId: string
   readOrder: (id: string) => Promise<unknown>
-  readTrades: (market: string, cursor?: string) => Promise<{ trades: unknown[]; nextCursor: string }>
+  readTrades: (market: string, cursor?: string, after?: string) => Promise<{ trades: unknown[]; nextCursor: string }>
 }): Promise<ArbitrageExecution> {
   if (!previous.orderId || previous.state === 'failed' || previous.state === 'confirmed') {
     return previous
@@ -92,14 +92,29 @@ export async function readArbitrageExecution({
       }
       return { ...previous, state: 'pending' }
     }
+    const rawCreatedAt = order.created_at
+    const createdAt =
+      typeof rawCreatedAt === 'number'
+        ? rawCreatedAt < 1e12
+          ? rawCreatedAt * 1000
+          : rawCreatedAt
+        : typeof rawCreatedAt === 'string' && /^\d+(?:\.\d+)?$/u.test(rawCreatedAt)
+          ? Number(rawCreatedAt) < 1e12
+            ? Number(rawCreatedAt) * 1000
+            : Number(rawCreatedAt)
+          : typeof rawCreatedAt === 'string'
+            ? Date.parse(rawCreatedAt)
+            : Number.NaN
+    const after = Number.isFinite(createdAt) && createdAt > 0 ? String(Math.floor(createdAt / 1000) - 1) : undefined
+    const scanStartedAt = Date.now()
     const trades: RecordValue[] = []
     const seenTrades = new Set<string>()
     const seenCursors = new Set<string>()
     let cursor: string | undefined
     let complete = false
     let discoveredShares = 0
-    for (let pageIndex = 0; pageIndex < 20; pageIndex += 1) {
-      const page = await readWithTimeout(readTrades(order.market, cursor))
+    while (Date.now() - scanStartedAt < 30_000) {
+      const page = await readWithTimeout(readTrades(order.market, cursor, after))
       if (!Array.isArray(page.trades) || typeof page.nextCursor !== 'string') {
         throw new Error('The trade history could not be verified.')
       }

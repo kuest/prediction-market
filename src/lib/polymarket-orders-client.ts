@@ -223,8 +223,8 @@ export async function reconcilePolymarketOrder(
         previous,
         tokenId: args.tokenId,
         readOrder: (id) => client.getOrder(id),
-        readTrades: async (market, cursor) => {
-          const page = await client.getTradesPaginated({ market }, cursor)
+        readTrades: async (market, cursor, after) => {
+          const page = await client.getTradesPaginated({ market, ...(after ? { after } : {}) }, cursor)
           return { trades: page.trades, nextCursor: page.next_cursor }
         },
       }),
@@ -292,8 +292,8 @@ export async function preparePolymarketOrder(args: PreparePolymarketOrderArgs) {
           previous,
           tokenId: args.tokenId,
           readOrder: (id) => client.getOrder(id),
-          readTrades: async (market, cursor) => {
-            const page = await client.getTradesPaginated({ market }, cursor)
+          readTrades: async (market, cursor, after) => {
+            const page = await client.getTradesPaginated({ market, ...(after ? { after } : {}) }, cursor)
             return { trades: page.trades, nextCursor: page.next_cursor }
           },
         }),

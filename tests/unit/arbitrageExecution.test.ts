@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from 'bun:test'
+import { describe, expect, it, mock, spyOn } from 'bun:test'
 
 import { parseArbitragePlacement, readArbitrageExecution, summarizeArbitrageExecution } from '@/lib/arbitrage-execution'
 
@@ -162,8 +162,8 @@ describe('arbitrage execution confirmation', () => {
         readTrades: pages,
       }),
     ).toMatchObject({ state: 'confirmed', shares: 20 })
-    expect(pages).toHaveBeenNthCalledWith(1, 'market-1', undefined)
-    expect(pages).toHaveBeenNthCalledWith(2, 'market-1', 'page-2')
+    expect(pages).toHaveBeenNthCalledWith(1, 'market-1', undefined, undefined)
+    expect(pages).toHaveBeenNthCalledWith(2, 'market-1', 'page-2', undefined)
   })
 
   it('stops once all matched quantity is found without scanning older market trades', async () => {
@@ -192,17 +192,41 @@ describe('arbitrage execution confirmation', () => {
     expect(pages).toHaveBeenCalledTimes(2)
   })
 
-  it('bounds history reads without falsely confirming a truncated scan', async () => {
+  it('finds fills beyond twenty pages using the verified order creation time', async () => {
     let calls = 0
-    expect(
-      await readArbitrageExecution({
+    const afters: Array<string | undefined> = []
+    const result = await readArbitrageExecution({
+      previous: pending,
+      tokenId: '123',
+      readOrder: async () => ({ ...order, created_at: '2026-11-12T00:00:00Z' }),
+      readTrades: async (_market, _cursor, after) => {
+        calls += 1
+        afters.push(after)
+        return calls === 25 ? { trades: [trade], nextCursor: 'LTE=' } : { trades: [], nextCursor: String(calls) }
+      },
+    })
+    expect(result.state).toBe('confirmed')
+    expect(calls).toBe(25)
+    expect(new Set(afters)).toEqual(new Set([String(Date.parse('2026-11-12T00:00:00Z') / 1000 - 1)]))
+  })
+
+  it('keeps a slow incomplete scan pending rather than claiming confirmation', async () => {
+    let now = 0
+    const clock = spyOn(Date, 'now').mockImplementation(() => now)
+    try {
+      const result = await readArbitrageExecution({
         previous: pending,
         tokenId: '123',
         readOrder: async () => order,
-        readTrades: async () => ({ trades: [{ ...trade, size: '10' }], nextCursor: String(++calls) }),
-      }),
-    ).toMatchObject({ state: 'pending' })
-    expect(calls).toBe(20)
+        readTrades: async () => {
+          now += 30_000
+          return { trades: [], nextCursor: 'later' }
+        },
+      })
+      expect(result.state).toBe('pending')
+    } finally {
+      clock.mockRestore()
+    }
   })
 
   it('only concludes a balanced hedge from both confirmed actual quantities', () => {
