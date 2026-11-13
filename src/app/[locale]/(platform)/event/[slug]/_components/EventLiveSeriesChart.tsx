@@ -25,7 +25,7 @@ import {
   getVisibleCountdownUnits,
   hexToRgba,
   inferIntervalMsFromSeriesSlug,
-  isCanonicalBinanceDailySnapshot,
+  isCanonicalChainlinkDailySnapshot,
   isCanonicalEventBoundEquityCloseSnapshot,
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
@@ -48,7 +48,7 @@ import {
   normalizeLiveChartPrice,
   normalizeSubscriptionSymbol,
   parseUtcDate,
-  requiresCanonicalBinanceDailyClose,
+  requiresCanonicalChainlinkDailyClose,
   resolveRecentPersistedLivePrice,
   resolveLiveChartPaddedDomainEnd,
   resolveDisplayedLiveSeriesBaselinePrice,
@@ -384,9 +384,10 @@ function EventLiveSeriesChartContent({
     () =>
       classifyLiveSeriesReference({
         topic: realtimeTopic,
+        provider: realtimeFeed.provider,
         activeWindowMinutes: config.active_window_minutes,
       }),
-    [config.active_window_minutes, realtimeTopic],
+    [config.active_window_minutes, realtimeTopic, realtimeFeed.provider],
   )
 
   const { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status, feedUnavailable, marketStatus } =
@@ -494,8 +495,8 @@ function EventLiveSeriesChartContent({
 
     return persistedFallbackPrice.price
   }, [endTimestamp, persistedFallbackPrice])
-  const hasCanonicalBinanceDailySnapshot = isCanonicalBinanceDailySnapshot(referenceSnapshot)
-  const requiresCanonicalBinanceClose = requiresCanonicalBinanceDailyClose({
+  const hasCanonicalChainlinkDailySnapshot = isCanonicalChainlinkDailySnapshot(referenceSnapshot)
+  const requiresCanonicalChainlinkClose = requiresCanonicalChainlinkDailyClose({
     snapshot: referenceSnapshot,
     snapshotStatus: referenceSnapshotStatus,
     seriesClassification: seriesReferenceClassification,
@@ -521,8 +522,8 @@ function EventLiveSeriesChartContent({
       ? (requiresCanonicalGoldClose ? hasCanonicalGoldDailyClose : hasCanonicalEquityDailyClose)
         ? referenceClosingPrice
         : null
-      : requiresCanonicalBinanceClose
-        ? hasCanonicalBinanceDailySnapshot
+      : requiresCanonicalChainlinkClose
+        ? hasCanonicalChainlinkDailySnapshot
           ? referenceClosingPrice
           : null
         : (referenceClosingPrice ?? latestReferencePriceBeforeEnd ?? persistedFallbackPriceBeforeEnd)
@@ -618,7 +619,7 @@ function EventLiveSeriesChartContent({
     }
 
     if (!isFinitePositivePrice(finalPrice)) {
-      return requiresCanonicalBinanceClose ? [] : preCloseData
+      return requiresCanonicalChainlinkClose ? [] : preCloseData
     }
 
     return [
@@ -636,7 +637,7 @@ function EventLiveSeriesChartContent({
     isEventClosed,
     liveFallbackData,
     resumedAtTimestamp,
-    requiresCanonicalBinanceClose,
+    requiresCanonicalChainlinkClose,
     requiresCanonicalEquityClose,
     requiresCanonicalGoldClose,
   ])
@@ -724,7 +725,8 @@ function EventLiveSeriesChartContent({
     finalPrice,
     renderedPrice,
     fallbackCurrentPrice,
-    requiresCanonicalClose: requiresCanonicalBinanceClose || requiresCanonicalGoldClose || requiresCanonicalEquityClose,
+    requiresCanonicalClose:
+      requiresCanonicalChainlinkClose || requiresCanonicalGoldClose || requiresCanonicalEquityClose,
   })
   const resolvedBaselinePrice = referenceOpeningPrice
   const displayedBaselinePrice = resolveDisplayedLiveSeriesBaselinePrice({
