@@ -141,6 +141,7 @@ export function useLiveSeriesWebSocket({
       function buildSubscriptionPayload(action: 'subscribe' | 'unsubscribe') {
         return JSON.stringify({
           op: action,
+          rid: 'live-price',
           subscriptions: [
             {
               channel: topic,
@@ -187,6 +188,13 @@ export function useLiveSeriesWebSocket({
 
         if (payload.op === 'pong') {
           heartbeatController?.markActivity(socket, arrivalTimestamp)
+          return
+        }
+        if (
+          (payload.op === 'error' || payload.op === 'subscribed') &&
+          ((payload.rid != null && payload.rid !== 'live-price') ||
+            (payload.op === 'error' && payload.channel != null && payload.channel !== topic))
+        ) {
           return
         }
         const acknowledgedFilter = payload.filter

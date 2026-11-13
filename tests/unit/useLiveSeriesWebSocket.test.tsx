@@ -116,8 +116,17 @@ describe('useLiveSeriesWebSocket', () => {
     const { socket } = mountHook()
     expect(JSON.parse(socket.sentMessages[0]!)).toEqual({
       op: 'subscribe',
+      rid: 'live-price',
       subscriptions: [{ channel: 'price.crypto', filter: { symbol: 'BTC', provider: 'chainlink' } }],
     })
+  })
+
+  it('ignores errors for a different subscription', () => {
+    const { socket, result } = mountHook()
+    act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now }))
+    act(() => socket.emitRawMessage('{"op":"error","rid":"other","code":"bad_filter","channel":"price.crypto"}'))
+    expect(result.current.feedUnavailable).toBe(false)
+    expect(socket.readyState).toBe(MockWebSocket.OPEN)
   })
 
   it('rejects an acknowledgment for a different price source', () => {

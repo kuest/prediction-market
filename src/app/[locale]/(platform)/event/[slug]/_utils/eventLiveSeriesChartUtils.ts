@@ -26,17 +26,6 @@ export const LIVE_CURSOR_GUIDE_TOP = 10
 export const LIVE_TARGET_MAX_BOTTOM_OFFSET = 10
 export const LIVE_CURRENT_MARKER_OFFSET_X = -34
 export const LIVE_PLOT_CLIP_RIGHT_PADDING = 22
-export const POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS = Date.parse('2026-08-07T00:00:00Z')
-export const POLYMARKET_CHAINLINK_5M_TWAP60_CUTOVER_MS = Date.parse('2026-08-14T00:00:00Z')
-const CHAINLINK_FIVE_MINUTE_SERIES = new Set([
-  'bnb-up-or-down-5m',
-  'btc-up-or-down-5m',
-  'doge-up-or-down-5m',
-  'eth-up-or-down-5m',
-  'hype-up-or-down-5m',
-  'sol-up-or-down-5m',
-  'xrp-up-or-down-5m',
-])
 export const LIVE_PRICE_STORAGE_PREFIX = 'kuest-live-ws-last-price'
 
 export interface PersistedLivePrice {
@@ -226,23 +215,27 @@ export interface LiveSeriesPriceSnapshot {
 }
 
 export type LiveSeriesPriceSnapshotStatus = 'loading' | 'ready' | 'unavailable'
-export type LiveSeriesReferenceClassification = 'binance_daily' | 'other'
+export type LiveSeriesReferenceClassification = 'chainlink_daily' | 'other'
 
 export function classifyLiveSeriesReference({
   topic,
+  provider,
   activeWindowMinutes,
 }: {
   topic: string
+  provider: string | null
   activeWindowMinutes: number
 }): LiveSeriesReferenceClassification {
   const normalizedTopic = topic.trim().toLowerCase()
   const normalizedWindowMinutes = Number(activeWindowMinutes)
 
-  return normalizedTopic.startsWith('price.crypto') && normalizedWindowMinutes === 24 * 60 ? 'binance_daily' : 'other'
+  return normalizedTopic === 'price.crypto.twap' && provider === 'chainlink' && normalizedWindowMinutes === 24 * 60
+    ? 'chainlink_daily'
+    : 'other'
 }
 
-export function isCanonicalBinanceDailySnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
-  return snapshot?.source === 'binance' && snapshot.interval === '1d'
+export function isCanonicalChainlinkDailySnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
+  return snapshot?.source === 'chainlink' && snapshot.interval === '1d'
 }
 
 function hasCanonicalDailyClose({
@@ -314,7 +307,7 @@ export function isCanonicalEventBoundEquityCloseSnapshot({
   )
 }
 
-export function requiresCanonicalBinanceDailyClose({
+export function requiresCanonicalChainlinkDailyClose({
   snapshot,
   snapshotStatus,
   seriesClassification,
@@ -323,11 +316,11 @@ export function requiresCanonicalBinanceDailyClose({
   snapshotStatus: LiveSeriesPriceSnapshotStatus
   seriesClassification: LiveSeriesReferenceClassification
 }) {
-  if (seriesClassification === 'binance_daily') {
+  if (seriesClassification === 'chainlink_daily') {
     return true
   }
 
-  return snapshotStatus === 'ready' && isCanonicalBinanceDailySnapshot(snapshot)
+  return snapshotStatus === 'ready' && isCanonicalChainlinkDailySnapshot(snapshot)
 }
 
 function normalizeTimestamp(value: unknown, fallbackTimestamp = 0) {
@@ -658,7 +651,8 @@ export function normalizeSubscriptionSymbol(topic: string, symbol: string) {
     return trimmed.split(/[/-]/)[0]?.trim().toLowerCase() || trimmed.toLowerCase()
   }
 
-  return trimmed.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const normalized = trimmed.toLowerCase().replace(/[^a-z0-9]/g, '')
+  return topic.startsWith('price.crypto') ? normalized.replace(/usdt$/, 'usd') : normalized
 }
 
 const GOLD_DAILY_SERIES_SLUG = 'gold-daily-up-or-down'
@@ -693,13 +687,9 @@ export function resolveLiveSeriesStartTimestamp({
 }
 
 export function resolveLiveSeriesRealtimeFeed({
-  seriesSlug,
   configuredTopic,
   provider,
   windowSeconds,
-  activeWindowMinutes,
-  eventStartTimestamp,
-  eventEndTimestamp,
 }: {
   seriesSlug: string
   configuredTopic: string
@@ -709,33 +699,10 @@ export function resolveLiveSeriesRealtimeFeed({
   eventStartTimestamp?: number | null
   eventEndTimestamp: number | null
 }) {
-  const feed = { topic: configuredTopic, provider, window_seconds: windowSeconds }
-  if (
-    (activeWindowMinutes === 5 && !CHAINLINK_FIVE_MINUTE_SERIES.has(seriesSlug)) ||
-    configuredTopic !== 'price.crypto' ||
-    provider !== 'chainlink' ||
-    !Number.isFinite(activeWindowMinutes) ||
-    activeWindowMinutes <= 0 ||
-    eventEndTimestamp == null ||
-    !Number.isFinite(eventEndTimestamp)
-  ) {
-    return feed
+  if (configuredTopic === 'price.crypto' || configuredTopic === 'price.crypto.twap') {
+    return { topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60 }
   }
-  const start =
-    eventStartTimestamp != null && Number.isFinite(eventStartTimestamp)
-      ? eventStartTimestamp
-      : eventEndTimestamp - activeWindowMinutes * 60 * 1000
-  if (start < POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS) {
-    return feed
-  }
-  if (activeWindowMinutes === 5 || activeWindowMinutes === 15 || activeWindowMinutes === 240) {
-    return {
-      ...feed,
-      topic: 'price.crypto.twap',
-      window_seconds: activeWindowMinutes === 5 && start < POLYMARKET_CHAINLINK_5M_TWAP60_CUTOVER_MS ? 30 : 60,
-    }
-  }
-  return feed
+  return { topic: configuredTopic, provider, window_seconds: windowSeconds }
 }
 
 export function livePriceFeedKey(config: { topic: string; provider: string | null; window_seconds: number | null }) {
