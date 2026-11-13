@@ -15,6 +15,7 @@ import {
   LIVE_PRICE_STORAGE_PREFIX,
   livePriceFeedKey,
   readPersistedLivePrice,
+  resolveLiveSeriesReferenceStart,
 } from '../_utils/eventLiveSeriesChartUtils'
 
 interface UseLiveSeriesPriceSnapshotOptions {
@@ -133,15 +134,9 @@ function buildPersistedLivePriceStorageKey(topic: string, symbol: string) {
 }
 
 function resolveRequestedWindowStart(request: LiveSeriesPriceSnapshotRequest) {
-  if (request.startTimestamp != null && request.startTimestamp > 0) {
-    return request.startTimestamp
-  }
-
-  if (request.explicitEndTimestamp == null) {
-    return null
-  }
-
-  return request.explicitEndTimestamp - request.activeWindowMinutes * 60 * 1000
+  return request.explicitEndTimestamp == null
+    ? request.startTimestamp
+    : resolveLiveSeriesReferenceStart(request.startTimestamp, request.explicitEndTimestamp, request.activeWindowMinutes)
 }
 
 function hasRequestedOpeningPrice(snapshot: LiveSeriesPriceSnapshot | null, request: LiveSeriesPriceSnapshotRequest) {
@@ -320,7 +315,7 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   const isChainlinkBoundary =
     (request.activeWindowMinutes === 60 || request.activeWindowMinutes === 1440) &&
     request.topic === 'price.crypto.twap:chainlink:60' &&
-    request.source !== 'binance'
+    (request.source == null || request.source === 'chainlink')
   const needsExtendedCloseRefresh = isGoldDaily || isEventBoundEquity || isChainlinkBoundary
   const closeRefreshWindowMs = needsExtendedCloseRefresh
     ? GOLD_CLOSE_REFRESH_WINDOW_MS
@@ -365,7 +360,9 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
         ? snapshot?.source === 'pyth' &&
           snapshot.interval === '1d' &&
           snapshot.instrument === request.subscriptionSymbol.toUpperCase()
-        : snapshot?.source === 'binance' || snapshot?.source === 'chainlink'
+        : request.source != null
+          ? snapshot?.source === request.source
+          : snapshot?.source === 'binance' || snapshot?.source === 'chainlink'
     if (
       !isSubscribed ||
       (snapshot != null && !hasExpectedSource) ||

@@ -329,12 +329,16 @@ describe('useLiveSeriesPriceSnapshot', () => {
     expect(result.current.referenceSnapshot?.opening_price).toBe(101.94)
   })
 
-  it.each([60, 1440])('keeps checking a Chainlink %s-minute close until available', async (minutes) => {
+  it.each([
+    [60, 'chainlink'],
+    [1440, 'chainlink'],
+    [60, 'pyth'],
+  ] as const)('keeps checking a %s-minute %s close until available', async (minutes, source) => {
     useFakeTimers()
     const eventEndTimestamp = now + 10_000
     function snapshot(closingPrice: number | null) {
       return {
-        source: 'chainlink',
+        source,
         opening_price: 100,
         closing_price: closingPrice,
         event_window_end_ms: eventEndTimestamp,
@@ -348,12 +352,13 @@ describe('useLiveSeriesPriceSnapshot', () => {
     const { result } = renderHook(() =>
       useLiveSeriesPriceSnapshot({
         config: {
-          series_slug: `chainlink-close-test-${minutes}`,
+          series_slug: `source-close-test-${minutes}-${source}`,
           topic: 'price.crypto.twap',
           provider: 'chainlink',
           window_seconds: 60,
           active_window_minutes: minutes,
         } as EventLiveChartConfig,
+        source,
         subscriptionSymbol: 'BTC',
         explicitEndTimestamp: eventEndTimestamp,
         startTimestamp: eventEndTimestamp - minutes * 60_000,
@@ -367,7 +372,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       await advanceTimersByTimeAsync(75_000)
     })
     expect(result.current.referenceSnapshot?.closing_price).toBeNull()
-    const refreshInterval = 60_000
+    const refreshInterval = source === 'chainlink' ? 60_000 : 10_000
     now += refreshInterval
     await act(async () => {
       await advanceTimersByTimeAsync(refreshInterval)

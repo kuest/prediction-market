@@ -57,6 +57,7 @@ import {
   resolveLiveSeriesDisplayPrice,
   resolveLiveSeriesRealtimeFeed,
   resolveLiveSeriesHistorySource,
+  resolveLiveSeriesReferenceStart,
   resolveLiveSeriesStartTimestamp,
   SERIES_KEY,
   toCountdownLeftLabel,
@@ -502,7 +503,8 @@ function EventLiveSeriesChartContent({
     referenceSnapshotStatus === 'ready' &&
     isCanonicalChainlinkCloseSnapshot(referenceSnapshot) &&
     referenceSnapshot?.event_window_end_ms === endTimestamp &&
-    referenceSnapshot?.event_window_start_ms === liveSeriesStartTimestamp
+    referenceSnapshot?.event_window_start_ms ===
+      resolveLiveSeriesReferenceStart(liveSeriesStartTimestamp, endTimestamp, config.active_window_minutes)
   const needsCanonicalChainlinkClose = requiresCanonicalChainlinkClose({
     snapshot: referenceSnapshot,
     snapshotStatus: referenceSnapshotStatus,

@@ -30,6 +30,7 @@ import {
   resolveLiveSeriesDisplayPrice,
   resolveLiveSeriesRealtimeFeed,
   resolveLiveSeriesHistorySource,
+  resolveLiveSeriesReferenceStart,
   resolveLiveSeriesStartTimestamp,
   SERIES_KEY,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
@@ -246,6 +247,12 @@ describe('resolveLiveSeriesRealtimeFeed', () => {
       ),
     ).toBe('chainlink')
     expect(resolveLiveSeriesHistorySource([], 'pyth')).toBe('pyth')
+  })
+  it('uses the API window start fallback when an event has no valid explicit start', () => {
+    const end = 1_800_000_000_000
+    expect(resolveLiveSeriesReferenceStart(null, end, 60)).toBe(end - 3_600_000)
+    expect(resolveLiveSeriesReferenceStart(end, end, 60)).toBe(end - 3_600_000)
+    expect(resolveLiveSeriesReferenceStart(end - 3_500_000, end, 60)).toBe(end - 3_500_000)
   })
   it('requires canonical hourly close even before the first response', () => {
     const classification = classifyLiveSeriesReference({
