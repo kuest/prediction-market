@@ -212,7 +212,7 @@ describe('resolveLiveSeriesRealtimeFeed', () => {
     for (const provider of ['binance', 'chainlink', null]) {
       expect(
         resolveLiveSeriesRealtimeFeed({
-          seriesSlug: 'btc-up-or-down',
+          seriesSlug: `btc-up-or-down-${({ 5: '5m', 15: '15m', 60: 'hourly', 240: '4h', 1440: 'daily' } as Record<number, string>)[minutes]}`,
           configuredTopic: 'price.crypto',
           provider,
           windowSeconds: null,
@@ -222,6 +222,19 @@ describe('resolveLiveSeriesRealtimeFeed', () => {
       ).toEqual({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60 })
     }
   })
+  it('does not override explicit custom sources or TWAP windows', () => {
+    expect(
+      resolveLiveSeriesRealtimeFeed({
+        seriesSlug: 'custom-crypto',
+        configuredTopic: 'price.crypto.twap',
+        provider: 'chainlink',
+        windowSeconds: 30,
+        activeWindowMinutes: 5,
+        eventEndTimestamp: 1000,
+      }),
+    ).toEqual({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 30 })
+  })
+
   it('preserves non-crypto feeds', () => {
     expect(
       resolveLiveSeriesRealtimeFeed({

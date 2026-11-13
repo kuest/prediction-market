@@ -108,8 +108,8 @@ export const events = pgTable(
 export const event_live_chart_configs = pgTable('event_live_chart_configs', {
   series_slug: text().primaryKey(),
   topic: text().notNull().default('price.crypto.twap'),
-  provider: text().default('chainlink'),
-  window_seconds: integer().default(60),
+  provider: text(),
+  window_seconds: integer(),
   symbol: text().notNull(),
   display_name: text().notNull(),
   display_symbol: text().notNull(),
