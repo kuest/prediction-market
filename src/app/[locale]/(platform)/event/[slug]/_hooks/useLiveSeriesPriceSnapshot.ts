@@ -19,6 +19,7 @@ import {
 
 interface UseLiveSeriesPriceSnapshotOptions {
   config: EventLiveChartConfig
+  source?: LiveSeriesPriceSnapshot['source']
   eventSlug?: string
   subscriptionSymbol: string
   explicitEndTimestamp: number | null
@@ -47,6 +48,7 @@ interface LiveSeriesPriceSnapshotStoreEntry {
 
 interface LiveSeriesPriceSnapshotRequest {
   seriesSlug: string
+  source?: LiveSeriesPriceSnapshot['source']
   eventSlug?: string
   topic: string
   subscriptionSymbol: string
@@ -77,6 +79,7 @@ const EMPTY_LIVE_SERIES_PRICE_SNAPSHOT: LiveSeriesPriceSnapshotStoreSnapshot = {
 function buildLiveSeriesPriceSnapshotStoreKey({
   seriesSlug,
   eventSlug,
+  source,
   topic,
   subscriptionSymbol,
   activeWindowMinutes,
@@ -86,6 +89,7 @@ function buildLiveSeriesPriceSnapshotStoreKey({
   return [
     seriesSlug,
     eventSlug ?? '',
+    source ?? '',
     topic.trim().toLowerCase(),
     subscriptionSymbol.trim().toLowerCase(),
     activeWindowMinutes,
@@ -97,6 +101,7 @@ function buildLiveSeriesPriceSnapshotStoreKey({
 function buildLiveSeriesPriceSnapshotQuery({
   seriesSlug,
   eventSlug,
+  source,
   activeWindowMinutes,
   explicitEndTimestamp,
   startTimestamp,
@@ -107,6 +112,10 @@ function buildLiveSeriesPriceSnapshotQuery({
     eventEndMs: String(eventEndTimestamp),
     activeWindowMinutes: String(activeWindowMinutes),
   })
+
+  if (source) {
+    query.set('source', source)
+  }
 
   if (eventSlug) {
     query.set('eventSlug', eventSlug)
@@ -308,8 +317,11 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   const isGoldDaily = isGoldDailySeries(request.seriesSlug)
   const isEventBoundEquity =
     request.seriesSlug === 'hood-daily-up-or-down' || request.seriesSlug === 'coin-daily-up-or-down'
-  const isChainlinkDaily = request.activeWindowMinutes === 1440 && request.topic === 'price.crypto.twap:chainlink:60'
-  const needsExtendedCloseRefresh = isGoldDaily || isEventBoundEquity || isChainlinkDaily
+  const isChainlinkBoundary =
+    (request.activeWindowMinutes === 60 || request.activeWindowMinutes === 1440) &&
+    request.topic === 'price.crypto.twap:chainlink:60' &&
+    request.source !== 'binance'
+  const needsExtendedCloseRefresh = isGoldDaily || isEventBoundEquity || isChainlinkBoundary
   const closeRefreshWindowMs = needsExtendedCloseRefresh
     ? GOLD_CLOSE_REFRESH_WINDOW_MS
     : BINANCE_CLOSE_REFRESH_WINDOW_MS
@@ -499,6 +511,7 @@ function getLiveSeriesPriceSnapshotSnapshot(
 export function useLiveSeriesPriceSnapshot({
   config,
   eventSlug,
+  source,
   subscriptionSymbol,
   explicitEndTimestamp,
   startTimestamp,
@@ -516,6 +529,7 @@ export function useLiveSeriesPriceSnapshot({
     return {
       seriesSlug,
       eventSlug,
+      source,
       topic: livePriceFeedKey({
         topic: config.topic,
         provider: config.provider,
@@ -532,6 +546,7 @@ export function useLiveSeriesPriceSnapshot({
     config.provider,
     config.window_seconds,
     eventSlug,
+    source,
     explicitEndTimestamp,
     seriesSlug,
     startTimestamp,
