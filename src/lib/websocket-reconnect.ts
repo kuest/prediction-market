@@ -20,6 +20,7 @@ interface CreateWebSocketHeartbeatControllerOptions {
   isActive: () => boolean
   onConnectionLost: (ws: WebSocket) => void
   openTimeoutMs?: number
+  pingMessage?: string
   pingIntervalMs?: number
   staleTimeoutMs?: number
 }
@@ -29,6 +30,7 @@ export function createWebSocketHeartbeatController({
   isActive,
   onConnectionLost,
   openTimeoutMs = DEFAULT_OPEN_TIMEOUT_MS,
+  pingMessage = 'PING',
   pingIntervalMs = DEFAULT_PING_INTERVAL_MS,
   staleTimeoutMs = DEFAULT_STALE_TIMEOUT_MS,
 }: CreateWebSocketHeartbeatControllerOptions) {
@@ -98,7 +100,7 @@ export function createWebSocketHeartbeatController({
           return
         }
         try {
-          ws.send('PING')
+          ws.send(pingMessage)
         } catch {
           loseConnection(ws)
         }
@@ -247,7 +249,12 @@ export function createWebSocketReconnectController({
   }
 }
 
-export function probeWebSocketWithPong(ws: WebSocket, timeoutMs = 5_000): Promise<boolean> {
+export function probeWebSocketWithPong(
+  ws: WebSocket,
+  timeoutMs = 5_000,
+  pingMessage = 'PING',
+  isPong: (data: unknown) => boolean = (data) => data === 'PONG',
+): Promise<boolean> {
   if (ws.readyState !== WebSocket.OPEN) {
     return Promise.resolve(false)
   }
@@ -271,7 +278,7 @@ export function probeWebSocketWithPong(ws: WebSocket, timeoutMs = 5_000): Promis
     }
 
     function handleMessage(event: MessageEvent) {
-      if (event.data === 'PONG') {
+      if (isPong(event.data)) {
         finish(true)
       }
     }
@@ -289,7 +296,7 @@ export function probeWebSocketWithPong(ws: WebSocket, timeoutMs = 5_000): Promis
     ws.addEventListener('error', handleError)
     timeout = window.setTimeout(() => finish(false), Math.max(1, timeoutMs))
     try {
-      ws.send('PING')
+      ws.send(pingMessage)
     } catch {
       finish(false)
     }

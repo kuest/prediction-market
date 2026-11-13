@@ -43,6 +43,33 @@ describe('useLiveSeriesPriceSnapshot', () => {
     unstubAllGlobals()
   })
 
+  it('isolates historical source requests and snapshots for the same event', async () => {
+    const fetchMock = mock(async (input: RequestInfo | URL) => {
+      const source = new URL(getRequestUrl(input), 'https://example.test').searchParams.get('source')
+      return { ok: true, json: async () => ({ source, opening_price: source === 'binance' ? 100 : 200 }) }
+    })
+    stubGlobal('fetch', fetchMock)
+    const config = {
+      series_slug: 'source-isolation',
+      topic: 'price.crypto.twap',
+      provider: 'chainlink',
+      window_seconds: 60,
+      active_window_minutes: 60,
+    } as EventLiveChartConfig
+    const options = {
+      config,
+      eventSlug: 'same-event',
+      subscriptionSymbol: 'BTC',
+      explicitEndTimestamp: now + 60_000,
+      startTimestamp: now - 3_540_000,
+    }
+    const oldSource = renderHook(() => useLiveSeriesPriceSnapshot({ ...options, source: 'binance' }))
+    const newSource = renderHook(() => useLiveSeriesPriceSnapshot({ ...options, source: 'chainlink' }))
+    await waitFor(() => expect(oldSource.result.current.referenceSnapshot?.opening_price).toBe(100))
+    expect(newSource.result.current.referenceSnapshot?.opening_price).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('requests a current snapshot again when a live tab becomes visible', async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL) => ({
       ok: true,
@@ -57,7 +84,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'snapshot-resume-test',
-      topic: 'crypto_prices',
+      topic: 'price.crypto',
+      provider: 'chainlink',
+      window_seconds: null,
       active_window_minutes: 60,
     } as EventLiveChartConfig
 
@@ -87,13 +116,13 @@ describe('useLiveSeriesPriceSnapshot', () => {
   it.each(['reference-first', 'websocket-first'] as const)(
     'keeps the live WebSocket price when a stale reference arrives %s',
     async (arrivalOrder) => {
-      const storageKey = 'kuest-live-ws-last-price:crypto_prices:BTC'
+      const storageKey = 'kuest-live-ws-last-price:price.crypto:chainlink:spot:BTC'
       window.localStorage.setItem(
-        'kuest-live-last-price:crypto_prices:BTC',
+        'kuest-live-last-price:price.crypto:chainlink:spot:BTC',
         JSON.stringify({ price: 80_811, timestamp: now - 1_000 }),
       )
       if (arrivalOrder === 'websocket-first') {
-        writePersistedLivePrice('crypto_prices', 'BTC', 80_732, now - 1_000)
+        writePersistedLivePrice('price.crypto:chainlink:spot', 'BTC', 80_732, now - 1_000)
       }
 
       let resolveFetch: ((value: { ok: boolean; json: () => Promise<unknown> }) => void) | null = null
@@ -109,7 +138,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
         useLiveSeriesPriceSnapshot({
           config: {
             series_slug: `snapshot-arrival-order-${arrivalOrder}`,
-            topic: 'crypto_prices',
+            topic: 'price.crypto',
+            provider: 'chainlink',
+            window_seconds: null,
             active_window_minutes: 15,
           } as EventLiveChartConfig,
           subscriptionSymbol: 'BTC',
@@ -136,7 +167,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       if (arrivalOrder === 'reference-first') {
         expect(result.current.persistedFallbackPrice).toBeNull()
         act(() => {
-          writePersistedLivePrice('crypto_prices', 'BTC', 80_732, now - 1_000)
+          writePersistedLivePrice('price.crypto:chainlink:spot', 'BTC', 80_732, now - 1_000)
           window.dispatchEvent(new StorageEvent('storage', { key: storageKey }))
         })
       }
@@ -161,7 +192,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'snapshot-status-test',
-      topic: 'crypto_prices_chainlink',
+      topic: 'price.crypto',
+      provider: 'chainlink',
+      window_seconds: null,
       active_window_minutes: 1440,
     } as EventLiveChartConfig
 
@@ -212,7 +245,9 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'snapshot-opening-retry-test',
-      topic: 'crypto_prices_chainlink',
+      topic: 'price.crypto',
+      provider: 'chainlink',
+      window_seconds: null,
       active_window_minutes: 5,
     } as EventLiveChartConfig
 
@@ -264,7 +299,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       useLiveSeriesPriceSnapshot({
         config: {
           series_slug: 'hood-daily-up-or-down',
-          topic: 'equity_prices',
+          topic: 'price.equity',
           active_window_minutes: 390,
         } as EventLiveChartConfig,
         eventSlug: 'hood-up-or-down-on-october-22-2026',
@@ -292,6 +327,58 @@ describe('useLiveSeriesPriceSnapshot', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(result.current.referenceSnapshot?.opening_price).toBe(101.94)
+  })
+
+  it.each([
+    [60, 'chainlink'],
+    [1440, 'chainlink'],
+    [60, 'pyth'],
+  ] as const)('keeps checking a %s-minute %s close until available', async (minutes, source) => {
+    useFakeTimers()
+    const eventEndTimestamp = now + 10_000
+    function snapshot(closingPrice: number | null) {
+      return {
+        source,
+        opening_price: 100,
+        closing_price: closingPrice,
+        event_window_end_ms: eventEndTimestamp,
+      }
+    }
+    const fetchMock = mock()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot(105) })
+    stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config: {
+          series_slug: `source-close-test-${minutes}-${source}`,
+          topic: 'price.crypto.twap',
+          provider: 'chainlink',
+          window_seconds: 60,
+          active_window_minutes: minutes,
+        } as EventLiveChartConfig,
+        source,
+        subscriptionSymbol: 'BTC',
+        explicitEndTimestamp: eventEndTimestamp,
+        startTimestamp: eventEndTimestamp - minutes * 60_000,
+      }),
+    )
+    await act(async () => {
+      await advanceTimersByTimeAsync(0)
+    })
+    now = eventEndTimestamp + 65_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(75_000)
+    })
+    expect(result.current.referenceSnapshot?.closing_price).toBeNull()
+    const refreshInterval = source === 'chainlink' ? 60_000 : 10_000
+    now += refreshInterval
+    await act(async () => {
+      await advanceTimersByTimeAsync(refreshInterval)
+    })
+    expect(result.current.referenceSnapshot?.closing_price).toBe(105)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('keeps checking HOOD after a non-canonical close until the event close arrives', async () => {
@@ -322,7 +409,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       useLiveSeriesPriceSnapshot({
         config: {
           series_slug: 'hood-daily-up-or-down',
-          topic: 'equity_prices',
+          topic: 'price.equity',
           active_window_minutes: 390,
         } as EventLiveChartConfig,
         eventSlug: 'hood-up-or-down-on-october-22-2026',
@@ -381,7 +468,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'gold-daily-up-or-down',
-      topic: 'equity_prices',
+      topic: 'price.equity',
       active_window_minutes: 450,
     } as EventLiveChartConfig
     const { result } = renderHook(() =>
@@ -444,7 +531,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
     const config = {
       series_slug: 'gold-daily-up-or-down',
-      topic: 'equity_prices',
+      topic: 'price.equity',
       active_window_minutes: 450,
     } as EventLiveChartConfig
     const { result } = renderHook(() =>
@@ -468,5 +555,58 @@ describe('useLiveSeriesPriceSnapshot', () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(result.current.referenceSnapshot?.closing_price).toBe(4150)
+  })
+  it('keeps polling a delayed daily Chainlink close beyond five minutes and stops when available', async () => {
+    useFakeTimers()
+    const eventEndTimestamp = now - 10 * 60_000
+    const eventStartTimestamp = eventEndTimestamp - 24 * 60 * 60_000
+    function snapshot(closingPrice: number | null) {
+      return {
+        instrument: 'BTC',
+        interval: '1d',
+        source: 'chainlink',
+        event_window_start_ms: eventStartTimestamp,
+        event_window_end_ms: eventEndTimestamp,
+        opening_price: 100,
+        closing_price: closingPrice,
+        is_event_closed: true,
+      }
+    }
+    const fetchMock = mock()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot(null) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot(101) })
+    stubGlobal('fetch', fetchMock)
+    const { result } = renderHook(() =>
+      useLiveSeriesPriceSnapshot({
+        config: {
+          series_slug: 'chainlink-daily-delayed-close-test',
+          topic: 'price.crypto.twap',
+          provider: 'chainlink',
+          window_seconds: 60,
+          active_window_minutes: 1440,
+        } as EventLiveChartConfig,
+        subscriptionSymbol: 'BTC',
+        explicitEndTimestamp: eventEndTimestamp,
+        startTimestamp: eventStartTimestamp,
+      }),
+    )
+    await act(async () => {
+      await advanceTimersByTimeAsync(0)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(result.current.referenceSnapshot?.closing_price).toBeNull()
+
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(result.current.referenceSnapshot?.closing_price).toBe(101)
+
+    now += 60_000
+    await act(async () => {
+      await advanceTimersByTimeAsync(60_000)
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
   })
 })

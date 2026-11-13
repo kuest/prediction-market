@@ -198,7 +198,7 @@ const SERVICE_ENDPOINTS = [
   {
     name: 'Live Data WebSocket',
     url: publicRuntimeEnv.wsLiveDataUrl,
-    description: 'Sports and live-data streams.',
+    description: 'Activity, comments, and reference price streams.',
   },
 ] as const
 

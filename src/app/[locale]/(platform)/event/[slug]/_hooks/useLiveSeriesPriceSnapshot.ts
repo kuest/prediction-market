@@ -13,11 +13,14 @@ import {
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
   LIVE_PRICE_STORAGE_PREFIX,
+  livePriceFeedKey,
   readPersistedLivePrice,
+  resolveLiveSeriesReferenceStart,
 } from '../_utils/eventLiveSeriesChartUtils'
 
 interface UseLiveSeriesPriceSnapshotOptions {
   config: EventLiveChartConfig
+  source?: LiveSeriesPriceSnapshot['source']
   eventSlug?: string
   subscriptionSymbol: string
   explicitEndTimestamp: number | null
@@ -46,6 +49,7 @@ interface LiveSeriesPriceSnapshotStoreEntry {
 
 interface LiveSeriesPriceSnapshotRequest {
   seriesSlug: string
+  source?: LiveSeriesPriceSnapshot['source']
   eventSlug?: string
   topic: string
   subscriptionSymbol: string
@@ -76,6 +80,7 @@ const EMPTY_LIVE_SERIES_PRICE_SNAPSHOT: LiveSeriesPriceSnapshotStoreSnapshot = {
 function buildLiveSeriesPriceSnapshotStoreKey({
   seriesSlug,
   eventSlug,
+  source,
   topic,
   subscriptionSymbol,
   activeWindowMinutes,
@@ -85,6 +90,7 @@ function buildLiveSeriesPriceSnapshotStoreKey({
   return [
     seriesSlug,
     eventSlug ?? '',
+    source ?? '',
     topic.trim().toLowerCase(),
     subscriptionSymbol.trim().toLowerCase(),
     activeWindowMinutes,
@@ -96,6 +102,7 @@ function buildLiveSeriesPriceSnapshotStoreKey({
 function buildLiveSeriesPriceSnapshotQuery({
   seriesSlug,
   eventSlug,
+  source,
   activeWindowMinutes,
   explicitEndTimestamp,
   startTimestamp,
@@ -106,6 +113,10 @@ function buildLiveSeriesPriceSnapshotQuery({
     eventEndMs: String(eventEndTimestamp),
     activeWindowMinutes: String(activeWindowMinutes),
   })
+
+  if (source) {
+    query.set('source', source)
+  }
 
   if (eventSlug) {
     query.set('eventSlug', eventSlug)
@@ -123,15 +134,9 @@ function buildPersistedLivePriceStorageKey(topic: string, symbol: string) {
 }
 
 function resolveRequestedWindowStart(request: LiveSeriesPriceSnapshotRequest) {
-  if (request.startTimestamp != null && request.startTimestamp > 0) {
-    return request.startTimestamp
-  }
-
-  if (request.explicitEndTimestamp == null) {
-    return null
-  }
-
-  return request.explicitEndTimestamp - request.activeWindowMinutes * 60 * 1000
+  return request.explicitEndTimestamp == null
+    ? request.startTimestamp
+    : resolveLiveSeriesReferenceStart(request.startTimestamp, request.explicitEndTimestamp, request.activeWindowMinutes)
 }
 
 function hasRequestedOpeningPrice(snapshot: LiveSeriesPriceSnapshot | null, request: LiveSeriesPriceSnapshotRequest) {
@@ -307,13 +312,20 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   const isGoldDaily = isGoldDailySeries(request.seriesSlug)
   const isEventBoundEquity =
     request.seriesSlug === 'hood-daily-up-or-down' || request.seriesSlug === 'coin-daily-up-or-down'
-  const closeRefreshWindowMs =
-    isGoldDaily || isEventBoundEquity ? GOLD_CLOSE_REFRESH_WINDOW_MS : BINANCE_CLOSE_REFRESH_WINDOW_MS
-  const closeRefreshIntervalMs =
-    isGoldDaily || isEventBoundEquity ? GOLD_CLOSE_REFRESH_INTERVAL_MS : BINANCE_CLOSE_REFRESH_INTERVAL_MS
+  const isChainlinkBoundary =
+    (request.activeWindowMinutes === 60 || request.activeWindowMinutes === 1440) &&
+    request.topic === 'price.crypto.twap:chainlink:60' &&
+    (request.source == null || request.source === 'chainlink')
+  const needsExtendedCloseRefresh = isGoldDaily || isEventBoundEquity || isChainlinkBoundary
+  const closeRefreshWindowMs = needsExtendedCloseRefresh
+    ? GOLD_CLOSE_REFRESH_WINDOW_MS
+    : BINANCE_CLOSE_REFRESH_WINDOW_MS
+  const closeRefreshIntervalMs = needsExtendedCloseRefresh
+    ? GOLD_CLOSE_REFRESH_INTERVAL_MS
+    : BINANCE_CLOSE_REFRESH_INTERVAL_MS
 
   function getCloseRefreshIntervalMs(eventEndTimestamp: number) {
-    return (isGoldDaily || isEventBoundEquity) && Date.now() >= eventEndTimestamp + GOLD_CLOSE_FAST_REFRESH_WINDOW_MS
+    return needsExtendedCloseRefresh && Date.now() >= eventEndTimestamp + GOLD_CLOSE_FAST_REFRESH_WINDOW_MS
       ? GOLD_CLOSE_SLOW_REFRESH_INTERVAL_MS
       : closeRefreshIntervalMs
   }
@@ -348,7 +360,9 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
         ? snapshot?.source === 'pyth' &&
           snapshot.interval === '1d' &&
           snapshot.instrument === request.subscriptionSymbol.toUpperCase()
-        : snapshot?.source === 'binance'
+        : request.source != null
+          ? snapshot?.source === request.source
+          : snapshot?.source === 'binance' || snapshot?.source === 'chainlink'
     if (
       !isSubscribed ||
       (snapshot != null && !hasExpectedSource) ||
@@ -494,6 +508,7 @@ function getLiveSeriesPriceSnapshotSnapshot(
 export function useLiveSeriesPriceSnapshot({
   config,
   eventSlug,
+  source,
   subscriptionSymbol,
   explicitEndTimestamp,
   startTimestamp,
@@ -511,7 +526,12 @@ export function useLiveSeriesPriceSnapshot({
     return {
       seriesSlug,
       eventSlug,
-      topic: config.topic,
+      source,
+      topic: livePriceFeedKey({
+        topic: config.topic,
+        provider: config.provider,
+        window_seconds: config.window_seconds,
+      }),
       subscriptionSymbol,
       activeWindowMinutes: config.active_window_minutes,
       explicitEndTimestamp,
@@ -520,7 +540,10 @@ export function useLiveSeriesPriceSnapshot({
   }, [
     config.active_window_minutes,
     config.topic,
+    config.provider,
+    config.window_seconds,
     eventSlug,
+    source,
     explicitEndTimestamp,
     seriesSlug,
     startTimestamp,

@@ -113,7 +113,10 @@ function selectClosingRow(
   interval: Interval,
   seriesSlug: string,
 ) {
-  if (interval === '1d' && (source === 'binance' || seriesSlug === 'gold-daily-up-or-down')) {
+  if (
+    (source === 'chainlink' && interval === '1h') ||
+    (interval === '1d' && (source === 'binance' || source === 'chainlink' || seriesSlug === 'gold-daily-up-or-down'))
+  ) {
     return rows.find((row) => row.window_end_ms === targetMs) ?? null
   }
 
@@ -178,6 +181,10 @@ async function getSeriesMapBySlug() {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
+  const sourceParam = searchParams.get('source')?.trim()
+  if (sourceParam != null && sourceParam !== 'binance' && sourceParam !== 'chainlink' && sourceParam !== 'pyth') {
+    return NextResponse.json({ error: 'Unsupported source' }, { status: 400 })
+  }
   const seriesSlugParam = searchParams.get('seriesSlug')?.trim() ?? ''
   const eventSlugParam = searchParams.get('eventSlug')?.trim().toLowerCase() ?? ''
   const eventStartMsParam = searchParams.get('eventStartMs')?.trim() ?? ''
@@ -199,7 +206,8 @@ export async function GET(request: Request) {
   try {
     const normalizedSeriesSlug = seriesSlugParam.toLowerCase()
     const seriesMapBySlug = await getSeriesMapBySlug()
-    const seriesEntry = seriesMapBySlug.get(normalizedSeriesSlug)
+    const mappedSeries = seriesMapBySlug.get(normalizedSeriesSlug)
+    const seriesEntry = mappedSeries ? { ...mappedSeries, source: sourceParam ?? mappedSeries.source } : undefined
 
     if (!seriesEntry) {
       return NextResponse.json(
@@ -224,14 +232,21 @@ export async function GET(request: Request) {
     const openingPreferredInterval: Interval = seriesEntry.interval === '1d' ? '5m' : seriesEntry.interval
     const openingPreferredIntervalMs = intervalToMs(openingPreferredInterval)
     const openingHistoryTargetMs = alignWindowEnd(eventWindowStartMs, openingPreferredIntervalMs)
-    const closingHistoryTargetMs = alignWindowEnd(eventWindowEndMs, intervalMs)
+    const isChainlinkDaily = seriesEntry.source === 'chainlink' && seriesEntry.interval === '1d'
+    const closingHistoryTargetMs =
+      seriesEntry.source === 'chainlink' && (seriesEntry.interval === '1h' || isChainlinkDaily)
+        ? eventWindowEndMs
+        : alignWindowEnd(eventWindowEndMs, intervalMs)
     const shouldFetchOpeningFallback = openingPreferredInterval !== seriesEntry.interval
     const openingFallbackTargetMs = shouldFetchOpeningFallback
-      ? alignWindowEnd(eventWindowStartMs, intervalMs)
+      ? isChainlinkDaily
+        ? eventWindowStartMs
+        : alignWindowEnd(eventWindowStartMs, intervalMs)
       : openingHistoryTargetMs
 
     const openingHistoryParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: openingPreferredInterval,
       from: String(Math.max(0, openingHistoryTargetMs - openingPreferredIntervalMs * 24)),
       to: String(openingHistoryTargetMs),
@@ -240,6 +255,7 @@ export async function GET(request: Request) {
 
     const openingFallbackParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: seriesEntry.interval,
       from: String(Math.max(0, openingFallbackTargetMs - intervalMs * 6)),
       to: String(openingFallbackTargetMs),
@@ -248,6 +264,7 @@ export async function GET(request: Request) {
 
     const closingHistoryParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: seriesEntry.interval,
       from: String(Math.max(0, closingHistoryTargetMs - intervalMs * 4)),
       to: String(closingHistoryTargetMs),
@@ -257,6 +274,7 @@ export async function GET(request: Request) {
     const chartHistoryIntervalMs = intervalToMs(chartHistoryInterval)
     const chartHistoryParams = new URLSearchParams({
       instrument: seriesEntry.instrument,
+      source: seriesEntry.source,
       interval: chartHistoryInterval,
       from: String(eventWindowStartMs),
       to: String(eventWindowEndMs),
