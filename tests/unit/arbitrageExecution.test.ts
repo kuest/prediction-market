@@ -179,6 +179,27 @@ describe('arbitrage execution confirmation', () => {
     expect(pages).toHaveBeenCalledTimes(1)
   })
 
+  it('stops when decimal fill sums match within the reconciliation tolerance', async () => {
+    const pages = mock().mockResolvedValue({
+      trades: [
+        { ...trade, size: '33.3' },
+        { ...trade, id: 'trade-2', size: '66.6' },
+      ],
+      nextCursor: 'older',
+    })
+    expect(
+      (
+        await readArbitrageExecution({
+          previous: pending,
+          tokenId: '123',
+          readOrder: async () => ({ ...order, size_matched: '99.9' }),
+          readTrades: pages,
+        })
+      ).state,
+    ).toBe('confirmed')
+    expect(pages).toHaveBeenCalledTimes(1)
+  })
+
   it('does not confirm an incomplete or repeating cursor history', async () => {
     const pages = mock().mockResolvedValue({ trades: [{ ...trade, size: '10' }], nextCursor: 'same-page' })
     expect(

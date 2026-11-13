@@ -34,7 +34,7 @@ void mock.module('@/lib/polymarket-connection', () => ({
   selectPolymarketConnection: () => ({ connector: { getChainId: async () => 137 } }),
   runOnPolymarketChain: async ({ operation }: { operation: () => Promise<unknown> }) => operation(),
 }))
-const { preparePolymarketOrder } = await import('@/lib/polymarket-orders-client')
+const { preparePolymarketOrder, reconcilePolymarketOrder } = await import('@/lib/polymarket-orders-client')
 let fetchSpy: ReturnType<typeof spyOn>
 const args = {
   wagmiConfig: {} as never,
@@ -107,6 +107,7 @@ describe('Polymarket arbitrage submission', () => {
       status: 'MATCHED',
       size_matched: '22',
       market: 'market-1',
+      created_at: 1794441600,
     })
     readTrades.mockResolvedValueOnce({
       trades: [
@@ -126,5 +127,20 @@ describe('Polymarket arbitrage submission', () => {
       state: 'confirmed',
       shares: 22,
     })
+    expect(readTrades).toHaveBeenCalledWith({ market: 'market-1', after: '1794441599' }, undefined)
+  })
+  it('forwards the verified creation bound when reconciling an existing order', async () => {
+    readOrder.mockResolvedValueOnce({
+      id: 'id-1',
+      asset_id: '123',
+      side: 'BUY',
+      status: 'MATCHED',
+      size_matched: '1',
+      market: 'market-1',
+      created_at: 1794441600,
+    })
+    readTrades.mockResolvedValueOnce({ trades: [], next_cursor: 'LTE=' })
+    await reconcilePolymarketOrder({ ...args, orderId: 'id-1' })
+    expect(readTrades).toHaveBeenCalledWith({ market: 'market-1', after: '1794441599' }, undefined)
   })
 })

@@ -27,6 +27,7 @@ const order = {
   status: 'MATCHED',
   size_matched: '20',
   market: 'market-1',
+  created_at: '2026-11-12T00:00:00Z',
 }
 const trade = {
   id: 'trade-1',
@@ -49,7 +50,7 @@ describe('authenticated arbitrage reconciliation', () => {
       shares: 20,
     })
     expect(fetchSpy.mock.calls[0][0]).toBe('https://clob.test/data/order/id-1')
-    expect(fetchSpy.mock.calls[1][0]).toBe('https://clob.test/data/trades?market=market-1')
+    expect(fetchSpy.mock.calls[1][0]).toBe('https://clob.test/data/trades?market=market-1&after=1794441599')
     expect(fetchSpy.mock.calls[1][1]?.headers).toMatchObject({
       KUEST_API_KEY: 'key',
       KUEST_SIGNATURE: 'test-signature',

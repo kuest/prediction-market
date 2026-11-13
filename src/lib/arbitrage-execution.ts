@@ -137,7 +137,7 @@ export async function readArbitrageExecution({
           discoveredShares += size
         }
       }
-      if (discoveredShares >= matched || page.nextCursor === 'LTE=') {
+      if (discoveredShares + 0.000001 >= matched || page.nextCursor === 'LTE=') {
         complete = true
         break
       }
