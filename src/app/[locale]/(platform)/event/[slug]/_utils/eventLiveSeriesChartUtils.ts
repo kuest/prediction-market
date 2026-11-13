@@ -686,7 +686,50 @@ export function resolveLiveSeriesStartTimestamp({
   return eventStartTimestamp
 }
 
+const CHAINLINK_CRYPTO_SERIES_WINDOWS: Record<string, number> = {
+  'bnb-up-or-down-daily': 1440,
+  'bnb-up-or-down-5m': 5,
+  'bnb-up-or-down-15m': 15,
+  'bnb-up-or-down-hourly': 60,
+  'bnb-up-or-down-4h': 240,
+  'btc-up-or-down-4h': 240,
+  'bitcoin-up-or-down-4h': 240,
+  'btc-up-or-down-5m': 5,
+  'btc-up-or-down-15m': 15,
+  'btc-up-or-down-hourly': 60,
+  'btc-up-or-down-daily': 1440,
+  'doge-up-or-down-5m': 5,
+  'doge-up-or-down-15m': 15,
+  'doge-up-or-down-hourly': 60,
+  'doge-up-or-down-4h': 240,
+  'dogecoin-up-or-down-daily': 1440,
+  'eth-up-or-down-5m': 5,
+  'eth-up-or-down-15m': 15,
+  'eth-up-or-down-4h': 240,
+  'eth-up-or-down-hourly': 60,
+  'eth-up-or-down-daily': 1440,
+  'ethereum-up-or-down-4h': 240,
+  'hype-up-or-down-5m': 5,
+  'hype-up-or-down-15m': 15,
+  'hype-up-or-down-hourly': 60,
+  'hype-up-or-down-4h': 240,
+  'hype-up-or-down-daily': 1440,
+  'sol-up-or-down-5m': 5,
+  'sol-up-or-down-15m': 15,
+  'sol-up-or-down-4h': 240,
+  'solana-up-or-down-hourly': 60,
+  'solana-up-or-down-4h': 240,
+  'solana-up-or-down-daily': 1440,
+  'xrp-up-or-down-5m': 5,
+  'xrp-up-or-down-15m': 15,
+  'xrp-up-or-down-hourly': 60,
+  'xrp-up-or-down-4h': 240,
+  'xrp-up-or-down-daily': 1440,
+}
+
 export function resolveLiveSeriesRealtimeFeed({
+  seriesSlug,
+  activeWindowMinutes,
   configuredTopic,
   provider,
   windowSeconds,
@@ -699,7 +742,10 @@ export function resolveLiveSeriesRealtimeFeed({
   eventStartTimestamp?: number | null
   eventEndTimestamp: number | null
 }) {
-  if (configuredTopic === 'price.crypto' || configuredTopic === 'price.crypto.twap') {
+  if (
+    (configuredTopic === 'price.crypto' || configuredTopic === 'price.crypto.twap') &&
+    CHAINLINK_CRYPTO_SERIES_WINDOWS[seriesSlug] === activeWindowMinutes
+  ) {
     return { topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60 }
   }
   return { topic: configuredTopic, provider, window_seconds: windowSeconds }
