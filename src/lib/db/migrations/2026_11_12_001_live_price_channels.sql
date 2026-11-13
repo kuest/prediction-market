@@ -45,5 +45,11 @@ WHERE topic LIKE 'price.crypto%' AND (series_slug, active_window_minutes) IN (
   ('xrp-up-or-down-hourly', 60),
   ('xrp-up-or-down-4h', 240),
   ('xrp-up-or-down-daily', 1440));
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.event_live_chart_configs WHERE provider = 'binance') THEN
+    RAISE EXCEPTION 'Unsupported custom Binance price configuration: choose a supported source before migrating live price feeds';
+  END IF;
+END $$;
 ALTER TABLE public.event_live_chart_configs ALTER COLUMN topic SET DEFAULT 'price.crypto.twap';
 ALTER TABLE public.event_live_chart_configs DROP COLUMN event_type;
