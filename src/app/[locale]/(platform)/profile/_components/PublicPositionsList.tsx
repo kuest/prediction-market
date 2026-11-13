@@ -248,7 +248,6 @@ function usePositionsDerivations({
       return positions
     }
 
-    let hasFallbacks = false
     const updatedPositions = positions.map((position) => {
       if (position.icon || !position.conditionId) {
         return position
@@ -259,11 +258,10 @@ function usePositionsDerivations({
         return position
       }
 
-      hasFallbacks = true
       return { ...position, icon: fallbackIcon }
     })
 
-    return hasFallbacks ? updatedPositions : positions
+    return updatedPositions.some((position, index) => position !== positions[index]) ? updatedPositions : positions
   }, [positions])
 
   const visiblePositions = useMemo(
