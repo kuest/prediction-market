@@ -25,7 +25,7 @@ import {
   getVisibleCountdownUnits,
   hexToRgba,
   inferIntervalMsFromSeriesSlug,
-  isCanonicalChainlinkDailySnapshot,
+  isCanonicalChainlinkCloseSnapshot,
   isCanonicalEventBoundEquityCloseSnapshot,
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
@@ -48,7 +48,7 @@ import {
   normalizeLiveChartPrice,
   normalizeSubscriptionSymbol,
   parseUtcDate,
-  requiresCanonicalChainlinkDailyClose,
+  requiresCanonicalChainlinkClose,
   resolveRecentPersistedLivePrice,
   resolveLiveChartPaddedDomainEnd,
   resolveDisplayedLiveSeriesBaselinePrice,
@@ -56,6 +56,7 @@ import {
   resolveLiveSeriesCountdown,
   resolveLiveSeriesDisplayPrice,
   resolveLiveSeriesRealtimeFeed,
+  resolveLiveSeriesHistorySource,
   resolveLiveSeriesStartTimestamp,
   SERIES_KEY,
   toCountdownLeftLabel,
@@ -349,6 +350,7 @@ function EventLiveSeriesChartContent({
       scheduledEndTimestamp,
     ],
   )
+  const referenceSource = resolveLiveSeriesHistorySource(event.markets, realtimeFeed.provider)
   const realtimeTopic = realtimeFeed.topic
   const realtimeConfig = useMemo(() => ({ ...config, ...realtimeFeed }), [config, realtimeFeed])
   const hasExplicitEndTimestamp = explicitEndTimestamp != null
@@ -369,6 +371,7 @@ function EventLiveSeriesChartContent({
     persistedFallbackPrice: snapshotFallbackPrice,
   } = useLiveSeriesPriceSnapshot({
     config: realtimeConfig,
+    source: referenceSource,
     eventSlug: event.slug,
     subscriptionSymbol,
     explicitEndTimestamp,
@@ -384,10 +387,10 @@ function EventLiveSeriesChartContent({
     () =>
       classifyLiveSeriesReference({
         topic: realtimeTopic,
-        provider: realtimeFeed.provider,
+        provider: referenceSource ?? realtimeFeed.provider,
         activeWindowMinutes: config.active_window_minutes,
       }),
-    [config.active_window_minutes, realtimeTopic, realtimeFeed.provider],
+    [config.active_window_minutes, realtimeTopic, realtimeFeed.provider, referenceSource],
   )
 
   const { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status, feedUnavailable, marketStatus } =
@@ -495,8 +498,12 @@ function EventLiveSeriesChartContent({
 
     return persistedFallbackPrice.price
   }, [endTimestamp, persistedFallbackPrice])
-  const hasCanonicalChainlinkDailySnapshot = isCanonicalChainlinkDailySnapshot(referenceSnapshot)
-  const requiresCanonicalChainlinkClose = requiresCanonicalChainlinkDailyClose({
+  const hasCanonicalChainlinkSnapshot =
+    referenceSnapshotStatus === 'ready' &&
+    isCanonicalChainlinkCloseSnapshot(referenceSnapshot) &&
+    referenceSnapshot?.event_window_end_ms === endTimestamp &&
+    referenceSnapshot?.event_window_start_ms === liveSeriesStartTimestamp
+  const needsCanonicalChainlinkClose = requiresCanonicalChainlinkClose({
     snapshot: referenceSnapshot,
     snapshotStatus: referenceSnapshotStatus,
     seriesClassification: seriesReferenceClassification,
@@ -522,8 +529,8 @@ function EventLiveSeriesChartContent({
       ? (requiresCanonicalGoldClose ? hasCanonicalGoldDailyClose : hasCanonicalEquityDailyClose)
         ? referenceClosingPrice
         : null
-      : requiresCanonicalChainlinkClose
-        ? hasCanonicalChainlinkDailySnapshot
+      : needsCanonicalChainlinkClose
+        ? hasCanonicalChainlinkSnapshot
           ? referenceClosingPrice
           : null
         : (referenceClosingPrice ?? latestReferencePriceBeforeEnd ?? persistedFallbackPriceBeforeEnd)
@@ -619,7 +626,7 @@ function EventLiveSeriesChartContent({
     }
 
     if (!isFinitePositivePrice(finalPrice)) {
-      return requiresCanonicalChainlinkClose ? [] : preCloseData
+      return needsCanonicalChainlinkClose ? [] : preCloseData
     }
 
     return [
@@ -637,7 +644,7 @@ function EventLiveSeriesChartContent({
     isEventClosed,
     liveFallbackData,
     resumedAtTimestamp,
-    requiresCanonicalChainlinkClose,
+    needsCanonicalChainlinkClose,
     requiresCanonicalEquityClose,
     requiresCanonicalGoldClose,
   ])
@@ -725,8 +732,7 @@ function EventLiveSeriesChartContent({
     finalPrice,
     renderedPrice,
     fallbackCurrentPrice,
-    requiresCanonicalClose:
-      requiresCanonicalChainlinkClose || requiresCanonicalGoldClose || requiresCanonicalEquityClose,
+    requiresCanonicalClose: needsCanonicalChainlinkClose || requiresCanonicalGoldClose || requiresCanonicalEquityClose,
   })
   const resolvedBaselinePrice = referenceOpeningPrice
   const displayedBaselinePrice = resolveDisplayedLiveSeriesBaselinePrice({

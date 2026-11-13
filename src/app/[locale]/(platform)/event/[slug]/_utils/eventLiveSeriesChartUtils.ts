@@ -215,7 +215,7 @@ export interface LiveSeriesPriceSnapshot {
 }
 
 export type LiveSeriesPriceSnapshotStatus = 'loading' | 'ready' | 'unavailable'
-export type LiveSeriesReferenceClassification = 'chainlink_daily' | 'other'
+export type LiveSeriesReferenceClassification = 'chainlink_daily' | 'chainlink_hourly' | 'other'
 
 export function classifyLiveSeriesReference({
   topic,
@@ -229,13 +229,18 @@ export function classifyLiveSeriesReference({
   const normalizedTopic = topic.trim().toLowerCase()
   const normalizedWindowMinutes = Number(activeWindowMinutes)
 
-  return normalizedTopic === 'price.crypto.twap' && provider === 'chainlink' && normalizedWindowMinutes === 24 * 60
+  if (normalizedTopic !== 'price.crypto.twap' || provider !== 'chainlink') {
+    return 'other'
+  }
+  return normalizedWindowMinutes === 24 * 60
     ? 'chainlink_daily'
-    : 'other'
+    : normalizedWindowMinutes === 60
+      ? 'chainlink_hourly'
+      : 'other'
 }
 
-export function isCanonicalChainlinkDailySnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
-  return snapshot?.source === 'chainlink' && snapshot.interval === '1d'
+export function isCanonicalChainlinkCloseSnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
+  return snapshot?.source === 'chainlink' && (snapshot.interval === '1d' || snapshot.interval === '1h')
 }
 
 function hasCanonicalDailyClose({
@@ -307,7 +312,7 @@ export function isCanonicalEventBoundEquityCloseSnapshot({
   )
 }
 
-export function requiresCanonicalChainlinkDailyClose({
+export function requiresCanonicalChainlinkClose({
   snapshot,
   snapshotStatus,
   seriesClassification,
@@ -316,11 +321,11 @@ export function requiresCanonicalChainlinkDailyClose({
   snapshotStatus: LiveSeriesPriceSnapshotStatus
   seriesClassification: LiveSeriesReferenceClassification
 }) {
-  if (seriesClassification === 'chainlink_daily') {
+  if (seriesClassification === 'chainlink_daily' || seriesClassification === 'chainlink_hourly') {
     return true
   }
 
-  return snapshotStatus === 'ready' && isCanonicalChainlinkDailySnapshot(snapshot)
+  return snapshotStatus === 'ready' && isCanonicalChainlinkCloseSnapshot(snapshot)
 }
 
 function normalizeTimestamp(value: unknown, fallbackTimestamp = 0) {
@@ -686,50 +691,7 @@ export function resolveLiveSeriesStartTimestamp({
   return eventStartTimestamp
 }
 
-const CHAINLINK_CRYPTO_SERIES_WINDOWS: Record<string, number> = {
-  'bnb-up-or-down-daily': 1440,
-  'bnb-up-or-down-5m': 5,
-  'bnb-up-or-down-15m': 15,
-  'bnb-up-or-down-hourly': 60,
-  'bnb-up-or-down-4h': 240,
-  'btc-up-or-down-4h': 240,
-  'bitcoin-up-or-down-4h': 240,
-  'btc-up-or-down-5m': 5,
-  'btc-up-or-down-15m': 15,
-  'btc-up-or-down-hourly': 60,
-  'btc-up-or-down-daily': 1440,
-  'doge-up-or-down-5m': 5,
-  'doge-up-or-down-15m': 15,
-  'doge-up-or-down-hourly': 60,
-  'doge-up-or-down-4h': 240,
-  'dogecoin-up-or-down-daily': 1440,
-  'eth-up-or-down-5m': 5,
-  'eth-up-or-down-15m': 15,
-  'eth-up-or-down-4h': 240,
-  'eth-up-or-down-hourly': 60,
-  'eth-up-or-down-daily': 1440,
-  'ethereum-up-or-down-4h': 240,
-  'hype-up-or-down-5m': 5,
-  'hype-up-or-down-15m': 15,
-  'hype-up-or-down-hourly': 60,
-  'hype-up-or-down-4h': 240,
-  'hype-up-or-down-daily': 1440,
-  'sol-up-or-down-5m': 5,
-  'sol-up-or-down-15m': 15,
-  'sol-up-or-down-4h': 240,
-  'solana-up-or-down-hourly': 60,
-  'solana-up-or-down-4h': 240,
-  'solana-up-or-down-daily': 1440,
-  'xrp-up-or-down-5m': 5,
-  'xrp-up-or-down-15m': 15,
-  'xrp-up-or-down-hourly': 60,
-  'xrp-up-or-down-4h': 240,
-  'xrp-up-or-down-daily': 1440,
-}
-
 export function resolveLiveSeriesRealtimeFeed({
-  seriesSlug,
-  activeWindowMinutes,
   configuredTopic,
   provider,
   windowSeconds,
@@ -742,13 +704,29 @@ export function resolveLiveSeriesRealtimeFeed({
   eventStartTimestamp?: number | null
   eventEndTimestamp: number | null
 }) {
-  if (
-    (configuredTopic === 'price.crypto' || configuredTopic === 'price.crypto.twap') &&
-    CHAINLINK_CRYPTO_SERIES_WINDOWS[seriesSlug] === activeWindowMinutes
-  ) {
-    return { topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60 }
-  }
   return { topic: configuredTopic, provider, window_seconds: windowSeconds }
+}
+
+export function resolveLiveSeriesHistorySource(markets: Event['markets'], configuredProvider: string | null) {
+  const sources = new Set<string>()
+  for (const market of markets) {
+    const metadata = `${market.resolution_source ?? ''} ${market.resolution_source_url ?? ''}`.toLowerCase()
+    for (const source of ['binance', 'chainlink', 'pyth']) {
+      if (
+        new RegExp(`\\b${source}\\b`).test(metadata) ||
+        (source === 'chainlink' && /\bchain\.link\b/.test(metadata))
+      ) {
+        sources.add(source)
+      }
+    }
+  }
+  // Resolution metadata belongs to the event, unlike a series' current feed configuration.
+  if (sources.size === 1) {
+    return [...sources][0] as 'binance' | 'chainlink' | 'pyth'
+  }
+  return configuredProvider === 'binance' || configuredProvider === 'chainlink' || configuredProvider === 'pyth'
+    ? configuredProvider
+    : undefined
 }
 
 export function livePriceFeedKey(config: { topic: string; provider: string | null; window_seconds: number | null }) {

@@ -43,6 +43,33 @@ describe('useLiveSeriesPriceSnapshot', () => {
     unstubAllGlobals()
   })
 
+  it('isolates historical source requests and snapshots for the same event', async () => {
+    const fetchMock = mock(async (input: RequestInfo | URL) => {
+      const source = new URL(getRequestUrl(input), 'https://example.test').searchParams.get('source')
+      return { ok: true, json: async () => ({ source, opening_price: source === 'binance' ? 100 : 200 }) }
+    })
+    stubGlobal('fetch', fetchMock)
+    const config = {
+      series_slug: 'source-isolation',
+      topic: 'price.crypto.twap',
+      provider: 'chainlink',
+      window_seconds: 60,
+      active_window_minutes: 60,
+    } as EventLiveChartConfig
+    const options = {
+      config,
+      eventSlug: 'same-event',
+      subscriptionSymbol: 'BTC',
+      explicitEndTimestamp: now + 60_000,
+      startTimestamp: now - 3_540_000,
+    }
+    const oldSource = renderHook(() => useLiveSeriesPriceSnapshot({ ...options, source: 'binance' }))
+    const newSource = renderHook(() => useLiveSeriesPriceSnapshot({ ...options, source: 'chainlink' }))
+    await waitFor(() => expect(oldSource.result.current.referenceSnapshot?.opening_price).toBe(100))
+    expect(newSource.result.current.referenceSnapshot?.opening_price).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('requests a current snapshot again when a live tab becomes visible', async () => {
     const fetchMock = mock(async (_input: RequestInfo | URL) => ({
       ok: true,
@@ -340,7 +367,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
       await advanceTimersByTimeAsync(75_000)
     })
     expect(result.current.referenceSnapshot?.closing_price).toBeNull()
-    const refreshInterval = minutes === 1440 ? 60_000 : 10_000
+    const refreshInterval = 60_000
     now += refreshInterval
     await act(async () => {
       await advanceTimersByTimeAsync(refreshInterval)
