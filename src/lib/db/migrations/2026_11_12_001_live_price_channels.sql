@@ -1,3 +1,13 @@
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.event_live_chart_configs
+    WHERE topic LIKE 'crypto_prices%'
+      AND topic NOT IN ('crypto_prices', 'crypto_prices_binance', 'crypto_prices_chainlink', 'crypto_prices_twap_thirty', 'crypto_prices_twap_sixty')
+  ) THEN
+    RAISE EXCEPTION 'Unsupported custom crypto price topic: choose a supported source before migrating live price feeds';
+  END IF;
+END $$;
 ALTER TABLE public.event_live_chart_configs ADD COLUMN provider text;
 ALTER TABLE public.event_live_chart_configs ADD COLUMN window_seconds integer;
 UPDATE public.event_live_chart_configs SET
