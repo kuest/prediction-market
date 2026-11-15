@@ -23,7 +23,7 @@ import {
   updateOnboardingEmailAction,
   updateOnboardingUsernameAction,
 } from '@/app/[locale]/(platform)/_actions/deposit-wallet'
-import TradingOnboardingDialogs from '@/app/[locale]/(platform)/_components/TradingOnboardingDialogs'
+import TradingOnboardingShell from '@/app/[locale]/(platform)/_components/TradingOnboardingShell'
 import {
   TradingOnboardingContext,
   useTradingOnboarding,
@@ -1968,7 +1968,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
 
       {children}
 
-      <TradingOnboardingDialogs
+      <TradingOnboardingShell
         activeModal={activeModal}
         onModalOpenChange={handleModalOpenChange}
         usernameDefaultValue={communityUsernameHintForCurrentUser?.username ?? getUsernameDefaultValue(user)}

@@ -1,6 +1,7 @@
 import type { Event, EventSeriesEntry } from '@/types'
 import type { DataPoint } from '@/types/PredictionChartTypes'
 
+import { isResolvedSeriesEvent } from '@/lib/event-series-navigation'
 import { formatCurrency } from '@/lib/formatters'
 
 import { resolveLiveSeriesTopicPriceDigits } from './liveSeriesPricePrecision'
@@ -894,7 +895,11 @@ export function findLiveSeriesEvent(
   let liveEventEndTimestamp = Number.POSITIVE_INFINITY
 
   for (const seriesEvent of seriesEvents) {
-    if (seriesEvent.slug === currentEventSlug || seriesEvent.status !== 'active') {
+    if (
+      seriesEvent.slug === currentEventSlug ||
+      seriesEvent.status !== 'active' ||
+      isResolvedSeriesEvent(seriesEvent)
+    ) {
       continue
     }
 

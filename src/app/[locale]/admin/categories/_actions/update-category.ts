@@ -100,6 +100,9 @@ export async function updateCategoryAction(
     revalidatePath('/[locale]/event/[slug]/[market]', 'page')
     updateTag(cacheTags.adminCategories)
     updateTag(cacheTags.eventsList)
+    if (normalizedInput.hide_events !== undefined) {
+      updateTag(cacheTags.seriesEventsVisibility)
+    }
     updateTag(cacheTags.events(currentUser.id))
 
     for (const locale of SUPPORTED_LOCALES) {

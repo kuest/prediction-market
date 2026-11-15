@@ -670,6 +670,13 @@ describe('event live series chart utils', () => {
           createSeriesEvent({ slug: 'ended', end_date: '2026-06-24T00:05:00.000Z' }),
           createSeriesEvent({ slug: 'future', end_date: '2026-06-24T00:20:01.000Z' }),
           createSeriesEvent({ slug: 'draft', status: 'draft', end_date: '2026-06-24T00:10:00.000Z' }),
+          createSeriesEvent({ slug: 'archived', status: 'archived', end_date: '2026-06-24T00:10:00.000Z' }),
+          createSeriesEvent({
+            slug: 'resolved-with-stale-active-status',
+            status: 'active',
+            resolved_at: '2026-06-24T00:04:00.000Z',
+            end_date: '2026-06-24T00:10:00.000Z',
+          }),
         ],
         currentSlug,
         nowTimestamp,

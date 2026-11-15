@@ -19,7 +19,6 @@ import type { User } from '@/types'
 
 import { checkUsernameAvailabilityAction } from '@/app/[locale]/(platform)/_actions/deposit-wallet'
 import { FundAccountDialog } from '@/app/[locale]/(platform)/_components/TradingDialogs'
-import { WalletFlow } from '@/app/[locale]/(platform)/_components/WalletFlow'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -1010,12 +1009,6 @@ export default function TradingOnboardingDialogs({
   fundModalOpen,
   onFundOpenChange,
   onFundDeposit,
-  depositModalOpen,
-  onDepositOpenChange,
-  withdrawModalOpen,
-  onWithdrawOpenChange,
-  user,
-  canBuyMeld,
 }: TradingOnboardingDialogsProps) {
   return (
     <>
@@ -1082,15 +1075,6 @@ export default function TradingOnboardingDialogs({
       />
 
       <FundAccountDialog open={fundModalOpen} onOpenChange={onFundOpenChange} onDeposit={onFundDeposit} />
-
-      <WalletFlow
-        depositOpen={depositModalOpen}
-        onDepositOpenChange={onDepositOpenChange}
-        withdrawOpen={withdrawModalOpen}
-        onWithdrawOpenChange={onWithdrawOpenChange}
-        user={user}
-        canBuyMeld={canBuyMeld}
-      />
     </>
   )
 }

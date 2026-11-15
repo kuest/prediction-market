@@ -23,6 +23,8 @@ export const cacheTags = {
   event: (key: string) => `event:${key}`,
   /** Series event navigation and live-series pill data. */
   seriesEvents: (key: string) => `series-events:${key.trim()}`,
+  /** Shared series history affected by admin event/category visibility changes. */
+  seriesEventsVisibility: 'series-events:visibility',
   /** Admin categories table. */
   adminCategories: 'admin:categories',
   /** Per-locale main navigation tags. */

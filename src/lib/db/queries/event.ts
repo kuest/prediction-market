@@ -72,6 +72,7 @@ import {
 } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
+import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
 import {
   buildRelatedEventPrimaryOutcomes,
   selectCryptoRelatedEventCandidates,
@@ -87,7 +88,11 @@ import {
   stripSportsAuxiliaryEventSuffix,
 } from '@/lib/sports-event-slugs'
 import { normalizeSportsSegmentScores, resolveSportsSourceSegmentCount } from '@/lib/sports-segment-score'
-import { resolveCanonicalSportsSportSlug, resolveSportsSportSlugQueryCandidates } from '@/lib/sports-slug-mapping'
+import {
+  buildSportsSlugResolver,
+  resolveCanonicalSportsSportSlug,
+  resolveSportsSportSlugQueryCandidates,
+} from '@/lib/sports-slug-mapping'
 import { getPublicAssetUrl } from '@/lib/storage'
 
 const DEFAULT_EVENT_LIST_LIMIT = 32
@@ -1173,7 +1178,7 @@ function eventResource(
 async function buildEventResource(
   eventResult: DrizzleEventResult,
   userId: string,
-  sportsSlugResolver: SportsSlugResolver,
+  sportsSlugResolver: SportsSlugResolver | Promise<SportsSlugResolver>,
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<Event> {
   const outcomeTokenIds = (eventResult.markets ?? []).flatMap((market: any) =>
@@ -1195,6 +1200,7 @@ async function buildEventResource(
     localizedEventAdditionalContextsById,
     localizedEventRulesById,
     liveChartSeriesSlugs,
+    resolvedSportsSlugResolver,
   ] = await Promise.all([
     fetchOutcomePrices(outcomeTokenIds),
     fetchLastTradePrices(outcomeTokenIds),
@@ -1203,11 +1209,12 @@ async function buildEventResource(
     getLocalizedEventAdditionalContextsById([eventResult.id], locale),
     getLocalizedEventRulesById([eventResult.id], locale),
     getEnabledLiveChartSeriesSlugs(),
+    sportsSlugResolver,
   ])
   return eventResource(
     eventResult,
     userId,
-    sportsSlugResolver,
+    resolvedSportsSlugResolver,
     priceMap,
     lastTradeMap,
     localizedTagNamesById,
@@ -1854,6 +1861,174 @@ async function hydrateEventListResults({
         volume: groupedVolume,
       }
     })
+}
+
+async function getCachedSeriesEventsBySeriesSlug(seriesSlug: string): Promise<EventSeriesEntry[]> {
+  'use cache'
+  cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
+  cacheTag(cacheTags.seriesEvents(seriesSlug), cacheTags.seriesEventsVisibility, cacheTags.sportsMenuStructure)
+
+  const normalizedSeriesSlug = seriesSlug.trim()
+
+  if (!normalizedSeriesSlug) {
+    return []
+  }
+
+  const rows = await db
+    .select({
+      id: events.id,
+      slug: events.slug,
+      status: events.status,
+      end_date: events.end_date,
+      resolved_at: events.resolved_at,
+      created_at: events.created_at,
+      sports_event_slug: event_sports.sports_event_slug,
+      sports_sport_slug: event_sports.sports_sport_slug,
+      sports_league_slug: event_sports.sports_league_slug,
+      sports_series_slug: event_sports.sports_series_slug,
+      sports_tags: event_sports.sports_tags,
+    })
+    .from(events)
+    .leftJoin(event_sports, eq(event_sports.event_id, events.id))
+    .where(
+      and(
+        eq(events.series_slug, normalizedSeriesSlug),
+        eq(events.is_hidden, false),
+        inArray(events.status, ['active', 'resolved', 'archived']),
+        buildPublicEventListVisibilityCondition(events.id),
+      ),
+    )
+    .orderBy(desc(events.end_date), desc(events.created_at))
+
+  const hasSportsSlugInputs = rows.some(
+    (row) =>
+      Boolean(row.sports_sport_slug?.trim()) ||
+      Boolean(row.sports_series_slug?.trim()) ||
+      Boolean(toOptionalStringArray(row.sports_tags)?.length),
+  )
+  const eventIds = rows.map((row) => row.id)
+  const [sportsSlugResolver, marketRows, winningOutcomeRows] = await Promise.all([
+    hasSportsSlugInputs ? getSportsSlugResolverFromDb() : null,
+    eventIds.length > 0
+      ? db
+          .select({
+            event_id: markets.event_id,
+            is_resolved: markets.is_resolved,
+          })
+          .from(markets)
+          .where(inArray(markets.event_id, eventIds))
+      : [],
+    eventIds.length > 0
+      ? db
+          .select({
+            event_id: markets.event_id,
+            outcome_text: outcomes.outcome_text,
+          })
+          .from(markets)
+          .innerJoin(
+            outcomes,
+            and(eq(outcomes.condition_id, markets.condition_id), eq(outcomes.is_winning_outcome, true)),
+          )
+          .where(inArray(markets.event_id, eventIds))
+      : [],
+  ])
+
+  const marketStateByEventId = new Map<string, { total: number; unresolved: number }>()
+  for (const eventId of eventIds) {
+    marketStateByEventId.set(eventId, { total: 0, unresolved: 0 })
+  }
+
+  for (const marketRow of marketRows) {
+    const bucket = marketStateByEventId.get(marketRow.event_id)
+    if (!bucket) {
+      continue
+    }
+
+    bucket.total += 1
+    if (marketRow.is_resolved !== true) {
+      bucket.unresolved += 1
+    }
+  }
+
+  const outcomeDirectionByEventId = new Map<string, 'up' | 'down'>()
+  for (const winningOutcomeRow of winningOutcomeRows) {
+    if (outcomeDirectionByEventId.has(winningOutcomeRow.event_id)) {
+      continue
+    }
+
+    const direction = resolveSeriesEventDirection(winningOutcomeRow.outcome_text)
+    if (!direction) {
+      continue
+    }
+
+    outcomeDirectionByEventId.set(winningOutcomeRow.event_id, direction)
+  }
+
+  const data: EventSeriesEntry[] = rows.map((row) => ({
+    // Series headers should treat events as resolved as soon as all markets are resolved,
+    // even if events.status lags behind sync updates.
+    status: (() => {
+      const marketState = marketStateByEventId.get(row.id)
+      if (row.status === 'resolved') {
+        return 'resolved' as Event['status']
+      }
+
+      if (marketState && marketState.total > 0 && marketState.unresolved === 0) {
+        return 'resolved' as Event['status']
+      }
+
+      return row.status as Event['status']
+    })(),
+    id: row.id,
+    slug: row.slug,
+    end_date: row.end_date?.toISOString() ?? null,
+    resolved_at: row.resolved_at?.toISOString() ?? null,
+    created_at: row.created_at.toISOString(),
+    sports_event_slug: row.sports_event_slug ?? null,
+    sports_sport_slug: sportsSlugResolver
+      ? resolveCanonicalSportsSportSlug(sportsSlugResolver, {
+          sportsSportSlug: row.sports_sport_slug ?? null,
+          sportsSeriesSlug: row.sports_series_slug ?? null,
+          sportsTags: toOptionalStringArray(row.sports_tags),
+        })
+      : null,
+    sports_league_slug: row.sports_league_slug ?? null,
+    resolved_direction: outcomeDirectionByEventId.get(row.id) ?? null,
+  }))
+
+  return data
+}
+
+async function getCachedLiveChartConfigBySeriesSlug(seriesSlug: string): Promise<EventLiveChartConfig | null> {
+  'use cache'
+  cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
+  cacheTag(cacheTags.seriesEvents(seriesSlug))
+
+  const normalizedSeriesSlug = seriesSlug.trim()
+
+  if (!normalizedSeriesSlug) {
+    return null
+  }
+
+  const row = await db
+    .select({
+      series_slug: event_live_chart_configs.series_slug,
+      topic: event_live_chart_configs.topic,
+      event_type: event_live_chart_configs.event_type,
+      symbol: event_live_chart_configs.symbol,
+      display_name: event_live_chart_configs.display_name,
+      display_symbol: event_live_chart_configs.display_symbol,
+      line_color: event_live_chart_configs.line_color,
+      icon_path: event_live_chart_configs.icon_path,
+      enabled: event_live_chart_configs.enabled,
+      show_price_decimals: event_live_chart_configs.show_price_decimals,
+      active_window_minutes: event_live_chart_configs.active_window_minutes,
+    })
+    .from(event_live_chart_configs)
+    .where(eq(event_live_chart_configs.series_slug, normalizedSeriesSlug))
+    .limit(1)
+
+  return row[0] ?? null
 }
 
 export const EventRepository = {
@@ -3731,6 +3906,7 @@ export const EventRepository = {
   async getEventRouteBySlug(slug: string): Promise<
     QueryResult<{
       slug: string
+      series_slug: string | null
       sports_sport_slug: string | null
       sports_league_slug: string | null
       sports_event_slug: string | null
@@ -3745,6 +3921,7 @@ export const EventRepository = {
       interface EventRouteRow {
         id: string
         slug: string
+        series_slug: string | null
         sports_sport_slug: string | null
         sports_league_slug: string | null
         sports_series_slug: string | null
@@ -3752,33 +3929,34 @@ export const EventRepository = {
         sports_tags: unknown
       }
 
-      const result = (await db
-        .select({
-          id: events.id,
-          slug: events.slug,
-          sports_sport_slug: event_sports.sports_sport_slug,
-          sports_league_slug: event_sports.sports_league_slug,
-          sports_series_slug: event_sports.sports_series_slug,
-          sports_event_slug: event_sports.sports_event_slug,
-          sports_tags: event_sports.sports_tags,
-        })
-        .from(events)
-        .leftJoin(event_sports, eq(event_sports.event_id, events.id))
-        .where(and(eq(events.slug, slug), eq(events.is_hidden, false)))
-        .limit(1)) as EventRouteRow[]
+      const [result, tagRows] = await Promise.all([
+        db
+          .select({
+            id: events.id,
+            slug: events.slug,
+            series_slug: events.series_slug,
+            sports_sport_slug: event_sports.sports_sport_slug,
+            sports_league_slug: event_sports.sports_league_slug,
+            sports_series_slug: event_sports.sports_series_slug,
+            sports_event_slug: event_sports.sports_event_slug,
+            sports_tags: event_sports.sports_tags,
+          })
+          .from(events)
+          .leftJoin(event_sports, eq(event_sports.event_id, events.id))
+          .where(and(eq(events.slug, slug), eq(events.is_hidden, false)))
+          .limit(1) as PromiseLike<EventRouteRow[]>,
+        db
+          .select({ slug: tags.slug })
+          .from(event_tags)
+          .innerJoin(tags, eq(event_tags.tag_id, tags.id))
+          .innerJoin(events, eq(event_tags.event_id, events.id))
+          .where(and(eq(events.slug, slug), eq(events.is_hidden, false))),
+      ])
 
       const eventRow = result[0]
       if (!eventRow) {
         throw new Error('Event not found')
       }
-
-      const tagRows = await db
-        .select({
-          slug: tags.slug,
-        })
-        .from(event_tags)
-        .innerJoin(tags, eq(event_tags.tag_id, tags.id))
-        .where(eq(event_tags.event_id, eventRow.id))
 
       const normalizedSportsTags = toOptionalStringArray(eventRow.sports_tags)
       const hasSportsSlugInputs =
@@ -3790,6 +3968,7 @@ export const EventRepository = {
       return {
         data: {
           slug: eventRow.slug,
+          series_slug: eventRow.series_slug,
           sports_sport_slug: sportsSlugResolver
             ? resolveCanonicalSportsSportSlug(sportsSlugResolver, {
                 sportsSportSlug: eventRow.sports_sport_slug,
@@ -3981,7 +4160,12 @@ export const EventRepository = {
 
       const hydratedEventResult = await hydrateSportsAuxiliaryEventContext(eventResult as DrizzleEventResult)
 
-      const sportsSlugResolver = await getSportsSlugResolverFromDb()
+      const sports = hydratedEventResult.sports
+      const hasSportsSlugInputs =
+        Boolean(sports?.sports_sport_slug?.trim()) ||
+        Boolean(sports?.sports_series_slug?.trim()) ||
+        Boolean(toOptionalStringArray(sports?.sports_tags)?.length)
+      const sportsSlugResolver = hasSportsSlugInputs ? getSportsSlugResolverFromDb() : buildSportsSlugResolver([])
       const transformedEvent = await buildEventResource(hydratedEventResult, userId, sportsSlugResolver, locale)
 
       return { data: transformedEvent, error: null }
@@ -4190,169 +4374,17 @@ export const EventRepository = {
   },
 
   async getSeriesEventsBySeriesSlug(seriesSlug: string): Promise<QueryResult<EventSeriesEntry[]>> {
-    return runQuery(async () => {
-      const normalizedSeriesSlug = seriesSlug.trim()
-
-      if (!normalizedSeriesSlug) {
-        return { data: [], error: null }
-      }
-
-      const rows = await db
-        .select({
-          id: events.id,
-          slug: events.slug,
-          status: events.status,
-          end_date: events.end_date,
-          resolved_at: events.resolved_at,
-          created_at: events.created_at,
-          sports_event_slug: event_sports.sports_event_slug,
-          sports_sport_slug: event_sports.sports_sport_slug,
-          sports_league_slug: event_sports.sports_league_slug,
-          sports_series_slug: event_sports.sports_series_slug,
-          sports_tags: event_sports.sports_tags,
-        })
-        .from(events)
-        .leftJoin(event_sports, eq(event_sports.event_id, events.id))
-        .where(
-          and(
-            eq(events.series_slug, normalizedSeriesSlug),
-            eq(events.is_hidden, false),
-            inArray(events.status, ['active', 'resolved', 'archived']),
-            buildPublicEventListVisibilityCondition(events.id),
-          ),
-        )
-        .orderBy(desc(events.end_date), desc(events.created_at))
-
-      const hasSportsSlugInputs = rows.some(
-        (row) =>
-          Boolean(row.sports_sport_slug?.trim()) ||
-          Boolean(row.sports_series_slug?.trim()) ||
-          Boolean(toOptionalStringArray(row.sports_tags)?.length),
-      )
-      const sportsSlugResolver = hasSportsSlugInputs ? await getSportsSlugResolverFromDb() : null
-
-      const eventIds = rows.map((row) => row.id)
-      const marketRows =
-        eventIds.length > 0
-          ? await db
-              .select({
-                event_id: markets.event_id,
-                is_resolved: markets.is_resolved,
-              })
-              .from(markets)
-              .where(inArray(markets.event_id, eventIds))
-          : []
-
-      const winningOutcomeRows =
-        eventIds.length > 0
-          ? await db
-              .select({
-                event_id: markets.event_id,
-                outcome_text: outcomes.outcome_text,
-              })
-              .from(markets)
-              .innerJoin(
-                outcomes,
-                and(eq(outcomes.condition_id, markets.condition_id), eq(outcomes.is_winning_outcome, true)),
-              )
-              .where(inArray(markets.event_id, eventIds))
-          : []
-
-      const marketStateByEventId = new Map<string, { total: number; unresolved: number }>()
-      for (const eventId of eventIds) {
-        marketStateByEventId.set(eventId, { total: 0, unresolved: 0 })
-      }
-
-      for (const marketRow of marketRows) {
-        const bucket = marketStateByEventId.get(marketRow.event_id)
-        if (!bucket) {
-          continue
-        }
-
-        bucket.total += 1
-        if (marketRow.is_resolved !== true) {
-          bucket.unresolved += 1
-        }
-      }
-
-      const outcomeDirectionByEventId = new Map<string, 'up' | 'down'>()
-      for (const winningOutcomeRow of winningOutcomeRows) {
-        if (outcomeDirectionByEventId.has(winningOutcomeRow.event_id)) {
-          continue
-        }
-
-        const direction = resolveSeriesEventDirection(winningOutcomeRow.outcome_text)
-        if (!direction) {
-          continue
-        }
-
-        outcomeDirectionByEventId.set(winningOutcomeRow.event_id, direction)
-      }
-
-      const data: EventSeriesEntry[] = rows.map((row) => ({
-        // Series headers should treat events as resolved as soon as all markets are resolved,
-        // even if events.status lags behind sync updates.
-        status: (() => {
-          const marketState = marketStateByEventId.get(row.id)
-          if (row.status === 'resolved') {
-            return 'resolved' as Event['status']
-          }
-
-          if (marketState && marketState.total > 0 && marketState.unresolved === 0) {
-            return 'resolved' as Event['status']
-          }
-
-          return row.status as Event['status']
-        })(),
-        id: row.id,
-        slug: row.slug,
-        end_date: row.end_date?.toISOString() ?? null,
-        resolved_at: row.resolved_at?.toISOString() ?? null,
-        created_at: row.created_at.toISOString(),
-        sports_event_slug: row.sports_event_slug ?? null,
-        sports_sport_slug: sportsSlugResolver
-          ? resolveCanonicalSportsSportSlug(sportsSlugResolver, {
-              sportsSportSlug: row.sports_sport_slug ?? null,
-              sportsSeriesSlug: row.sports_series_slug ?? null,
-              sportsTags: toOptionalStringArray(row.sports_tags),
-            })
-          : null,
-        sports_league_slug: row.sports_league_slug ?? null,
-        resolved_direction: outcomeDirectionByEventId.get(row.id) ?? null,
-      }))
-
-      return { data, error: null }
-    })
+    return runQuery(async () => ({
+      data: await getCachedSeriesEventsBySeriesSlug(seriesSlug.trim()),
+      error: null,
+    }))
   },
 
   async getLiveChartConfigBySeriesSlug(seriesSlug: string): Promise<QueryResult<EventLiveChartConfig | null>> {
-    return runQuery(async () => {
-      const normalizedSeriesSlug = seriesSlug.trim()
-
-      if (!normalizedSeriesSlug) {
-        return { data: null, error: null }
-      }
-
-      const row = await db
-        .select({
-          series_slug: event_live_chart_configs.series_slug,
-          topic: event_live_chart_configs.topic,
-          event_type: event_live_chart_configs.event_type,
-          symbol: event_live_chart_configs.symbol,
-          display_name: event_live_chart_configs.display_name,
-          display_symbol: event_live_chart_configs.display_symbol,
-          line_color: event_live_chart_configs.line_color,
-          icon_path: event_live_chart_configs.icon_path,
-          enabled: event_live_chart_configs.enabled,
-          show_price_decimals: event_live_chart_configs.show_price_decimals,
-          active_window_minutes: event_live_chart_configs.active_window_minutes,
-        })
-        .from(event_live_chart_configs)
-        .where(eq(event_live_chart_configs.series_slug, normalizedSeriesSlug))
-        .limit(1)
-
-      return { data: row[0] ?? null, error: null }
-    })
+    return runQuery(async () => ({
+      data: await getCachedLiveChartConfigBySeriesSlug(seriesSlug.trim()),
+      error: null,
+    }))
   },
 
   async getRelatedEventsBySlug(slug: string, options: RelatedEventOptions): Promise<QueryResult<RelatedEvent[]>> {

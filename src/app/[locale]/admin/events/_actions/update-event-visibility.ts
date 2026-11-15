@@ -40,6 +40,7 @@ export async function updateEventVisibilityAction(
 
     revalidatePath('/[locale]/admin/events', 'page')
     updateTag(cacheTags.eventsList)
+    updateTag(cacheTags.seriesEventsVisibility)
     updateTag(cacheTags.event(data.slug))
     updateTag(cacheTags.sportsMenu)
     updateTag(cacheTags.sitemap)
