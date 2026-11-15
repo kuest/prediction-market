@@ -146,13 +146,14 @@ export function useTradeAlerts() {
     }
   }, [communityUrl, locale, runWithSignaturePrompt, signMessageAsync, user])
 
+  const address = user?.address
   const disable = useCallback(async () => {
     useTradeAlertsStore.setState({ loading: true })
     try {
       const registration = supportsWebPush() ? await navigator.serviceWorker.getRegistration('/') : undefined
       const subscription = await registration?.pushManager.getSubscription()
-      const stored = loadSubscriptionState(user?.address)
-      const token = user?.address ? loadCommunityAuth(user.address)?.token : null
+      const stored = loadSubscriptionState(address)
+      const token = address ? loadCommunityAuth(address)?.token : null
       const endpointHash = stored?.endpointHash ?? (subscription ? await hashPushEndpoint(subscription.endpoint) : null)
       if (token && endpointHash) {
         await deleteCommunityPushSubscription({ communityApiUrl: communityUrl, token, endpointHash })
@@ -164,7 +165,7 @@ export function useTradeAlerts() {
     } finally {
       useTradeAlertsStore.setState({ loading: false })
     }
-  }, [communityUrl, user?.address])
+  }, [address, communityUrl])
 
   return { enabled, loading, permission, enable, disable, refreshState, supported: permission !== 'unsupported' }
 }
