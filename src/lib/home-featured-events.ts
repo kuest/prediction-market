@@ -956,7 +956,19 @@ export async function listHomeFeaturedEvents(
     )
     return []
   }
-  const liveSeriesEntries: Array<readonly [string, HomeFeaturedLiveSeriesData]> = await Promise.all(
+  const currentContextItemsPromise = Promise.all(
+    resolvedEvents.map(({ event, target }) =>
+      resolveContextItems({
+        event,
+        targetType: target.targetType,
+        mode: resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode),
+        featuredId: target.featuredId,
+        settings,
+        locale,
+      }),
+    ),
+  )
+  const liveSeriesEntriesPromise: Promise<Array<readonly [string, HomeFeaturedLiveSeriesData]>> = Promise.all(
     resolvedEvents.map(async ({ event, target }) => {
       if (target.targetType !== 'series' || !event.series_slug) {
         return [event.id, { config: null, seriesEvents: [], nextEvent: null }] as const
@@ -981,7 +993,8 @@ export async function listHomeFeaturedEvents(
         event.id,
         {
           config: configResult.data ?? null,
-          seriesEvents,
+          // Homepage previews have no series navigation; retain history only to select the same successor above.
+          seriesEvents: [],
           nextEvent: nextEvent
             ? buildHomeFeaturedRolloverEvent(
                 nextEvent,
@@ -1000,45 +1013,40 @@ export async function listHomeFeaturedEvents(
       ] as const
     }),
   )
+  const [liveSeriesEntries, currentContextItems] = await Promise.all([
+    liveSeriesEntriesPromise,
+    currentContextItemsPromise,
+  ])
   const liveSeriesByEventId = new Map(liveSeriesEntries)
 
-  return Promise.all(
-    resolvedEvents.map(async (entry, index, all): Promise<HomeFeaturedEventCard> => {
-      const { target, event } = entry
-      const kind = resolveCardKind(event)
-      const mode = resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode)
-      const temporal = resolveTemporalStatus(event, locale)
-      const liveSeries = liveSeriesByEventId.get(event.id)
+  return resolvedEvents.map((entry, index, all): HomeFeaturedEventCard => {
+    const { target, event } = entry
+    const kind = resolveCardKind(event)
+    const mode = resolveEffectiveContextMode(target.contextMode, settings.defaultContextMode)
+    const temporal = resolveTemporalStatus(event, locale)
+    const liveSeries = liveSeriesByEventId.get(event.id)
 
-      return {
-        featuredId: target.featuredId,
-        targetType: target.targetType,
-        source: target.source,
-        rank: target.rank,
-        contextMode: mode,
-        kind,
-        event,
-        primaryMarkets: buildPrimaryMarkets(event, kind),
-        topOutcomes: buildTopOutcomes(event, kind),
-        contextItems: await resolveContextItems({
-          event,
-          targetType: target.targetType,
-          mode,
-          featuredId: target.featuredId,
-          settings,
-          locale,
-        }),
-        previousTitle: all[index - 1]?.event.title ?? all.at(-1)?.event.title ?? null,
-        nextTitle: all[index + 1]?.event.title ?? all[0]?.event.title ?? null,
-        resolvedEventId: target.eventId,
-        resolvedSeriesSlug: target.seriesSlug,
-        temporalStatus: temporal.temporalStatus,
-        temporalLabel: temporal.temporalLabel,
-        sportsMarketGroups: kind === 'sports' ? buildSportsMarketGroups(event) : [],
-        liveChartConfig: liveSeries?.config ?? null,
-        seriesEvents: liveSeries?.seriesEvents ?? [],
-        nextSeriesEvent: liveSeries?.nextEvent ?? null,
-      }
-    }),
-  )
+    return {
+      featuredId: target.featuredId,
+      targetType: target.targetType,
+      source: target.source,
+      rank: target.rank,
+      contextMode: mode,
+      kind,
+      event,
+      primaryMarkets: buildPrimaryMarkets(event, kind),
+      topOutcomes: buildTopOutcomes(event, kind),
+      contextItems: currentContextItems[index],
+      previousTitle: all[index - 1]?.event.title ?? all.at(-1)?.event.title ?? null,
+      nextTitle: all[index + 1]?.event.title ?? all[0]?.event.title ?? null,
+      resolvedEventId: target.eventId,
+      resolvedSeriesSlug: target.seriesSlug,
+      temporalStatus: temporal.temporalStatus,
+      temporalLabel: temporal.temporalLabel,
+      sportsMarketGroups: kind === 'sports' ? buildSportsMarketGroups(event) : [],
+      liveChartConfig: liveSeries?.config ?? null,
+      seriesEvents: liveSeries?.seriesEvents ?? [],
+      nextSeriesEvent: liveSeries?.nextEvent ?? null,
+    }
+  })
 }

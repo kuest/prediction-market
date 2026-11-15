@@ -559,8 +559,11 @@ function EventLiveSeriesChartContent({
 
   const isTradingWindowActive = !isEventClosed && nowMs >= tradingWindowStartMs
   const liveSeriesEvent = useMemo(
-    () => findLiveSeriesEvent(seriesEvents, event.slug, nowMs, tradingWindowMs),
-    [event.slug, nowMs, seriesEvents, tradingWindowMs],
+    () =>
+      showLiveMarketLink && isEventClosed
+        ? findLiveSeriesEvent(seriesEvents, event.slug, nowMs, tradingWindowMs)
+        : null,
+    [event.slug, isEventClosed, nowMs, seriesEvents, showLiveMarketLink, tradingWindowMs],
   )
   const liveMarketHref =
     showLiveMarketLink && isEventClosed && liveSeriesEvent ? resolveEventPagePath(liveSeriesEvent) : null
