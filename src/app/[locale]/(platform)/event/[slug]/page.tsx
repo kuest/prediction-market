@@ -50,23 +50,24 @@ async function CachedEventPageContent({ slug }: { slug: string }) {
   const locale = await getRootLocale()
   cacheTag(cacheTags.event(slug))
 
-  const eventRoute = await getEventRouteBySlug(slug)
-  if (!eventRoute) {
-    notFound()
-  }
-
-  const sportsPath = resolveEventBasePath(eventRoute)
-  if (sportsPath) {
-    redirect({
-      href: sportsPath,
-      locale,
-    })
-  }
-
   const [eventPageData, runtimeTheme] = await Promise.all([
     loadEventPagePublicContentData(slug, locale),
     loadRuntimeThemeState(),
+    getEventRouteBySlug(slug).then(function validateEventRoute(eventRoute) {
+      if (!eventRoute) {
+        notFound()
+      }
+
+      const sportsPath = resolveEventBasePath(eventRoute)
+      if (sportsPath) {
+        redirect({
+          href: sportsPath,
+          locale,
+        })
+      }
+    }),
   ])
+
   if (!eventPageData) {
     notFound()
   }

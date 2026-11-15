@@ -1,12 +1,14 @@
 'use client'
 
 import { useExtracted, useLocale } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
 
 import PredictionChart from '@/components/PredictionChart'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { resolveEventPagePath } from '@/lib/events-routing'
@@ -71,11 +73,14 @@ import {
   resolveLiveSeriesDeltaDisplayDigits,
   resolveLiveSeriesPriceDisplayDigits,
 } from '../_utils/liveSeriesPricePrecision'
-import EventChart from './EventChart'
 import EventLiveSeriesChartHeader from './EventLiveSeriesChartHeader'
 import EventLiveSeriesChartOverlay from './EventLiveSeriesChartOverlay'
 import EventLiveSeriesViewSwitch from './EventLiveSeriesViewSwitch'
 import EventSeriesPills from './EventSeriesPills'
+
+const EventChart = dynamic(() => import('./EventChart'), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+})
 
 const LIVE_AXIS_RESPONSE_MS = 1_250
 const LIVE_AXIS_SETTLE_RATIO = 0.000_05

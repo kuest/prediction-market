@@ -4,12 +4,15 @@ import dynamic from 'next/dynamic'
 
 import type { Event, EventLiveChartConfig } from '@/types'
 
-import EventMarkets from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarkets'
 import EventSingleMarketOrderBook from '@/app/[locale]/(platform)/event/[slug]/_components/EventSingleMarketOrderBook'
 import { shouldUseLiveSeriesChart } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartEligibility'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useUser } from '@/stores/useUser'
+
+const EventMarkets = dynamic(() => import('@/app/[locale]/(platform)/event/[slug]/_components/EventMarkets'), {
+  loading: () => <Skeleton className="h-52" />,
+})
 
 const EventMarketPositions = dynamic(
   () => import('@/app/[locale]/(platform)/event/[slug]/_components/EventMarketPositions'),

@@ -3,6 +3,7 @@
 import type { SetStateAction } from 'react'
 
 import { useLocale } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { memo, useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import type { TimeRange } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
@@ -58,11 +59,12 @@ import {
 } from '../_utils/chartSettingsStorage'
 import EventChartCanvas from './EventChartCanvas'
 import EventChartControlsBar from './EventChartControlsBar'
-import EventChartExportDialog from './EventChartExportDialog'
 import EventChartHeader from './EventChartHeader'
 import EventChartLayout from './EventChartLayout'
 import EventChartLegend from './EventChartLegend'
 import EventMetaInformation from './EventMetaInformation'
+
+const EventChartExportDialog = dynamic(() => import('./EventChartExportDialog'), { ssr: false })
 
 function EventChartComponent({
   event,
@@ -113,6 +115,7 @@ function EventChartComponent({
     snapshot: null,
   })
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [hasOpenedExportDialog, setHasOpenedExportDialog] = useState(false)
   const nowMs = useCurrentTimestamp({ intervalMs: 30_000 })
   const currentTimestampMs = nowMs ?? 0
 
@@ -680,18 +683,23 @@ function EventChartComponent({
               onToggleMarket={handleToggleMarket}
               settings={chartSettings}
               onSettingsChange={handleChartSettingsChange}
-              onExportData={() => setExportDialogOpen(true)}
+              onExportData={() => {
+                setHasOpenedExportDialog(true)
+                setExportDialogOpen(true)
+              }}
             />
           ) : undefined
         }
       />
-      <EventChartExportDialog
-        open={exportDialogOpen}
-        onOpenChange={setExportDialogOpen}
-        eventCreatedAt={event.created_at}
-        markets={event.markets}
-        isMultiMarket={event.total_markets_count > 1}
-      />
+      {hasOpenedExportDialog && (
+        <EventChartExportDialog
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+          eventCreatedAt={event.created_at}
+          markets={event.markets}
+          isMultiMarket={event.total_markets_count > 1}
+        />
+      )}
     </>
   )
 }

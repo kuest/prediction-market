@@ -1,0 +1,218 @@
+import type { ComponentType, ReactNode } from 'react'
+
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, mock } from 'bun:test'
+import { lazy, Suspense } from 'react'
+
+import type { Event, Market } from '@/types'
+
+function createDialog(name: string) {
+  return function Dialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+    return (
+      <div data-testid={`${name}-dialog`} data-open={open}>
+        <input aria-label={`${name} draft`} defaultValue="" />
+        <button type="button" onClick={() => onOpenChange(false)}>{`Close ${name}`}</button>
+      </div>
+    )
+  }
+}
+
+void mock.module('next/dynamic', () => ({
+  default: (loader: () => Promise<{ default: ComponentType<any> }>) => {
+    const Component = lazy(loader)
+    return function DeferredComponent(props: any) {
+      return (
+        <Suspense fallback={null}>
+          <Component {...props} />
+        </Suspense>
+      )
+    }
+  },
+}))
+
+void mock.module('next-intl', () => ({
+  useLocale: () => 'en',
+  useExtracted: () => (message: string) => message,
+}))
+
+void mock.module('@tanstack/react-query', () => ({
+  useQueryClient: () => ({}),
+  useQuery: () => ({ data: null }),
+}))
+void mock.module('@/stores/useUser', () => ({ useUser: () => null }))
+void mock.module('@/stores/useOrder', () => ({
+  useIsSingleMarket: () => true,
+  useOrder: (selector: (state: any) => unknown) => selector({ market: null }),
+}))
+void mock.module('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }))
+void mock.module('@/hooks/useCurrentTimestamp', () => ({ useCurrentTimestamp: () => Date.now() }))
+void mock.module('@/hooks/useWindowSize', () => ({ useWindowSize: () => ({ width: 1440 }) }))
+void mock.module('@/hooks/useSiteIdentity', () => ({ useSiteIdentity: () => ({ name: 'Kuest' }) }))
+void mock.module('@/hooks/useMarketRewards', () => ({ useMarketRewards: () => ({ data: [] }) }))
+void mock.module('@/hooks/usePolymarketOrderBooks', () => ({ usePolymarketOrderBooks: () => ({ data: {} }) }))
+void mock.module('@/hooks/useOpenOrdersCacheInvalidation', () => ({
+  useOpenOrdersCacheInvalidation: () => ({ removeOrdersFromCache: mock(), invalidateAfterCancel: mock() }),
+}))
+void mock.module('@/app/[locale]/(platform)/_providers/TradingOnboardingProvider', () => ({
+  useTradingOnboarding: () => ({ openTradeRequirements: mock() }),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_actions/cancel-order', () => ({ cancelOrderAction: mock() }))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useUserOpenOrdersQuery', () => ({
+  buildUserOpenOrdersQueryKey: () => [],
+  useUserOpenOrdersQuery: () => ({ data: null }),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useOrderBookSummaries', () => ({
+  useOrderBookSummaries: mock(),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider', () => ({
+  useMarketChannelStatus: () => 'live',
+  useMarketChannelSubscription: mock(),
+  useOptionalMarketChannelSubscription: mock(),
+  useOptionalMarketChannelLiveVolumes: () => ({ liveVolumeByCondition: {}, resetLiveVolumes: mock() }),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useCommentMetrics', () => ({
+  useCommentMetrics: () => ({ data: { comments_count: 0 } }),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveCommentsChannel', () => ({
+  useLiveCommentsChannel: () => ({ status: 'live' }),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventComments', () => ({
+  default: () => <div>Comments content</div>,
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventFaq', () => ({ default: () => null }))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventTopHolders', () => ({
+  default: () => <div>Holders content</div>,
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventActivity', () => ({
+  default: () => <div>Activity content</div>,
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventTabSelector', () => ({
+  default: () => null,
+}))
+void mock.module('@/components/ui/tabs', () => ({
+  Tabs: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  TabsContent: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartEmbedDialog', () => ({
+  default: createDialog('embed'),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventProvideLiquidityDialog', () => ({
+  default: createDialog('liquidity'),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartExportDialog', () => ({
+  default: createDialog('export'),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventChartAnnotations', () => ({
+  useEventChartAnnotations: () => [],
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventChartTradeFlow', () => ({
+  useEventChartTradeFlow: () => ({ tradeFlowItems: [] }),
+}))
+const history = {
+  normalizedHistory: [],
+  latestSnapshot: { condition: 50 },
+  isRangeTransitioning: false,
+}
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMarketChanceData', () => ({
+  useEventMarketChanceData: () => ({ displayChanceByMarket: { condition: 50 }, yesPriceHistory: history }),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory', () => ({
+  buildMarketTargets: () => [],
+  useEventPriceHistory: () => history,
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useXTrackerTweetCount', () => ({
+  useXTrackerTweetCount: () => ({ data: null }),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartCanvas', () => ({ default: () => null }))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartHeader', () => ({ default: () => null }))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartLegend', () => ({ default: () => null }))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartLayout', () => ({
+  default: ({ controls }: { controls: ReactNode }) => <div>{controls}</div>,
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartControlsBar', () => ({
+  default: ({ onExportData }: { onExportData: () => void }) => (
+    <button type="button" onClick={onExportData}>
+      Export data
+    </button>
+  ),
+}))
+
+const { default: EventEmbed } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventEmbed')
+const { default: EventTabs } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventTabs')
+const { default: EventOrderBook } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook')
+const { default: EventChart } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventChart')
+
+const market = {
+  condition_id: 'condition',
+  title: 'Bitcoin up or down?',
+  is_active: true,
+  is_resolved: false,
+  outcomes: [
+    { outcome_index: 0, outcome_text: 'Yes', token_id: 'yes-token' },
+    { outcome_index: 1, outcome_text: 'No', token_id: 'no-token' },
+  ],
+} as Market
+const event = {
+  id: 'event',
+  slug: 'bitcoin-up-or-down',
+  title: 'Bitcoin up or down?',
+  total_markets_count: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  tags: [],
+  markets: [market],
+} as Event
+
+async function verifyDialogRetention(name: string, trigger: string) {
+  await act(async () => {
+    await Promise.resolve()
+  })
+  expect(screen.queryByTestId(`${name}-dialog`)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: trigger }))
+  const draft = await screen.findByLabelText(`${name} draft`)
+  fireEvent.change(draft, { target: { value: 'Keep this draft' } })
+  fireEvent.click(screen.getByRole('button', { name: `Close ${name}` }))
+  expect(screen.getByTestId(`${name}-dialog`)).toHaveAttribute('data-open', 'false')
+  expect(screen.getByLabelText(`${name} draft`)).toHaveValue('Keep this draft')
+  fireEvent.click(screen.getByRole('button', { name: trigger }))
+  expect(screen.getByTestId(`${name}-dialog`)).toHaveAttribute('data-open', 'true')
+  expect(screen.getByLabelText(`${name} draft`)).toHaveValue('Keep this draft')
+}
+
+describe('event deferred content', () => {
+  it('loads the embed editor on first open and keeps its state across closing', async () => {
+    render(<EventEmbed event={event} />)
+    await verifyDialogRetention('embed', 'Embed')
+  })
+
+  it('loads the liquidity editor on first open and keeps its state across closing', async () => {
+    render(<EventOrderBook market={market} outcome={market.outcomes[0]} summaries={{}} eventSlug={event.slug} />)
+    await verifyDialogRetention('liquidity', 'Provide liquidity')
+  })
+
+  it('loads chart export on first open and keeps its state across closing', async () => {
+    render(<EventChart event={event} isMobile={false} />)
+    await verifyDialogRetention('export', 'Export data')
+  })
+
+  it.each(['comments', 'holders', 'activity'] as const)(
+    'only mounts secondary content for the selected %s tab',
+    async (initialTab) => {
+      render(<EventTabs event={event} user={null} faqItems={[]} initialTab={initialTab} />)
+      await waitFor(() =>
+        expect(
+          screen.getByText(
+            `${initialTab === 'comments' ? 'Comments' : initialTab === 'holders' ? 'Holders' : 'Activity'} content`,
+          ),
+        ).toBeInTheDocument(),
+      )
+      for (const [tab, label] of [
+        ['holders', 'Holders content'],
+        ['activity', 'Activity content'],
+      ]) {
+        if (tab !== initialTab) {
+          expect(screen.queryByText(label)).not.toBeInTheDocument()
+        }
+      }
+    },
+  )
+})

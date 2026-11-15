@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon, GavelIcon, TriangleIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -25,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useNowTimestamp } from '@/hooks/useNowTimestamp'
 import { Link } from '@/i18n/navigation'
@@ -344,11 +346,36 @@ export default function EventSeriesPills({
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
   const [hoveredPastBadgeId, setHoveredPastBadgeId] = useState<string | null>(null)
   const nowTimestamp = useNowTimestamp()
+  const history = useQuery<EventSeriesEntry[]>({
+    queryKey: ['event-series-history', currentEventSlug],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ eventSlug: currentEventSlug! })
+      const response = await fetch(`/api/events/series?${params}`, { signal })
+      if (!response.ok) {
+        throw new Error('Failed to load event series history')
+      }
+      return response.json()
+    },
+    enabled: isPastMenuOpen && Boolean(currentEventSlug),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const navigationEvents = useMemo(() => {
+    if (!history.data) {
+      return seriesEvents
+    }
+
+    const eventsBySlug = new Map(history.data.map((event) => [event.slug, event]))
+    for (const event of seriesEvents) {
+      eventsBySlug.set(event.slug, event)
+    }
+    return Array.from(eventsBySlug.values())
+  }, [history.data, seriesEvents])
 
   const { pastResolvedEvents, unresolvedEvents, currentResolvedEvent, currentTradingEventId, hasSeriesNavigation } =
     useSeriesNavigation({
       currentEventSlug,
-      seriesEvents,
+      seriesEvents: navigationEvents,
       nowTimestamp,
       tradingWindowMs,
     })
@@ -462,6 +489,10 @@ export default function EventSeriesPills({
                 align="start"
                 className="z-20 max-h-80 min-w-44 overflow-y-auto rounded-lg p-0.5"
               >
+                {history.isFetching && <Spinner className="mx-auto my-2" />}
+                {history.isError && (
+                  <DropdownMenuItem onClick={() => void history.refetch()}>{t('Try again')}</DropdownMenuItem>
+                )}
                 {pastResolvedEvents.map((event) => {
                   const isCurrentEvent = event.slug === currentEventSlug
                   const etTimeLabel = `${eventPillTimeLabel(event, 'America/New_York', true, true)} ET`
@@ -638,6 +669,10 @@ export default function EventSeriesPills({
                 `z-20 max-h-80 min-w-44 scrollbar-none overflow-y-auto p-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden`,
               )}
             >
+              {history.isFetching && <Spinner className="mx-auto my-2" />}
+              {history.isError && (
+                <DropdownMenuItem onClick={() => void history.refetch()}>{t('Try again')}</DropdownMenuItem>
+              )}
               {pastResolvedEvents.map((event) => {
                 const isCurrentEvent = event.slug === currentEventSlug
                 const etTimeLabel = `${eventPillTimeLabel(event, 'America/New_York', true, true)} ET`

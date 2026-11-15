@@ -16,24 +16,24 @@ The channel is public and does not require CLOB credentials.
 
 ## Subscribe
 
-| Field                    | Type     | Description                                    |
-| ------------------------ | -------- | ---------------------------------------------- |
-| `type`                   | string   | Must be `market`                               |
-| `assets_ids`             | string[] | Outcome token IDs to stream                    |
+| Field                    | Type     | Description                                                        |
+| ------------------------ | -------- | ------------------------------------------------------------------ |
+| `type`                   | string   | Must be `market`                                                   |
+| `assets_ids`             | string[] | Outcome token IDs to stream                                        |
 | `custom_feature_enabled` | boolean  | Enables `best_bid_ask`, `new_market`, and `market_resolved` events |
 
 Use one connection for multiple token IDs when possible.
 
 ## Message types
 
-| Type               | Meaning                                                         |
-| ------------------ | --------------------------------------------------------------- |
-| `book`             | Full level-2 order-book snapshot                                |
-| `price_change`     | Incremental change caused by an order placement or cancellation |
-| `tick_size_change` | Minimum price-increment update                                  |
-| `last_trade_price` | Latest matched trade                                            |
-| `best_bid_ask`     | Top-of-book update; requires custom features                    |
-| `new_market`       | Newly ingested market metadata; requires custom features        |
+| Type               | Meaning                                                                                   |
+| ------------------ | ----------------------------------------------------------------------------------------- |
+| `book`             | Full level-2 order-book snapshot                                                          |
+| `price_change`     | Incremental change caused by an order placement or cancellation                           |
+| `tick_size_change` | Minimum price-increment update                                                            |
+| `last_trade_price` | Latest matched trade                                                                      |
+| `best_bid_ask`     | Top-of-book update; requires custom features                                              |
+| `new_market`       | Newly ingested market metadata; requires custom features                                  |
 | `market_resolved`  | Resolution update with `winning_asset_id` and `winning_outcome`; requires custom features |
 
 ## Keep local state consistent

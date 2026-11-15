@@ -98,15 +98,7 @@
             "description": "Sort column for the response.",
             "schema": {
               "type": "string",
-              "enum": [
-                "CURRENT",
-                "INITIAL",
-                "TOKENS",
-                "CASHPNL",
-                "TITLE",
-                "PRICE",
-                "AVGPRICE"
-              ],
+              "enum": ["CURRENT", "INITIAL", "TOKENS", "CASHPNL", "TITLE", "PRICE", "AVGPRICE"],
               "default": "TOKENS"
             }
           },
@@ -841,10 +833,7 @@
             "description": "Limit trade rows to BUY or SELL. Does not filter non-trade activity.",
             "schema": {
               "type": "string",
-              "enum": [
-                "BUY",
-                "SELL"
-              ]
+              "enum": ["BUY", "SELL"]
             }
           },
           {
@@ -869,11 +858,7 @@
             "description": "Sort column for the response.",
             "schema": {
               "type": "string",
-              "enum": [
-                "TIMESTAMP",
-                "TOKENS",
-                "CASH"
-              ],
+              "enum": ["TIMESTAMP", "TOKENS", "CASH"],
               "default": "TIMESTAMP"
             }
           },
@@ -883,10 +868,7 @@
             "description": "Sort direction.",
             "schema": {
               "type": "string",
-              "enum": [
-                "ASC",
-                "DESC"
-              ],
+              "enum": ["ASC", "DESC"],
               "default": "DESC"
             }
           }

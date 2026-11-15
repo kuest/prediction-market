@@ -72,6 +72,7 @@ import {
 } from '@/lib/db/schema/events/tables'
 import { runQuery } from '@/lib/db/utils/run-query'
 import { db } from '@/lib/drizzle'
+import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
 import {
   buildRelatedEventPrimaryOutcomes,
   selectCryptoRelatedEventCandidates,
@@ -87,7 +88,11 @@ import {
   stripSportsAuxiliaryEventSuffix,
 } from '@/lib/sports-event-slugs'
 import { normalizeSportsSegmentScores, resolveSportsSourceSegmentCount } from '@/lib/sports-segment-score'
-import { resolveCanonicalSportsSportSlug, resolveSportsSportSlugQueryCandidates } from '@/lib/sports-slug-mapping'
+import {
+  buildSportsSlugResolver,
+  resolveCanonicalSportsSportSlug,
+  resolveSportsSportSlugQueryCandidates,
+} from '@/lib/sports-slug-mapping'
 import { getPublicAssetUrl } from '@/lib/storage'
 
 const DEFAULT_EVENT_LIST_LIMIT = 32
@@ -1173,7 +1178,7 @@ function eventResource(
 async function buildEventResource(
   eventResult: DrizzleEventResult,
   userId: string,
-  sportsSlugResolver: SportsSlugResolver,
+  sportsSlugResolver: SportsSlugResolver | Promise<SportsSlugResolver>,
   locale: SupportedLocale = DEFAULT_LOCALE,
 ): Promise<Event> {
   const outcomeTokenIds = (eventResult.markets ?? []).flatMap((market: any) =>
@@ -1195,6 +1200,7 @@ async function buildEventResource(
     localizedEventAdditionalContextsById,
     localizedEventRulesById,
     liveChartSeriesSlugs,
+    resolvedSportsSlugResolver,
   ] = await Promise.all([
     fetchOutcomePrices(outcomeTokenIds),
     fetchLastTradePrices(outcomeTokenIds),
@@ -1203,11 +1209,12 @@ async function buildEventResource(
     getLocalizedEventAdditionalContextsById([eventResult.id], locale),
     getLocalizedEventRulesById([eventResult.id], locale),
     getEnabledLiveChartSeriesSlugs(),
+    sportsSlugResolver,
   ])
   return eventResource(
     eventResult,
     userId,
-    sportsSlugResolver,
+    resolvedSportsSlugResolver,
     priceMap,
     lastTradeMap,
     localizedTagNamesById,
@@ -3731,6 +3738,7 @@ export const EventRepository = {
   async getEventRouteBySlug(slug: string): Promise<
     QueryResult<{
       slug: string
+      series_slug: string | null
       sports_sport_slug: string | null
       sports_league_slug: string | null
       sports_event_slug: string | null
@@ -3745,6 +3753,7 @@ export const EventRepository = {
       interface EventRouteRow {
         id: string
         slug: string
+        series_slug: string | null
         sports_sport_slug: string | null
         sports_league_slug: string | null
         sports_series_slug: string | null
@@ -3752,33 +3761,34 @@ export const EventRepository = {
         sports_tags: unknown
       }
 
-      const result = (await db
-        .select({
-          id: events.id,
-          slug: events.slug,
-          sports_sport_slug: event_sports.sports_sport_slug,
-          sports_league_slug: event_sports.sports_league_slug,
-          sports_series_slug: event_sports.sports_series_slug,
-          sports_event_slug: event_sports.sports_event_slug,
-          sports_tags: event_sports.sports_tags,
-        })
-        .from(events)
-        .leftJoin(event_sports, eq(event_sports.event_id, events.id))
-        .where(and(eq(events.slug, slug), eq(events.is_hidden, false)))
-        .limit(1)) as EventRouteRow[]
+      const [result, tagRows] = await Promise.all([
+        db
+          .select({
+            id: events.id,
+            slug: events.slug,
+            series_slug: events.series_slug,
+            sports_sport_slug: event_sports.sports_sport_slug,
+            sports_league_slug: event_sports.sports_league_slug,
+            sports_series_slug: event_sports.sports_series_slug,
+            sports_event_slug: event_sports.sports_event_slug,
+            sports_tags: event_sports.sports_tags,
+          })
+          .from(events)
+          .leftJoin(event_sports, eq(event_sports.event_id, events.id))
+          .where(and(eq(events.slug, slug), eq(events.is_hidden, false)))
+          .limit(1) as PromiseLike<EventRouteRow[]>,
+        db
+          .select({ slug: tags.slug })
+          .from(event_tags)
+          .innerJoin(tags, eq(event_tags.tag_id, tags.id))
+          .innerJoin(events, eq(event_tags.event_id, events.id))
+          .where(and(eq(events.slug, slug), eq(events.is_hidden, false))),
+      ])
 
       const eventRow = result[0]
       if (!eventRow) {
         throw new Error('Event not found')
       }
-
-      const tagRows = await db
-        .select({
-          slug: tags.slug,
-        })
-        .from(event_tags)
-        .innerJoin(tags, eq(event_tags.tag_id, tags.id))
-        .where(eq(event_tags.event_id, eventRow.id))
 
       const normalizedSportsTags = toOptionalStringArray(eventRow.sports_tags)
       const hasSportsSlugInputs =
@@ -3790,6 +3800,7 @@ export const EventRepository = {
       return {
         data: {
           slug: eventRow.slug,
+          series_slug: eventRow.series_slug,
           sports_sport_slug: sportsSlugResolver
             ? resolveCanonicalSportsSportSlug(sportsSlugResolver, {
                 sportsSportSlug: eventRow.sports_sport_slug,
@@ -3981,7 +3992,12 @@ export const EventRepository = {
 
       const hydratedEventResult = await hydrateSportsAuxiliaryEventContext(eventResult as DrizzleEventResult)
 
-      const sportsSlugResolver = await getSportsSlugResolverFromDb()
+      const sports = hydratedEventResult.sports
+      const hasSportsSlugInputs =
+        Boolean(sports?.sports_sport_slug?.trim()) ||
+        Boolean(sports?.sports_series_slug?.trim()) ||
+        Boolean(toOptionalStringArray(sports?.sports_tags)?.length)
+      const sportsSlugResolver = hasSportsSlugInputs ? getSportsSlugResolverFromDb() : buildSportsSlugResolver([])
       const transformedEvent = await buildEventResource(hydratedEventResult, userId, sportsSlugResolver, locale)
 
       return { data: transformedEvent, error: null }
@@ -4190,6 +4206,10 @@ export const EventRepository = {
   },
 
   async getSeriesEventsBySeriesSlug(seriesSlug: string): Promise<QueryResult<EventSeriesEntry[]>> {
+    'use cache'
+    cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
+    cacheTag(cacheTags.seriesEvents(seriesSlug), cacheTags.seriesEventsVisibility, cacheTags.sportsMenuStructure)
+
     return runQuery(async () => {
       const normalizedSeriesSlug = seriesSlug.trim()
 
@@ -4229,23 +4249,20 @@ export const EventRepository = {
           Boolean(row.sports_series_slug?.trim()) ||
           Boolean(toOptionalStringArray(row.sports_tags)?.length),
       )
-      const sportsSlugResolver = hasSportsSlugInputs ? await getSportsSlugResolverFromDb() : null
-
       const eventIds = rows.map((row) => row.id)
-      const marketRows =
+      const [sportsSlugResolver, marketRows, winningOutcomeRows] = await Promise.all([
+        hasSportsSlugInputs ? getSportsSlugResolverFromDb() : null,
         eventIds.length > 0
-          ? await db
+          ? db
               .select({
                 event_id: markets.event_id,
                 is_resolved: markets.is_resolved,
               })
               .from(markets)
               .where(inArray(markets.event_id, eventIds))
-          : []
-
-      const winningOutcomeRows =
+          : [],
         eventIds.length > 0
-          ? await db
+          ? db
               .select({
                 event_id: markets.event_id,
                 outcome_text: outcomes.outcome_text,
@@ -4256,7 +4273,8 @@ export const EventRepository = {
                 and(eq(outcomes.condition_id, markets.condition_id), eq(outcomes.is_winning_outcome, true)),
               )
               .where(inArray(markets.event_id, eventIds))
-          : []
+          : [],
+      ])
 
       const marketStateByEventId = new Map<string, { total: number; unresolved: number }>()
       for (const eventId of eventIds) {
@@ -4326,6 +4344,10 @@ export const EventRepository = {
   },
 
   async getLiveChartConfigBySeriesSlug(seriesSlug: string): Promise<QueryResult<EventLiveChartConfig | null>> {
+    'use cache'
+    cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
+    cacheTag(cacheTags.seriesEvents(seriesSlug))
+
     return runQuery(async () => {
       const normalizedSeriesSlug = seriesSlug.trim()
 

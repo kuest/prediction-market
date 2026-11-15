@@ -219,6 +219,21 @@ describe('tradingOnboardingProvider', () => {
     unstubAllGlobals()
   })
 
+  it('mounts the deferred wallet flow while every dialog is closed so payment returns can resume', async () => {
+    render(
+      <TradingOnboardingProvider>
+        <div>Page content</div>
+      </TradingOnboardingProvider>,
+    )
+
+    expect(screen.getByText('Page content')).toBeInTheDocument()
+    await waitFor(() => expect(mocks.dialogProps).not.toBeNull())
+    expect(mocks.dialogProps.activeModal).toBeNull()
+    expect(mocks.dialogProps.depositModalOpen).toBe(false)
+    expect(mocks.dialogProps.withdrawModalOpen).toBe(false)
+    expect(mocks.dialogProps.fundModalOpen).toBe(false)
+  })
+
   it.each([
     { communityOk: true, localOk: true },
     { communityOk: true, localOk: false },

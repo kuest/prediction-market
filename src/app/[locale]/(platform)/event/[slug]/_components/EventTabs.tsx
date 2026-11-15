@@ -1,20 +1,28 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useMemo, useState } from 'react'
 
 import type { EventTabKey } from '@/app/[locale]/(platform)/event/[slug]/_components/EventTabSelector'
 import type { EventFaqItem } from '@/lib/event-faq'
 import type { Event, User } from '@/types'
 
-import EventActivity from '@/app/[locale]/(platform)/event/[slug]/_components/EventActivity'
 import EventComments from '@/app/[locale]/(platform)/event/[slug]/_components/EventComments'
 import EventFaq from '@/app/[locale]/(platform)/event/[slug]/_components/EventFaq'
 import { useMarketChannelStatus } from '@/app/[locale]/(platform)/event/[slug]/_components/EventMarketChannelProvider'
 import EventTabSelector from '@/app/[locale]/(platform)/event/[slug]/_components/EventTabSelector'
-import EventTopHolders from '@/app/[locale]/(platform)/event/[slug]/_components/EventTopHolders'
 import { useCommentMetrics } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useCommentMetrics'
 import { useLiveCommentsChannel } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveCommentsChannel'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
+
+const EventTopHolders = dynamic(() => import('@/app/[locale]/(platform)/event/[slug]/_components/EventTopHolders'), {
+  loading: () => <Skeleton className="h-52" />,
+})
+
+const EventActivity = dynamic(() => import('@/app/[locale]/(platform)/event/[slug]/_components/EventActivity'), {
+  loading: () => <Skeleton className="h-52" />,
+})
 
 interface EventTabsProps {
   event: Event
@@ -61,10 +69,10 @@ export default function EventTabs({ event, user, faqItems, initialTab = 'comment
         <EventFaq items={faqItems} />
       </TabsContent>
       <TabsContent value="holders" className="mt-0">
-        <EventTopHolders event={event} />
+        {activeTab === 'holders' && <EventTopHolders event={event} />}
       </TabsContent>
       <TabsContent value="activity" className="mt-0">
-        <EventActivity event={event} />
+        {activeTab === 'activity' && <EventActivity event={event} />}
       </TabsContent>
     </Tabs>
   )

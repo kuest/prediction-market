@@ -55,6 +55,7 @@ describe('updateEventVisibilityAction', () => {
     })
     expect(mocks.revalidatePath).toHaveBeenCalledWith('/[locale]/admin/events', 'page')
     expect(mocks.updateTag).toHaveBeenCalledWith(cacheTags.eventsList)
+    expect(mocks.updateTag).toHaveBeenCalledWith(cacheTags.seriesEventsVisibility)
     expect(mocks.updateTag).toHaveBeenCalledWith(cacheTags.event('finance-event'))
 
     for (const locale of SUPPORTED_LOCALES) {

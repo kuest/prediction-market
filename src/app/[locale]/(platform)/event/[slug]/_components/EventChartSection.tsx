@@ -1,12 +1,21 @@
 'use client'
 
+import dynamic from 'next/dynamic'
+
 import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
 import { shouldUseLiveSeriesChart } from '../_utils/eventLiveSeriesChartEligibility'
-import EventChart from './EventChart'
-import EventLiveSeriesChart from './EventLiveSeriesChart'
+
+const EventChart = dynamic(() => import('./EventChart'), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+})
+
+const EventLiveSeriesChart = dynamic(() => import('./EventLiveSeriesChart'), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+})
 
 interface EventChartSectionProps {
   event: Event

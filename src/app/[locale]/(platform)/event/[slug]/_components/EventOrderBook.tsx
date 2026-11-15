@@ -3,6 +3,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AlignVerticalSpaceAroundIcon, ArrowLeftRightIcon, DropletsIcon } from 'lucide-react'
 import { useExtracted } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type {
@@ -49,8 +50,9 @@ import { useUser } from '@/stores/useUser'
 
 import EventOrderBookEmptyRow from './EventOrderBookEmptyRow'
 import EventOrderBookRow from './EventOrderBookRow'
-import EventProvideLiquidityDialog from './EventProvideLiquidityDialog'
 import EventRewardsBadge from './EventRewardsBadge'
+
+const EventProvideLiquidityDialog = dynamic(() => import('./EventProvideLiquidityDialog'), { ssr: false })
 
 export { useOrderBookSummaries }
 
@@ -352,6 +354,7 @@ export default function EventOrderBook({
   const isMobile = useIsMobile()
   const currentTimestamp = useCurrentTimestamp({ intervalMs: 60_000 })
   const [isLiquidityDialogOpen, setIsLiquidityDialogOpen] = useState(false)
+  const [hasOpenedLiquidityDialog, setHasOpenedLiquidityDialog] = useState(false)
   const [internalRewardHighlight, setInternalRewardHighlight] = useState(false)
   const showRewardHighlight = rewardHighlight ?? internalRewardHighlight
   const rewardsQuery = useMarketRewards([market.condition_id])
@@ -626,7 +629,10 @@ export default function EventOrderBook({
               className={cn(
                 `inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:outline-none`,
               )}
-              onClick={() => setIsLiquidityDialogOpen(true)}
+              onClick={() => {
+                setHasOpenedLiquidityDialog(true)
+                setIsLiquidityDialogOpen(true)
+              }}
             >
               {t('Provide liquidity')}
             </button>
@@ -689,12 +695,14 @@ export default function EventOrderBook({
           </>
         )}
       </div>
-      <EventProvideLiquidityDialog
-        open={isLiquidityDialogOpen}
-        market={market}
-        eventSlug={eventSlug}
-        onOpenChange={setIsLiquidityDialogOpen}
-      />
+      {hasOpenedLiquidityDialog && (
+        <EventProvideLiquidityDialog
+          open={isLiquidityDialogOpen}
+          market={market}
+          eventSlug={eventSlug}
+          onOpenChange={setIsLiquidityDialogOpen}
+        />
+      )}
     </div>
   )
 }
