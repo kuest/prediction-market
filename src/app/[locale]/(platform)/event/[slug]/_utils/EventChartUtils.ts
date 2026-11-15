@@ -19,6 +19,24 @@ export function getMaxSeriesCount() {
   return MAX_SERIES
 }
 
+export function shouldHideEventChart(
+  event: Event,
+  {
+    forceVisible = false,
+    isSingleMarket,
+    sportsMoneylineMarketIds = getSportsMoneylineMarketIds(event),
+    maxSeriesCount = getMaxSeriesCount(),
+  }: {
+    forceVisible?: boolean
+    isSingleMarket: boolean
+    sportsMoneylineMarketIds?: string[]
+    maxSeriesCount?: number
+  },
+) {
+  const usesSportsMoneylineSeries = sportsMoneylineMarketIds.slice(0, maxSeriesCount).length > 1
+  return !forceVisible && !isSingleMarket && !event.enable_neg_risk && !event.neg_risk && !usesSportsMoneylineSeries
+}
+
 interface FeaturedChartEventLike {
   markets: Array<{
     condition_id: string

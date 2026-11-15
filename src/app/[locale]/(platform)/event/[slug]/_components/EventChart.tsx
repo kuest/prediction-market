@@ -37,6 +37,7 @@ import {
   getTopMarketIds,
   resolveChartRangeStartMs,
   resolveEventHistoryEndAt,
+  shouldHideEventChart,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
 import { isTweetMarketsEvent } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventTweetMarkets'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
@@ -93,8 +94,12 @@ function EventChartComponent({
   )
   const usesSportsMoneylineSeries = sportsMoneylineMarketIds.length > 1
   const isSingleMarket = usesSportsMoneylineSeries ? false : (isSingleMarketOverride ?? isSingleMarketFromOrder)
-  const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
-  const shouldHideChart = !forceVisible && !isSingleMarket && !isNegRiskEnabled && !usesSportsMoneylineSeries
+  const shouldHideChart = shouldHideEventChart(event, {
+    forceVisible,
+    isSingleMarket,
+    sportsMoneylineMarketIds,
+    maxSeriesCount,
+  })
   const shouldFetchChartData = !shouldHideChart
   const chartSettings = useSyncExternalStore(
     subscribeToChartSettings,

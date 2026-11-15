@@ -6,8 +6,9 @@ import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { useIsMobile } from '@/hooks/useIsMobile'
+import { useIsSingleMarket } from '@/stores/useOrder'
 
-import { getSportsMoneylineMarketIds } from '../_utils/EventChartUtils'
+import { shouldHideEventChart } from '../_utils/EventChartUtils'
 import { shouldUseLiveSeriesChart } from '../_utils/eventLiveSeriesChartEligibility'
 import EventChartSummary from './EventChartSummary'
 
@@ -23,14 +24,19 @@ interface EventChartSectionProps {
   event: Event
   seriesEvents?: EventSeriesEntry[]
   liveChartConfig?: EventLiveChartConfig | null
+  forceVisible?: boolean
+  isSingleMarketOverride?: boolean
 }
 
 export default function EventChartSection({
   event,
   seriesEvents = [],
   liveChartConfig = null,
+  forceVisible = false,
+  isSingleMarketOverride,
 }: EventChartSectionProps) {
   const isMobile = useIsMobile()
+  const isSingleMarketFromOrder = useIsSingleMarket()
 
   if (liveChartConfig && shouldUseLiveSeriesChart(event, liveChartConfig)) {
     return (
@@ -39,13 +45,18 @@ export default function EventChartSection({
   }
 
   if (
-    event.total_markets_count > 1 &&
-    !event.enable_neg_risk &&
-    !event.neg_risk &&
-    getSportsMoneylineMarketIds(event).length < 2
+    shouldHideEventChart(event, { forceVisible, isSingleMarket: isSingleMarketOverride ?? isSingleMarketFromOrder })
   ) {
     return <EventChartSummary event={event} />
   }
 
-  return <EventChart event={event} isMobile={isMobile} seriesEvents={seriesEvents} />
+  return (
+    <EventChart
+      event={event}
+      isMobile={isMobile}
+      seriesEvents={seriesEvents}
+      forceVisible={forceVisible}
+      isSingleMarketOverride={isSingleMarketOverride}
+    />
+  )
 }

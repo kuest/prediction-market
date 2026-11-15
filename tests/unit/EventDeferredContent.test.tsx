@@ -10,7 +10,6 @@ function createDialog(name: string) {
   return function Dialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
     return (
       <div data-testid={`${name}-dialog`} data-open={open}>
-        <input aria-label={`${name} draft`} defaultValue="" />
         <button type="button" onClick={() => onOpenChange(false)}>{`Close ${name}`}</button>
       </div>
     )
@@ -187,39 +186,38 @@ const event = {
   markets: [market],
 } as Event
 
-async function verifyDialogRetention(name: string, trigger: string) {
+async function verifyDialogWrapperLifecycle(name: string, trigger: string) {
   await act(async () => {
     await Promise.resolve()
   })
   expect(screen.queryByTestId(`${name}-dialog`)).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: trigger }))
-  const draft = await screen.findByLabelText(`${name} draft`)
-  fireEvent.change(draft, { target: { value: 'Keep this draft' } })
+  const wrapper = await screen.findByTestId(`${name}-dialog`)
   fireEvent.click(screen.getByRole('button', { name: `Close ${name}` }))
-  expect(screen.getByTestId(`${name}-dialog`)).toHaveAttribute('data-open', 'false')
-  expect(screen.getByLabelText(`${name} draft`)).toHaveValue('Keep this draft')
+  expect(screen.getByTestId(`${name}-dialog`)).toBe(wrapper)
+  expect(wrapper).toHaveAttribute('data-open', 'false')
   fireEvent.click(screen.getByRole('button', { name: trigger }))
-  expect(screen.getByTestId(`${name}-dialog`)).toHaveAttribute('data-open', 'true')
-  expect(screen.getByLabelText(`${name} draft`)).toHaveValue('Keep this draft')
+  expect(screen.getByTestId(`${name}-dialog`)).toBe(wrapper)
+  expect(wrapper).toHaveAttribute('data-open', 'true')
 }
 
 describe('event deferred content', () => {
-  it('loads the embed editor on first open and keeps its state across closing', async () => {
+  it('loads the embed wrapper on first open and leaves it mounted when closed', async () => {
     render(<EventEmbed event={event} />)
-    await verifyDialogRetention('embed', 'Embed')
+    await verifyDialogWrapperLifecycle('embed', 'Embed')
   })
 
-  it('loads the liquidity editor on first open and keeps its state across closing', async () => {
+  it('loads the liquidity wrapper on first open and leaves it mounted when closed', async () => {
     render(<EventOrderBook market={market} outcome={market.outcomes[0]} summaries={{}} eventSlug={event.slug} />)
-    await verifyDialogRetention('liquidity', 'Provide liquidity')
+    await verifyDialogWrapperLifecycle('liquidity', 'Provide liquidity')
   })
 
-  it('loads chart export on first open and keeps its state across closing', async () => {
+  it('loads the chart export wrapper on first open and leaves it mounted when closed', async () => {
     render(<EventChart event={event} isMobile={false} />)
-    await verifyDialogRetention('export', 'Export data')
+    await verifyDialogWrapperLifecycle('export', 'Export data')
   })
 
-  it('loads per-market chart export on first open and keeps its state across closing', async () => {
+  it('loads the per-market export wrapper on first open and leaves it mounted when closed', async () => {
     render(
       <MarketOutcomeGraph
         market={market}
@@ -230,7 +228,7 @@ describe('event deferred content', () => {
         isMobile={false}
       />,
     )
-    await verifyDialogRetention('export', 'Export data')
+    await verifyDialogWrapperLifecycle('export', 'Export data')
   })
 
   it.each(['comments', 'holders', 'activity'] as const)(
