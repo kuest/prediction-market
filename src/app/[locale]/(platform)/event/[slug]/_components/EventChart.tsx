@@ -39,7 +39,6 @@ import {
   resolveEventHistoryEndAt,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
 import { isTweetMarketsEvent } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventTweetMarkets'
-import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
@@ -62,7 +61,7 @@ import EventChartControlsBar from './EventChartControlsBar'
 import EventChartHeader from './EventChartHeader'
 import EventChartLayout from './EventChartLayout'
 import EventChartLegend from './EventChartLegend'
-import EventMetaInformation from './EventMetaInformation'
+import EventChartSummary from './EventChartSummary'
 
 const EventChartExportDialog = dynamic(() => import('./EventChartExportDialog'), { ssr: false })
 
@@ -347,23 +346,6 @@ function EventChartComponent({
     [site.logoImageUrl, site.logoSvg, site.name],
   )
   const visibleWatermark = showWatermark ? watermark : {}
-  const chartLogo =
-    showWatermark && (watermark.iconSvg || watermark.iconImageUrl || watermark.label) ? (
-      <div className="flex items-center gap-1 text-xl text-muted-foreground opacity-50 select-none">
-        {watermark.iconSvg || watermark.iconImageUrl ? (
-          <SiteLogoIcon
-            logoSvg={watermark.iconSvg ?? ''}
-            logoImageUrl={watermark.iconImageUrl}
-            alt={`${watermark.label} logo`}
-            className="size-[1em] **:fill-current **:stroke-current"
-            imageClassName="size-[1em] object-contain"
-            size={20}
-          />
-        ) : null}
-        {watermark.label ? <span className="font-semibold">{watermark.label}</span> : null}
-      </div>
-    ) : null
-
   const legendSeries = effectiveSeries
   const hasLegendSeries = legendSeries.length > 0
   const oppositeOutcomeIndex = activeOutcomeIndex === OUTCOME_INDEX.YES ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES
@@ -609,12 +591,7 @@ function EventChartComponent({
   ) : null
 
   if (shouldHideChart) {
-    return (
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <EventMetaInformation event={event} currentTimestamp={nowMs || null} />
-        {chartLogo}
-      </div>
-    )
+    return <EventChartSummary event={event} showWatermark={showWatermark} />
   }
 
   if (!hasLegendSeries) {

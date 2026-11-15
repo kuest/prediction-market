@@ -7,7 +7,9 @@ import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
+import { getSportsMoneylineMarketIds } from '../_utils/EventChartUtils'
 import { shouldUseLiveSeriesChart } from '../_utils/eventLiveSeriesChartEligibility'
+import EventChartSummary from './EventChartSummary'
 
 const EventChart = dynamic(() => import('./EventChart'), {
   loading: () => <Skeleton className="h-96 w-full" />,
@@ -34,6 +36,15 @@ export default function EventChartSection({
     return (
       <EventLiveSeriesChart event={event} isMobile={isMobile} seriesEvents={seriesEvents} config={liveChartConfig} />
     )
+  }
+
+  if (
+    event.total_markets_count > 1 &&
+    !event.enable_neg_risk &&
+    !event.neg_risk &&
+    getSportsMoneylineMarketIds(event).length < 2
+  ) {
+    return <EventChartSummary event={event} />
   }
 
   return <EventChart event={event} isMobile={isMobile} seriesEvents={seriesEvents} />

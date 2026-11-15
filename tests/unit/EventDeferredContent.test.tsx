@@ -32,7 +32,8 @@ void mock.module('next/dynamic', () => ({
 
 void mock.module('next-intl', () => ({
   useLocale: () => 'en',
-  useExtracted: () => (message: string) => message,
+  useExtracted: () => (message: string | { message: string }) =>
+    typeof message === 'string' ? message : message.message,
 }))
 
 void mock.module('@tanstack/react-query', () => ({
@@ -48,6 +49,7 @@ void mock.module('@/hooks/useIsMobile', () => ({ useIsMobile: () => false }))
 void mock.module('@/hooks/useCurrentTimestamp', () => ({ useCurrentTimestamp: () => Date.now() }))
 void mock.module('@/hooks/useWindowSize', () => ({ useWindowSize: () => ({ width: 1440 }) }))
 void mock.module('@/hooks/useSiteIdentity', () => ({ useSiteIdentity: () => ({ name: 'Kuest' }) }))
+void mock.module('@/hooks/usePublicRuntimeConfig', () => ({ usePublicRuntimeConfig: () => ({ dataApiUrl: '' }) }))
 void mock.module('@/hooks/useMarketRewards', () => ({ useMarketRewards: () => ({ data: [] }) }))
 void mock.module('@/hooks/usePolymarketOrderBooks', () => ({ usePolymarketOrderBooks: () => ({ data: {} }) }))
 void mock.module('@/hooks/useOpenOrdersCacheInvalidation', () => ({
@@ -109,16 +111,37 @@ void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventChartTra
   useEventChartTradeFlow: () => ({ tradeFlowItems: [] }),
 }))
 const history = {
-  normalizedHistory: [],
+  normalizedHistory: [{ date: new Date('2026-01-01T00:00:00Z'), condition: 50 }],
   latestSnapshot: { condition: 50 },
+  latestRawPrices: { condition: 0.5 },
   isRangeTransitioning: false,
 }
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMarketChanceData', () => ({
   useEventMarketChanceData: () => ({ displayChanceByMarket: { condition: 50 }, yesPriceHistory: history }),
 }))
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory', () => ({
+  TIME_RANGES: ['ALL'],
   buildMarketTargets: () => [],
   useEventPriceHistory: () => history,
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMidPrices', () => ({
+  useEventMarketQuotes: () => ({}),
+}))
+void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventChartControls', () => ({
+  defaultChartSettings: {
+    autoscale: true,
+    xAxis: true,
+    yAxis: true,
+    horizontalGrid: true,
+    verticalGrid: false,
+    annotations: false,
+    bothOutcomes: false,
+  },
+  default: ({ onExportData }: { onExportData: () => void }) => (
+    <button type="button" onClick={onExportData}>
+      Export data
+    </button>
+  ),
 }))
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useXTrackerTweetCount', () => ({
   useXTrackerTweetCount: () => ({ data: null }),
@@ -141,6 +164,8 @@ const { default: EventEmbed } = await import('@/app/[locale]/(platform)/event/[s
 const { default: EventTabs } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventTabs')
 const { default: EventOrderBook } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventOrderBook')
 const { default: EventChart } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventChart')
+const { default: MarketOutcomeGraph } =
+  await import('@/app/[locale]/(platform)/event/[slug]/_components/MarketOutcomeGraph')
 
 const market = {
   condition_id: 'condition',
@@ -191,6 +216,20 @@ describe('event deferred content', () => {
 
   it('loads chart export on first open and keeps its state across closing', async () => {
     render(<EventChart event={event} isMobile={false} />)
+    await verifyDialogRetention('export', 'Export data')
+  })
+
+  it('loads per-market chart export on first open and keeps its state across closing', async () => {
+    render(
+      <MarketOutcomeGraph
+        market={market}
+        outcome={market.outcomes[0]}
+        allMarkets={[market]}
+        currentTimestamp={Date.now()}
+        eventCreatedAt={event.created_at}
+        isMobile={false}
+      />,
+    )
     await verifyDialogRetention('export', 'Export data')
   })
 

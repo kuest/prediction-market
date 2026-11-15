@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 
 import { useAppKitAccount } from '@reown/appkit/react'
 import { useExtracted } from 'next-intl'
-import dynamic from 'next/dynamic'
 import { usePathname } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPublicClient, erc20Abi, erc1155Abi } from 'viem'
@@ -24,6 +23,7 @@ import {
   updateOnboardingEmailAction,
   updateOnboardingUsernameAction,
 } from '@/app/[locale]/(platform)/_actions/deposit-wallet'
+import TradingOnboardingShell from '@/app/[locale]/(platform)/_components/TradingOnboardingShell'
 import {
   TradingOnboardingContext,
   useTradingOnboarding,
@@ -90,11 +90,6 @@ import {
   hasSufficientCollateralAllowance,
 } from '@/lib/wallet/transactions'
 import { mergeSessionUserState, useUser } from '@/stores/useUser'
-
-const TradingOnboardingDialogs = dynamic(
-  () => import('@/app/[locale]/(platform)/_components/TradingOnboardingDialogs'),
-  { ssr: false },
-)
 
 type OnboardingModal = 'username' | 'email' | 'sumsub' | 'enable' | 'enable-status' | 'approve' | 'auto-redeem' | null
 type EnableTradingStep = 'idle' | 'enabling' | 'deploying' | 'completed'
@@ -1973,7 +1968,7 @@ function TradingOnboardingProviderContent({ children, user }: TradingOnboardingP
 
       {children}
 
-      <TradingOnboardingDialogs
+      <TradingOnboardingShell
         activeModal={activeModal}
         onModalOpenChange={handleModalOpenChange}
         usernameDefaultValue={communityUsernameHintForCurrentUser?.username ?? getUsernameDefaultValue(user)}

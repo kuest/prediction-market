@@ -49,6 +49,7 @@ async function CachedEventMarketPageContent({ slug, market }: { slug: string; ma
   const locale = await getRootLocale()
   cacheTag(cacheTags.event(slug))
 
+  // Avoid a route lookup waterfall; missing events stop before external price hydration.
   const [eventPageData, runtimeTheme] = await Promise.all([
     loadEventPagePublicContentData(slug, locale),
     loadRuntimeThemeState(),

@@ -21,13 +21,13 @@ function getSeriesEventTimestamp(event: EventSeriesEntry) {
   )
 }
 
-function isResolved(event: EventSeriesEntry) {
-  return event.status === 'resolved' || parseTimestamp(event.resolved_at) !== null
+export function isResolvedSeriesEvent(event: EventSeriesEntry) {
+  return event.status === 'resolved' || event.status === 'archived' || parseTimestamp(event.resolved_at) !== null
 }
 
 export function selectInitialSeriesEvents(seriesEvents: EventSeriesEntry[], currentEventSlug: string) {
   const pastEvents = seriesEvents
-    .filter(isResolved)
+    .filter(isResolvedSeriesEvent)
     .sort((left, right) => getSeriesEventTimestamp(right) - getSeriesEventTimestamp(left))
   const retainedPastIds = new Set([
     ...pastEvents.slice(0, INITIAL_PAST_EVENTS).map((event) => event.id),
@@ -42,6 +42,6 @@ export function selectInitialSeriesEvents(seriesEvents: EventSeriesEntry[], curr
 
   // Full history is requested when Past opens; keep every live/future round for rollover and More.
   return seriesEvents.filter(
-    (event) => event.slug === currentEventSlug || !isResolved(event) || retainedPastIds.has(event.id),
+    (event) => event.slug === currentEventSlug || !isResolvedSeriesEvent(event) || retainedPastIds.has(event.id),
   )
 }

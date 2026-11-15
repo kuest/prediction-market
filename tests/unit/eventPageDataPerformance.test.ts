@@ -114,4 +114,19 @@ describe('event page first-load data', () => {
     expect(result?.seriesEvents.some((entry) => entry.slug === event.slug)).toBe(true)
     expect(history).toHaveLength(2_880)
   })
+
+  it.each(['series', 'chart'] as const)(
+    'rejects a transient %s failure so enclosing caches cannot store a degraded page',
+    async (query) => {
+      mocks[query].mockResolvedValueOnce({ data: null, error: 'Database temporarily unavailable' })
+
+      await expect(loadEventPagePublicContentData(event.slug, 'en')).rejects.toThrow('Failed to load event')
+
+      const config = { series_slug: 'btc-5m', enabled: true }
+      mocks.chart.mockResolvedValue({ data: config, error: null })
+      const result = await loadEventPagePublicContentData(event.slug, 'en')
+      expect(result?.liveChartConfig).toEqual(config)
+      expect(result?.seriesEvents.some((entry) => entry.slug === event.slug)).toBe(true)
+    },
+  )
 })

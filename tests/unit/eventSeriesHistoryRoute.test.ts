@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import * as nextServer from 'next/server'
 
 import { hoisted } from '../bun-test-helpers'
@@ -7,11 +8,12 @@ const mocks = hoisted(() => ({
   findPublicEvent: mock(),
   getSeriesEventsBySeriesSlug: mock(),
   select: mock(),
+  where: mock(),
 }))
 
 const query = {
   from: () => query,
-  where: () => query,
+  where: mocks.where,
   limit: mocks.findPublicEvent,
 }
 
@@ -30,6 +32,7 @@ const { GET } = await import('@/app/api/events/series/route')
 describe('event series history route', () => {
   beforeEach(() => {
     mocks.select.mockReset().mockReturnValue(query)
+    mocks.where.mockReset().mockReturnValue(query)
     mocks.findPublicEvent.mockReset()
     mocks.getSeriesEventsBySeriesSlug.mockReset()
   })
@@ -42,13 +45,31 @@ describe('event series history route', () => {
     expect(mocks.getSeriesEventsBySeriesSlug).not.toHaveBeenCalled()
   })
 
-  it('does not disclose series history when the current event is missing or not public', async () => {
+  it('does not disclose series history when the current event is missing or explicitly hidden', async () => {
     mocks.findPublicEvent.mockResolvedValue([])
 
     const response = await GET(new Request('https://example.com/api/events/series?eventSlug=hidden-event'))
 
     expect(response.status).toBe(404)
     expect(mocks.getSeriesEventsBySeriesSlug).not.toHaveBeenCalled()
+  })
+
+  it('uses the same current-event lookup as direct visits without restricting status or category visibility', async () => {
+    mocks.findPublicEvent.mockResolvedValue([{ series_slug: 'btc-15m' }])
+    const publicHistory = [{ id: 'public-round', slug: 'public-round', status: 'resolved' }]
+    mocks.getSeriesEventsBySeriesSlug.mockResolvedValue({ data: publicHistory, error: null })
+
+    const response = await GET(new Request('https://example.com/api/events/series?eventSlug=restricted-category-event'))
+    const where = new PgDialect().sqlToQuery(mocks.where.mock.calls[0]![0])
+
+    expect(response.status).toBe(200)
+    expect(where.params).toEqual(['restricted-category-event', false])
+    expect(where.sql).toContain('"events"."slug"')
+    expect(where.sql).toContain('"events"."is_hidden"')
+    expect(where.sql).not.toContain('status')
+    expect(where.sql).not.toContain('hide_events')
+    expect(mocks.getSeriesEventsBySeriesSlug).toHaveBeenCalledWith('btc-15m')
+    await expect(response.json()).resolves.toEqual(publicHistory)
   })
 
   it('resolves the series from the event instead of accepting a caller-supplied series slug', async () => {

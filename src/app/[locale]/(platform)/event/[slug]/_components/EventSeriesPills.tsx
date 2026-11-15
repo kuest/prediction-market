@@ -30,6 +30,7 @@ import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useNowTimestamp } from '@/hooks/useNowTimestamp'
 import { Link } from '@/i18n/navigation'
+import { isResolvedSeriesEvent } from '@/lib/event-series-navigation'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { cn } from '@/lib/utils'
 
@@ -77,14 +78,6 @@ function getSeriesEventDate(event: EventSeriesEntry) {
 function getSeriesEventTimestamp(event: EventSeriesEntry) {
   const date = getSeriesEventDate(event)
   return date ? date.getTime() : Number.NEGATIVE_INFINITY
-}
-
-function isSeriesEventResolved(event: EventSeriesEntry) {
-  if (event.status === 'resolved') {
-    return true
-  }
-
-  return parseSeriesEventDate(event.resolved_at) !== null
 }
 
 function getSeriesEventLabel(event: EventSeriesEntry, locale = 'en-US', fallback = 'Unknown date') {
@@ -178,11 +171,11 @@ function useSeriesNavigation({
     const currentEvent = filteredSeriesEvents.find((event) => event.slug === currentEventSlug) ?? null
 
     const past = filteredSeriesEvents
-      .filter((event) => isSeriesEventResolved(event))
+      .filter((event) => isResolvedSeriesEvent(event))
       .sort((a, b) => getSeriesEventTimestamp(b) - getSeriesEventTimestamp(a))
 
     const unresolved = filteredSeriesEvents
-      .filter((event) => !isSeriesEventResolved(event))
+      .filter((event) => !isResolvedSeriesEvent(event))
       .sort((a, b) => getSeriesEventTimestamp(a) - getSeriesEventTimestamp(b))
 
     const currentTradingEvent =
@@ -193,13 +186,13 @@ function useSeriesNavigation({
             const eventTimestamp = getSeriesEventTimestamp(event)
             return Number.isFinite(eventTimestamp) && eventTimestamp > nowTimestamp
           }) ??
-          (currentEvent && !isSeriesEventResolved(currentEvent) ? currentEvent : null))
-    const hasUnresolvedCurrentEvent = Boolean(currentEvent && !isSeriesEventResolved(currentEvent))
+          (currentEvent && !isResolvedSeriesEvent(currentEvent) ? currentEvent : null))
+    const hasUnresolvedCurrentEvent = Boolean(currentEvent && !isResolvedSeriesEvent(currentEvent))
 
     return {
       pastResolvedEvents: past,
       unresolvedEvents: unresolved,
-      currentResolvedEvent: currentEvent && isSeriesEventResolved(currentEvent) ? currentEvent : null,
+      currentResolvedEvent: currentEvent && isResolvedSeriesEvent(currentEvent) ? currentEvent : null,
       currentTradingEventId: currentTradingEvent?.id ?? null,
       hasSeriesNavigation:
         (hasComparableSeriesEvents && (past.length > 0 || unresolved.length > 0)) || hasUnresolvedCurrentEvent,
@@ -366,11 +359,12 @@ export default function EventSeriesPills({
     }
 
     const eventsBySlug = new Map(history.data.map((event) => [event.slug, event]))
-    for (const event of seriesEvents) {
-      eventsBySlug.set(event.slug, event)
+    const currentEvent = seriesEvents.find((event) => event.slug === currentEventSlug)
+    if (currentEvent && !eventsBySlug.has(currentEvent.slug)) {
+      eventsBySlug.set(currentEvent.slug, currentEvent)
     }
     return Array.from(eventsBySlug.values())
-  }, [history.data, seriesEvents])
+  }, [currentEventSlug, history.data, seriesEvents])
 
   const { pastResolvedEvents, unresolvedEvents, currentResolvedEvent, currentTradingEventId, hasSeriesNavigation } =
     useSeriesNavigation({

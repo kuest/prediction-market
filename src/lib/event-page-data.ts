@@ -66,10 +66,10 @@ async function loadEventSeriesData(
   ])
 
   if (seriesEventsResult.error) {
-    console.warn('Failed to load event series events:', seriesEventsResult.error)
+    throw new Error('Failed to load event series events.', { cause: seriesEventsResult.error })
   }
   if (liveChartConfigResult.error) {
-    console.warn('Failed to load event live chart config:', liveChartConfigResult.error)
+    throw new Error('Failed to load event live chart config.', { cause: liveChartConfigResult.error })
   }
 
   return {

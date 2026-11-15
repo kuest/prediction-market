@@ -179,4 +179,33 @@ describe('event repository first-load queries', () => {
     expect(mocks.cacheLife).toHaveBeenCalledWith(PUBLIC_EVENT_PAGE_CACHE_LIFE)
     expect(mocks.cacheTag).toHaveBeenCalledWith('series-events:btc-5m')
   })
+
+  it('returns a transient series database error through QueryResult and retries the next read', async () => {
+    mocks.select
+      .mockImplementationOnce(() => {
+        throw new Error('Database temporarily unavailable')
+      })
+      .mockReturnValueOnce(queryResult(Promise.resolve([])))
+
+    const failed = await EventRepository.getSeriesEventsBySeriesSlug('btc-5m')
+    expect(failed.data).toBeNull()
+    expect(failed.error).toBeString()
+    expect(await EventRepository.getSeriesEventsBySeriesSlug('btc-5m')).toEqual({ data: [], error: null })
+    expect(mocks.select).toHaveBeenCalledTimes(2)
+  })
+
+  it('returns a transient chart database error through QueryResult and recovers without caching a missing config', async () => {
+    const config = { series_slug: 'btc-5m', enabled: true }
+    mocks.select
+      .mockImplementationOnce(() => {
+        throw new Error('Database temporarily unavailable')
+      })
+      .mockReturnValueOnce(queryResult(Promise.resolve([config])))
+
+    const failed = await EventRepository.getLiveChartConfigBySeriesSlug('btc-5m')
+    expect(failed.data).toBeNull()
+    expect(failed.error).toBeString()
+    expect(await EventRepository.getLiveChartConfigBySeriesSlug('btc-5m')).toEqual({ data: config, error: null })
+    expect(mocks.select).toHaveBeenCalledTimes(2)
+  })
 })

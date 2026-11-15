@@ -1,10 +1,9 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { connection, NextResponse } from 'next/server'
 
 import { EventRepository } from '@/lib/db/queries/event'
 import { events } from '@/lib/db/schema/events/tables'
 import { db } from '@/lib/drizzle'
-import { buildPublicEventListVisibilityCondition } from '@/lib/event-visibility'
 
 export async function GET(request: Request) {
   await connection()
@@ -17,14 +16,7 @@ export async function GET(request: Request) {
     const [event] = await db
       .select({ series_slug: events.series_slug })
       .from(events)
-      .where(
-        and(
-          eq(events.slug, eventSlug),
-          eq(events.is_hidden, false),
-          inArray(events.status, ['active', 'resolved', 'archived']),
-          buildPublicEventListVisibilityCondition(events.id),
-        ),
-      )
+      .where(and(eq(events.slug, eventSlug), eq(events.is_hidden, false)))
       .limit(1)
 
     if (!event) {

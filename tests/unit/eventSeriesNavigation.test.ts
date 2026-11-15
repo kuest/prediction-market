@@ -32,6 +32,27 @@ describe('initial event series navigation', () => {
     expect(JSON.stringify(initial).length).toBeLessThan(JSON.stringify([...past, ...future]).length / 100)
   })
 
+  it('bounds archived history without resolved timestamps and preserves the selected archived round', () => {
+    const archived = Array.from({ length: 3_000 }, (_, index) =>
+      seriesEvent(index, { status: 'archived', resolved_at: null }),
+    )
+    const future = seriesEvent(3_000, { status: 'active', resolved_at: null, resolved_direction: null })
+
+    const initial = selectInitialSeriesEvents([...archived, future], 'round-2')
+
+    expect(initial).toHaveLength(7)
+    expect(initial.map((event) => event.slug)).toEqual([
+      'round-2',
+      'round-2995',
+      'round-2996',
+      'round-2997',
+      'round-2998',
+      'round-2999',
+      'round-3000',
+    ])
+    expect(JSON.stringify(initial).length).toBeLessThan(JSON.stringify(archived).length / 100)
+  })
+
   it('retains an old selected resolved round without replacing any of the latest result badges', () => {
     const history = Array.from({ length: 20 }, (_, index) => seriesEvent(index))
 

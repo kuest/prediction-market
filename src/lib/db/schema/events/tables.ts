@@ -94,11 +94,6 @@ export const events = pgTable(
     resolved_at: timestamp({ withTimezone: true }),
   },
   (table) => ({
-    seriesNavigationIdx: index('idx_events_series_navigation').on(
-      table.series_slug,
-      table.end_date.desc(),
-      table.created_at.desc(),
-    ),
     titleSearchIdx: index('idx_events_title_lower_gin_trgm').using(
       'gin',
       sql`LOWER(${table.title}) extensions.gin_trgm_ops`,
