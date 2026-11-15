@@ -46,7 +46,6 @@ import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { getUserPublicAddress } from '@/lib/user-address'
-import { useIsSingleMarket } from '@/stores/useOrder'
 import { useUser } from '@/stores/useUser'
 
 import type { ChartSettings } from './EventChartControls'
@@ -86,14 +85,13 @@ function EventChartComponent({
   const site = useSiteIdentity()
   const user = useUser()
   const userAddress = getUserPublicAddress(user)
-  const isSingleMarketFromOrder = useIsSingleMarket()
   const maxSeriesCount = getMaxSeriesCount()
   const sportsMoneylineMarketIds = useMemo(
     () => getSportsMoneylineMarketIds(event).slice(0, maxSeriesCount),
     [event, maxSeriesCount],
   )
   const usesSportsMoneylineSeries = sportsMoneylineMarketIds.length > 1
-  const isSingleMarket = usesSportsMoneylineSeries ? false : (isSingleMarketOverride ?? isSingleMarketFromOrder)
+  const isSingleMarket = usesSportsMoneylineSeries ? false : (isSingleMarketOverride ?? event.total_markets_count === 1)
   const shouldHideChart = shouldHideEventChart(event, {
     forceVisible,
     isSingleMarket,

@@ -23,18 +23,22 @@ export function shouldHideEventChart(
   event: Event,
   {
     forceVisible = false,
-    isSingleMarket,
-    sportsMoneylineMarketIds = getSportsMoneylineMarketIds(event),
+    isSingleMarket = event.total_markets_count === 1,
+    sportsMoneylineMarketIds,
     maxSeriesCount = getMaxSeriesCount(),
   }: {
     forceVisible?: boolean
-    isSingleMarket: boolean
+    isSingleMarket?: boolean
     sportsMoneylineMarketIds?: string[]
     maxSeriesCount?: number
-  },
+  } = {},
 ) {
-  const usesSportsMoneylineSeries = sportsMoneylineMarketIds.slice(0, maxSeriesCount).length > 1
-  return !forceVisible && !isSingleMarket && !event.enable_neg_risk && !event.neg_risk && !usesSportsMoneylineSeries
+  if (forceVisible || isSingleMarket || event.enable_neg_risk || event.neg_risk) {
+    return false
+  }
+
+  const moneylineMarketIds = sportsMoneylineMarketIds ?? getSportsMoneylineMarketIds(event)
+  return moneylineMarketIds.slice(0, maxSeriesCount).length <= 1
 }
 
 interface FeaturedChartEventLike {

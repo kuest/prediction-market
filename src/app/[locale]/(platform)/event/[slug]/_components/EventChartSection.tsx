@@ -6,7 +6,6 @@ import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { useIsMobile } from '@/hooks/useIsMobile'
-import { useIsSingleMarket } from '@/stores/useOrder'
 
 import { shouldHideEventChart } from '../_utils/EventChartUtils'
 import { shouldUseLiveSeriesChart } from '../_utils/eventLiveSeriesChartEligibility'
@@ -36,7 +35,6 @@ export default function EventChartSection({
   isSingleMarketOverride,
 }: EventChartSectionProps) {
   const isMobile = useIsMobile()
-  const isSingleMarketFromOrder = useIsSingleMarket()
 
   if (liveChartConfig && shouldUseLiveSeriesChart(event, liveChartConfig)) {
     return (
@@ -44,9 +42,7 @@ export default function EventChartSection({
     )
   }
 
-  if (
-    shouldHideEventChart(event, { forceVisible, isSingleMarket: isSingleMarketOverride ?? isSingleMarketFromOrder })
-  ) {
+  if (shouldHideEventChart(event, { forceVisible, isSingleMarket: isSingleMarketOverride })) {
     return <EventChartSummary event={event} />
   }
 
