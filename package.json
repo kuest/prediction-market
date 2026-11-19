@@ -40,10 +40,10 @@
     "@lifi/widget-provider-tron": "4.1.9",
     "@next/third-parties": "16.4.6",
     "@polymarket/clob-client-v2": "1.2.0",
-    "@reown/appkit": "1.8.24",
-    "@reown/appkit-adapter-wagmi": "1.8.24",
-    "@reown/appkit-controllers": "1.8.24",
-    "@reown/appkit-siwe": "1.8.24",
+    "@reown/appkit": "2.0.0",
+    "@reown/appkit-adapter-wagmi": "2.0.0",
+    "@reown/appkit-controllers": "2.0.0",
+    "@reown/appkit-siwe": "2.0.0",
     "@sentry/nextjs": "11.11.0",
     "@sumsub/websdk": "2.9.1",
     "@supabase/supabase-js": "2.119.0",
@@ -56,7 +56,6 @@
     "@visx/group": "4.0.0",
     "@visx/scale": "4.0.0",
     "@visx/shape": "4.0.0",
-    "@wagmi/core": "2.22.1",
     "better-auth": "1.7.18",
     "bs58": "6.0.0",
     "canvas-confetti": "1.9.4",
@@ -78,7 +77,7 @@
     "sharp": "0.35.5",
     "tailwind-merge": "3.7.0",
     "viem": "2.57.16",
-    "wagmi": "2.19.5",
+    "wagmi": "3.7.11",
     "zod": "4.6.7",
     "zustand": "5.1.0"
   },
@@ -107,9 +106,8 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "@coinbase/cdp-sdk": "1.52.0",
-    "@wagmi/connectors": "6.2.0",
-    "axios": "1.19.0",
+    "@base-org/account": "2.5.1",
+    "axios": "1.21.0",
     "uuid": "11.1.1",
     "ws": "8.21.0"
   },

@@ -1,5 +1,5 @@
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { cookieStorage, createStorage } from '@wagmi/core'
+import { cookieStorage, createStorage } from 'wagmi'
 
 import { appKitNetworks, defaultAppKitNetwork } from '@/lib/supported-networks'
 import { WAGMI_STORAGE_KEY } from '@/lib/wagmi-storage'
