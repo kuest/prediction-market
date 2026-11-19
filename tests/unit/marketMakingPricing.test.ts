@@ -13,7 +13,7 @@ import {
 
 describe('market-making pricing options', () => {
   it('offers five depth tiers and only 2, 3, 4 and 5-cent spreads', () => {
-    expect(DEFAULT_SPONSORSHIP_OPTIONS.depthPerSideUsdc).toEqual([90, 500, 1000, 2000, 3000])
+    expect(DEFAULT_SPONSORSHIP_OPTIONS.depthPerSideUsdc).toEqual([90, 150, 250, 500, 1000])
     expect(DEFAULT_SPONSORSHIP_OPTIONS.maxSpreadBps).toEqual([200, 300, 400, 500])
   })
 
@@ -22,9 +22,18 @@ describe('market-making pricing options', () => {
     expect(resolveSponsorshipSelection({}, 1000, 300)).toMatchObject({
       depth: 1000,
       spread: 300,
-      maximumDepth: 3000,
+      maximumDepth: 1000,
       maximumSpread: 500,
     })
+  })
+
+  it('accepts the new depth tiers and resets retired fallback tiers', () => {
+    for (const depth of [150, 250]) {
+      expect(resolveSponsorshipSelection({}, depth, 500)).toMatchObject({ depth, spread: 500 })
+    }
+    for (const depth of [2000, 3000]) {
+      expect(resolveSponsorshipSelection({}, depth, 400)).toMatchObject({ depth: 1000, spread: 400 })
+    }
   })
 
   it('uses configured choices and maxima when the old selection is removed', () => {
