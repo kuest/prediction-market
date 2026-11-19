@@ -1,12 +1,20 @@
-import type { CreateConnectorFn } from '@wagmi/core'
+import type { CreateConnectorFn } from 'wagmi'
 
 import { render, screen, waitFor } from '@testing-library/react'
-import { cookieStorage, createConfig, createConnector, createStorage, getAccount, serialize } from '@wagmi/core'
 import { afterEach, describe, expect, it, mock } from 'bun:test'
 import { renderToString } from 'react-dom/server'
 import { http } from 'viem'
 import { polygon, polygonAmoy } from 'viem/chains'
-import { useAccount, WagmiProvider } from 'wagmi'
+import {
+  cookieStorage,
+  createConfig,
+  createConnector,
+  createStorage,
+  serialize,
+  useAccount,
+  WagmiProvider,
+} from 'wagmi'
+import { getConnection } from 'wagmi/actions'
 
 import { WAGMI_STATE_COOKIE_NAME, WAGMI_STORAGE_KEY } from '@/lib/wagmi-storage'
 
@@ -94,14 +102,14 @@ describe('wallet cookie hydration without server cookie reads', () => {
     expect(html).toContain('Public markets')
     expect(html).toContain('Disconnected')
     expect(html).not.toContain(walletAddress)
-    expect(getAccount(config).address).toBeUndefined()
+    expect(getConnection(config).address).toBeUndefined()
 
     render(content)
 
     await waitFor(() => {
-      expect(getAccount(config).status).toBe('connected')
-      expect(getAccount(config).address).toBe(walletAddress)
-      expect(getAccount(config).chainId).toBe(polygon.id)
+      expect(getConnection(config).status).toBe('connected')
+      expect(getConnection(config).address).toBe(walletAddress)
+      expect(getConnection(config).chainId).toBe(polygon.id)
     })
     expect(connect).toHaveBeenCalledOnce()
     expect(screen.getByText('Public markets')).toBeInTheDocument()
@@ -121,10 +129,10 @@ describe('wallet cookie hydration without server cookie reads', () => {
 
     await waitFor(() => {
       expect(config._internal.store.persist.hasHydrated()).toBe(true)
-      expect(getAccount(config).status).toBe('disconnected')
+      expect(getConnection(config).status).toBe('disconnected')
     })
     expect(connect).not.toHaveBeenCalled()
-    expect(getAccount(config).address).toBeUndefined()
+    expect(getConnection(config).address).toBeUndefined()
     expect(screen.getByText('Public markets')).toBeInTheDocument()
   })
 })
