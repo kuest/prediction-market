@@ -114,7 +114,7 @@ function selectClosingRow(
   seriesSlug: string,
 ) {
   if (
-    (source === 'chainlink' && interval === '1h') ||
+    (source === 'chainlink' && (interval === '1h' || interval === '4h')) ||
     (interval === '1d' && (source === 'binance' || source === 'chainlink' || seriesSlug === 'gold-daily-up-or-down'))
   ) {
     return rows.find((row) => row.window_end_ms === targetMs) ?? null
@@ -231,10 +231,13 @@ export async function GET(request: Request) {
     // Daily markets should use a finer candle for "start of window" so baseline matches real market time.
     const openingPreferredInterval: Interval = seriesEntry.interval === '1d' ? '5m' : seriesEntry.interval
     const openingPreferredIntervalMs = intervalToMs(openingPreferredInterval)
-    const openingHistoryTargetMs = alignWindowEnd(eventWindowStartMs, openingPreferredIntervalMs)
+    const isChainlinkFourHour = seriesEntry.source === 'chainlink' && seriesEntry.interval === '4h'
+    const openingHistoryTargetMs = isChainlinkFourHour
+      ? eventWindowStartMs
+      : alignWindowEnd(eventWindowStartMs, openingPreferredIntervalMs)
     const isChainlinkDaily = seriesEntry.source === 'chainlink' && seriesEntry.interval === '1d'
     const closingHistoryTargetMs =
-      seriesEntry.source === 'chainlink' && (seriesEntry.interval === '1h' || isChainlinkDaily)
+      seriesEntry.source === 'chainlink' && (seriesEntry.interval === '1h' || isChainlinkFourHour || isChainlinkDaily)
         ? eventWindowEndMs
         : alignWindowEnd(eventWindowEndMs, intervalMs)
     const shouldFetchOpeningFallback = openingPreferredInterval !== seriesEntry.interval
@@ -371,7 +374,9 @@ export async function GET(request: Request) {
         return null
       }
       if (
-        eventWindowStartMs >= latestOpeningMarket.next_window.window_start_ms &&
+        (isChainlinkFourHour
+          ? eventWindowStartMs === latestOpeningMarket.next_window.window_start_ms
+          : eventWindowStartMs >= latestOpeningMarket.next_window.window_start_ms) &&
         eventWindowStartMs < latestOpeningMarket.next_window.window_end_ms
       ) {
         return toFiniteNumber(latestOpeningMarket.next_window.opening_reference_price)
@@ -383,7 +388,9 @@ export async function GET(request: Request) {
         return null
       }
       if (
-        eventWindowStartMs >= latestMarket.next_window.window_start_ms &&
+        (isChainlinkFourHour
+          ? eventWindowStartMs === latestMarket.next_window.window_start_ms
+          : eventWindowStartMs >= latestMarket.next_window.window_start_ms) &&
         eventWindowStartMs < latestMarket.next_window.window_end_ms
       ) {
         return toFiniteNumber(latestMarket.next_window.opening_reference_price)

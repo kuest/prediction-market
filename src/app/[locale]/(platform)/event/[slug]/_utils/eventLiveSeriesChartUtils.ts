@@ -216,7 +216,7 @@ export interface LiveSeriesPriceSnapshot {
 }
 
 export type LiveSeriesPriceSnapshotStatus = 'loading' | 'ready' | 'unavailable'
-export type LiveSeriesReferenceClassification = 'chainlink_daily' | 'chainlink_hourly' | 'other'
+export type LiveSeriesReferenceClassification = 'chainlink_daily' | 'chainlink_hourly' | 'chainlink_four_hour' | 'other'
 
 export function classifyLiveSeriesReference({
   topic,
@@ -237,7 +237,9 @@ export function classifyLiveSeriesReference({
     ? 'chainlink_daily'
     : normalizedWindowMinutes === 60
       ? 'chainlink_hourly'
-      : 'other'
+      : normalizedWindowMinutes === 240
+        ? 'chainlink_four_hour'
+        : 'other'
 }
 
 export function resolveLiveSeriesReferenceStart(start: number | null, end: number, activeWindowMinutes: number) {
@@ -247,7 +249,10 @@ export function resolveLiveSeriesReferenceStart(start: number | null, end: numbe
 }
 
 export function isCanonicalChainlinkCloseSnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
-  return snapshot?.source === 'chainlink' && (snapshot.interval === '1d' || snapshot.interval === '1h')
+  return (
+    snapshot?.source === 'chainlink' &&
+    (snapshot.interval === '1d' || snapshot.interval === '1h' || snapshot.interval === '4h')
+  )
 }
 
 function hasCanonicalDailyClose({
@@ -328,7 +333,7 @@ export function requiresCanonicalChainlinkClose({
   snapshotStatus: LiveSeriesPriceSnapshotStatus
   seriesClassification: LiveSeriesReferenceClassification
 }) {
-  if (seriesClassification === 'chainlink_daily' || seriesClassification === 'chainlink_hourly') {
+  if (seriesClassification !== 'other') {
     return true
   }
 

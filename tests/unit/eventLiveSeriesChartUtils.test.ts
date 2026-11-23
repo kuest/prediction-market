@@ -270,6 +270,23 @@ describe('resolveLiveSeriesRealtimeFeed', () => {
     expect(resolveLiveSeriesReferenceStart(end, end, 60)).toBe(end - 3_600_000)
     expect(resolveLiveSeriesReferenceStart(end - 3_500_000, end, 60)).toBe(end - 3_500_000)
   })
+  it('keeps the four-hour event close pending until its Chainlink mark arrives', () => {
+    const options = { topic: 'price.crypto.twap', activeWindowMinutes: 240 }
+    const classification = classifyLiveSeriesReference({ ...options, provider: 'chainlink' })
+    expect(classification).toBe('chainlink_four_hour')
+    expect(classifyLiveSeriesReference({ ...options, provider: 'binance' })).toBe('other')
+    const requiresCanonicalClose = requiresCanonicalChainlinkClose({
+      snapshot: null,
+      snapshotStatus: 'unavailable',
+      seriesClassification: classification,
+    })
+    expect(requiresCanonicalClose).toBe(true)
+    expect(isCanonicalChainlinkCloseSnapshot({ source: 'chainlink', interval: '4h' } as any)).toBe(true)
+    const display = { isEventClosed: true, renderedPrice: 90, fallbackCurrentPrice: 90, requiresCanonicalClose }
+    expect(resolveLiveSeriesDisplayPrice({ ...display, finalPrice: null })).toBeNull()
+    expect(resolveLiveSeriesDisplayPrice({ ...display, finalPrice: 105 })).toBe(105)
+  })
+
   it('requires canonical hourly close even before the first response', () => {
     const classification = classifyLiveSeriesReference({
       topic: 'price.crypto.twap',
