@@ -121,6 +121,48 @@ describe('useLiveSeriesWebSocket', () => {
     })
   })
 
+  it('sends the Binance Spot pin without a TWAP window and keeps its own cached price', () => {
+    const { result } = renderHook(() =>
+      useLiveSeriesWebSocket({
+        topic: 'price.crypto',
+        provider: 'binance',
+        windowSeconds: null,
+        eventEndTimestamp: null,
+        subscriptionSymbol: 'btcusd',
+        isLiveView: true,
+      }),
+    )
+    const socket = MockWebSocket.instances[0]!
+    act(() => socket.emitOpen())
+    expect(JSON.parse(socket.sentMessages[0]!)).toEqual({
+      op: 'subscribe',
+      rid: 'live-price',
+      subscriptions: [{ channel: 'price.crypto', filter: { symbol: 'btcusd', provider: 'binance' } }],
+    })
+    act(() => socket.emitMessage({ symbol: 'btcusd', value: 100, timestamp: now }))
+    expect(result.current.data).toEqual([])
+
+    act(() =>
+      socket.emitMessage({
+        snapshot: true,
+        payload: {
+          symbol: 'btcusd',
+          source: 'binance',
+          quote_asset: 'USDT',
+          data: [{ timestamp: now, value: 101, full_accuracy_value: '101.25' }],
+        },
+      }),
+    )
+    expect(result.current.data).toEqual([{ date: new Date(now), [SERIES_KEY]: 101.25 }])
+    expect(
+      JSON.parse(window.localStorage.getItem('kuest-live-ws-last-price:price.crypto:binance:spot:BTCUSD')!),
+    ).toEqual({
+      price: 101.25,
+      timestamp: now,
+    })
+    expect(window.localStorage.getItem('kuest-live-ws-last-price:price.crypto.twap:chainlink:60:BTCUSD')).toBeNull()
+  })
+
   it('ignores errors for a different subscription', () => {
     const { socket, result } = mountHook()
     act(() => socket.emitMessage({ symbol: 'BTC', value: 100, timestamp: now }))

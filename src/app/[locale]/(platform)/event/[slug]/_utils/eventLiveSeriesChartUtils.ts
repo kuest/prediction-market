@@ -1,4 +1,4 @@
-import type { Event, EventSeriesEntry } from '@/types'
+import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 import type { DataPoint } from '@/types/PredictionChartTypes'
 
 import { isResolvedSeriesEvent } from '@/lib/event-series-navigation'
@@ -415,6 +415,9 @@ export function extractLivePriceUpdates(
   if (provider && payload.source !== provider) {
     return []
   }
+  if (provider === 'binance' && (payload.quote_asset !== 'USDT' || payload.window_seconds != null)) {
+    return []
+  }
   if (windowSeconds != null && payload.window_seconds !== windowSeconds) {
     return []
   }
@@ -698,20 +701,22 @@ export function resolveLiveSeriesStartTimestamp({
   return eventStartTimestamp
 }
 
+const BINANCE_SPOT_SYMBOLS = new Set(['btcusd', 'ethusd', 'solusd', 'xrpusd', 'dogeusd', 'hypeusd', 'bnbusd', 'zecusd'])
+
 export function resolveLiveSeriesRealtimeFeed({
-  configuredTopic,
+  topic,
   provider,
-  windowSeconds,
-}: {
-  seriesSlug: string
-  configuredTopic: string
-  provider: string | null
-  windowSeconds: number | null
-  activeWindowMinutes: number
-  eventStartTimestamp?: number | null
-  eventEndTimestamp: number | null
-}) {
-  return { topic: configuredTopic, provider, window_seconds: windowSeconds }
+  symbol,
+  window_seconds,
+}: Pick<EventLiveChartConfig, 'topic' | 'provider' | 'symbol' | 'window_seconds'>) {
+  const isChainlinkCrypto =
+    provider === 'chainlink' &&
+    ((topic === 'price.crypto' && window_seconds == null) || (topic === 'price.crypto.twap' && window_seconds === 60))
+  if (isChainlinkCrypto && BINANCE_SPOT_SYMBOLS.has(normalizeSubscriptionSymbol(topic, symbol))) {
+    return { topic: 'price.crypto', provider: 'binance', window_seconds: null }
+  }
+
+  return { topic, provider, window_seconds }
 }
 
 export function resolveLiveSeriesHistorySource(markets: Event['markets'], configuredProvider: string | null) {

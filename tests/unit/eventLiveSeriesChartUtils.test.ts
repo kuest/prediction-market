@@ -210,28 +210,44 @@ function readLivePrice(point: DataPoint) {
 }
 
 describe('resolveLiveSeriesRealtimeFeed', () => {
-  it('preserves an explicit window even on a canonical crypto series', () => {
+  it.each(['BTC/USD', 'ETH/USDT', 'SOLUSD', 'XRP/USD', 'DOGE/USD', 'HYPE/USD', 'BNB/USD', 'ZEC/USD'])(
+    'uses Binance Spot without a TWAP window for %s',
+    (symbol) => {
+      expect(
+        resolveLiveSeriesRealtimeFeed({
+          topic: 'price.crypto.twap',
+          provider: 'chainlink',
+          window_seconds: 60,
+          symbol,
+        }),
+      ).toEqual({ topic: 'price.crypto', provider: 'binance', window_seconds: null })
+    },
+  )
+
+  it('also switches explicitly pinned Chainlink spot for a covered pair', () => {
     expect(
       resolveLiveSeriesRealtimeFeed({
-        seriesSlug: 'btc-up-or-down-hourly',
-        configuredTopic: 'price.crypto.twap',
+        topic: 'price.crypto',
         provider: 'chainlink',
-        windowSeconds: 30,
-        activeWindowMinutes: 60,
-        eventEndTimestamp: 1000,
+        window_seconds: null,
+        symbol: 'BTC/USD',
       }),
-    ).toEqual({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 30 })
-    expect(
-      resolveLiveSeriesRealtimeFeed({
-        seriesSlug: 'btc-up-or-down-hourly',
-        configuredTopic: 'price.crypto',
-        provider: 'pyth',
-        windowSeconds: null,
-        activeWindowMinutes: 60,
-        eventEndTimestamp: 1000,
-      }),
-    ).toEqual({ topic: 'price.crypto', provider: 'pyth', window_seconds: null })
+    ).toEqual({ topic: 'price.crypto', provider: 'binance', window_seconds: null })
   })
+
+  it.each([
+    { topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 30, symbol: 'BTC/USD' },
+    { topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60, symbol: 'ALT/USD' },
+    { topic: 'price.crypto', provider: 'chainlink', window_seconds: null, symbol: 'BTC/USDC' },
+    { topic: 'price.crypto', provider: 'pyth', window_seconds: null, symbol: 'BTC/USD' },
+    { topic: 'price.crypto', provider: null, window_seconds: null, symbol: 'BTC/USD' },
+    { topic: 'price.equity', provider: 'pyth', window_seconds: null, symbol: 'XAUUSD' },
+    { topic: 'price.equity.twap', provider: 'chainlink', window_seconds: 60, symbol: 'EURUSD' },
+  ])('preserves uncovered or unrelated live subscriptions: %o', (config) => {
+    const { symbol: _symbol, ...expected } = config
+    expect(resolveLiveSeriesRealtimeFeed(config)).toEqual(expected)
+  })
+
   it('reads historical source from event resolution metadata rather than the new series feed', () => {
     expect(
       resolveLiveSeriesHistorySource(
@@ -275,31 +291,6 @@ describe('resolveLiveSeriesRealtimeFeed', () => {
         seriesClassification: classification,
       }),
     ).toBe(true)
-  })
-  it('does not override explicit custom sources or TWAP windows', () => {
-    expect(
-      resolveLiveSeriesRealtimeFeed({
-        seriesSlug: 'custom-crypto',
-        configuredTopic: 'price.crypto.twap',
-        provider: 'chainlink',
-        windowSeconds: 30,
-        activeWindowMinutes: 5,
-        eventEndTimestamp: 1000,
-      }),
-    ).toEqual({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 30 })
-  })
-
-  it('preserves non-crypto feeds', () => {
-    expect(
-      resolveLiveSeriesRealtimeFeed({
-        seriesSlug: 'gold',
-        configuredTopic: 'price.equity',
-        provider: 'pyth',
-        windowSeconds: null,
-        activeWindowMinutes: 1440,
-        eventEndTimestamp: 1000,
-      }),
-    ).toEqual({ topic: 'price.equity', provider: 'pyth', window_seconds: null })
   })
 })
 

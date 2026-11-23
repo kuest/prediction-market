@@ -1,6 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, mock } from 'bun:test'
 
+import type {
+  LiveSeriesPriceSnapshot,
+  PersistedLivePrice,
+} from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
 import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 
 import { hoisted } from '../bun-test-helpers'
@@ -9,6 +13,12 @@ const initialNow = Date.parse('2026-11-15T12:02:00Z')
 const mocks = hoisted(() => ({
   nowMs: initialNow,
   snapshotClosed: false,
+  livePointsAvailable: true,
+  feedUnavailable: false,
+  canonicalReference: {} as Partial<LiveSeriesPriceSnapshot>,
+  persistedFallback: null as PersistedLivePrice | null,
+  reference: mock(),
+  header: mock(),
   chart: mock(),
   clock: mock(),
   webSocket: mock(),
@@ -41,20 +51,31 @@ void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveSeriesClo
   },
 }))
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveSeriesPriceSnapshot', () => ({
-  useLiveSeriesPriceSnapshot: () => ({
-    referenceSnapshot: { opening_price: 60_000, closing_price: 60_010, is_event_closed: mocks.snapshotClosed },
-    referenceSnapshotStatus: 'ready',
-    persistedFallbackPrice: null,
-  }),
+  useLiveSeriesPriceSnapshot: (options: unknown) => {
+    mocks.reference(options)
+    return {
+      referenceSnapshot: {
+        opening_price: 60_000,
+        closing_price: 60_010,
+        ...mocks.canonicalReference,
+        is_event_closed: mocks.snapshotClosed,
+      },
+      referenceSnapshotStatus: 'ready',
+      persistedFallbackPrice: mocks.persistedFallback,
+    }
+  },
 }))
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveSeriesWebSocket', () => ({
   useLiveSeriesWebSocket: (props: any) => {
     mocks.webSocket(props)
     return {
-      data: [
-        { date: new Date(mocks.nowMs - 1000), live_price: 60_000 },
-        { date: new Date(mocks.nowMs), live_price: 60_010 },
-      ],
+      data: mocks.livePointsAvailable
+        ? [
+            { date: new Date(mocks.nowMs - 1000), live_price: 60_000 },
+            { date: new Date(mocks.nowMs), live_price: 60_010 },
+          ]
+        : [],
+      feedUnavailable: mocks.feedUnavailable,
       idleRecovery: null,
       idleRecoveryVersion: 0,
       resumedAtTimestamp: null,
@@ -63,8 +84,10 @@ void mock.module('@/app/[locale]/(platform)/event/[slug]/_hooks/useLiveSeriesWeb
   },
 }))
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventLiveSeriesChartHeader', () => ({
-  default: ({ liveMarketHref }: { liveMarketHref: string | null }) =>
-    liveMarketHref ? <a href={liveMarketHref}>Live successor</a> : null,
+  default: (props: { liveMarketHref: string | null }) => {
+    mocks.header(props)
+    return props.liveMarketHref ? <a href={props.liveMarketHref}>Live successor</a> : null
+  },
 }))
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/EventLiveSeriesChartOverlay', () => ({
   default: () => null,
@@ -108,6 +131,12 @@ const seriesEvents = [
 beforeEach(() => {
   mocks.nowMs = initialNow
   mocks.snapshotClosed = false
+  mocks.livePointsAvailable = true
+  mocks.feedUnavailable = false
+  mocks.canonicalReference = {}
+  mocks.persistedFallback = null
+  mocks.reference.mockClear()
+  mocks.header.mockClear()
   mocks.chart.mockClear()
   mocks.clock.mockClear()
   mocks.webSocket.mockClear()
@@ -153,6 +182,80 @@ describe('live series chart successor lookup', () => {
     expect(screen.getByTestId('series-controls')).toBeInTheDocument()
     expect(mocks.seriesControls).toHaveBeenCalledWith(expect.objectContaining({ seriesEvents }))
     expect(findLiveSeriesEvent).not.toHaveBeenCalled()
+  })
+
+  it('uses only Binance Spot live and retains Chainlink for the official hourly close', () => {
+    const canonicalConfig: EventLiveChartConfig = {
+      ...config,
+      series_slug: 'btc-up-or-down-hourly',
+      active_window_minutes: 60,
+      topic: 'price.crypto.twap',
+      provider: 'chainlink',
+      window_seconds: 60,
+      symbol: 'BTC/USDT',
+    }
+    const hourlyEvent = { ...event, end_date: '2026-11-15T13:00:00Z' }
+    const start = Date.parse('2026-11-15T12:00:00Z')
+    const end = Date.parse(hourlyEvent.end_date)
+    mocks.canonicalReference = {
+      source: 'chainlink',
+      interval: '1h',
+      interval_ms: 3_600_000,
+      event_window_start_ms: start,
+      event_window_end_ms: end,
+      opening_price: 59_980,
+      closing_price: 59_990,
+      price_history: [{ timestamp_ms: initialNow - 1000, price: 59_985 }],
+    }
+    mocks.persistedFallback = { price: 59_975, timestamp: initialNow - 1000 }
+    mocks.livePointsAvailable = false
+
+    const props = { event: hourlyEvent, config: canonicalConfig, isMobile: false }
+    const { rerender } = render(<EventLiveSeriesChart {...props} />)
+    expect(mocks.webSocket).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        topic: 'price.crypto',
+        provider: 'binance',
+        windowSeconds: null,
+        subscriptionSymbol: 'btcusd',
+        isLiveView: true,
+      }),
+    )
+    expect(mocks.reference).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        config: canonicalConfig,
+        source: 'chainlink',
+        subscriptionSymbol: 'btcusd',
+        explicitEndTimestamp: end,
+      }),
+    )
+    expect(mocks.chart.mock.lastCall?.[0].data).toEqual([])
+
+    mocks.livePointsAvailable = true
+    rerender(<EventLiveSeriesChart {...props} />)
+    expect(mocks.chart.mock.lastCall?.[0].data).toContainEqual({
+      date: new Date(initialNow),
+      live_price: 60_010,
+    })
+
+    mocks.snapshotClosed = true
+    mocks.feedUnavailable = true
+    mocks.canonicalReference.closing_price = null
+    rerender(<EventLiveSeriesChart {...props} />)
+    expect(mocks.webSocket).toHaveBeenLastCalledWith(expect.objectContaining({ isLiveView: false }))
+    expect(mocks.header).toHaveBeenLastCalledWith(expect.objectContaining({ currentPrice: null }))
+
+    mocks.canonicalReference.closing_price = 59_990
+    rerender(<EventLiveSeriesChart {...props} />)
+    expect(mocks.header).toHaveBeenLastCalledWith(expect.objectContaining({ currentPrice: 59_990 }))
+    const closedPoints = mocks.chart.mock.lastCall?.[0].data as { date: Date; live_price: number }[]
+    expect(new Map(closedPoints.map((point) => [point.date.getTime(), point.live_price]))).toEqual(
+      new Map([
+        [start, 59_980],
+        [initialNow - 1000, 59_985],
+        [end, 59_990],
+      ]),
+    )
   })
 
   it('starts successor lookup when a close snapshot arrives without another clock tick', () => {
