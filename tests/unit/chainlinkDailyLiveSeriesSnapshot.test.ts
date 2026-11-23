@@ -150,15 +150,19 @@ describe('Chainlink four-hour live-series snapshot', () => {
   ])('uses the exact boundaries of %s to %s', async (start, end, prior) => {
     const startMs = Date.parse(start)
     const endMs = Date.parse(end)
-    const mark = (time: number, price: number) => ({
-      instrument: 'BTC/USD',
-      interval: '4h',
-      source: 'chainlink',
-      window_end_ms: time,
-      settlement_price: price,
-    })
+    function mark(time: number, price: number) {
+      return {
+        instrument: 'BTC/USD',
+        interval: '4h',
+        source: 'chainlink',
+        window_end_ms: time,
+        settlement_price: price,
+      }
+    }
     const rows = [mark(startMs, 100)]
-    if (Date.parse(prior) !== startMs) rows.push(mark(Date.parse(prior), 90))
+    if (Date.parse(prior) !== startMs) {
+      rows.push(mark(Date.parse(prior), 90))
+    }
     stubGlobal(
       'fetch',
       mock(async (input: string | URL | Request) => {
@@ -168,7 +172,9 @@ describe('Chainlink four-hour live-series snapshot', () => {
             series: [{ series_slug: 'four-hour-test', instrument: 'BTC/USD', interval: '4h', source: 'chainlink' }],
           })
         }
-        if (url.pathname === '/marks/latest') return Response.json({ markets: [] })
+        if (url.pathname === '/marks/latest') {
+          return Response.json({ markets: [] })
+        }
         const through = Number(url.searchParams.get('to'))
         return Response.json({ rows: rows.filter((row) => row.window_end_ms <= through) })
       }),
@@ -183,8 +189,11 @@ describe('Chainlink four-hour live-series snapshot', () => {
       rows.push(mark(endMs, 105))
       expect(await (await GET(request)).json()).toMatchObject({ opening_price: 100, closing_price: 105 })
     } finally {
-      if (originalUrl === undefined) delete process.env.PRICE_REFERENCE_URL
-      else process.env.PRICE_REFERENCE_URL = originalUrl
+      if (originalUrl === undefined) {
+        delete process.env.PRICE_REFERENCE_URL
+      } else {
+        process.env.PRICE_REFERENCE_URL = originalUrl
+      }
     }
   })
 })
