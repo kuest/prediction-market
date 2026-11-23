@@ -12,7 +12,6 @@ import type { Market, Outcome } from '@/types'
 import type { PredictionChartCursorSnapshot, PredictionChartProps } from '@/types/PredictionChartTypes'
 
 import EventChartControls from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartControls'
-import EventChartExportDialog from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartExportDialog'
 import EventChartHeader from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartHeader'
 import EventChartLayout from '@/app/[locale]/(platform)/event/[slug]/_components/EventChartLayout'
 import { useEventMarketQuotes } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventMidPrices'
@@ -52,6 +51,10 @@ const PredictionChart = dynamic<PredictionChartProps>(() => import('@/components
   ssr: false,
   loading: () => <Skeleton className="h-79.5 w-full" />,
 })
+const EventChartExportDialog = dynamic(
+  () => import('@/app/[locale]/(platform)/event/[slug]/_components/EventChartExportDialog'),
+  { ssr: false },
+)
 const YES_SERIES_COLOR = 'var(--primary)'
 const NO_SERIES_COLOR = 'var(--no)'
 
@@ -238,6 +241,7 @@ export default function MarketOutcomeGraph({
   const normalizeOutcomeLabel = useOutcomeLabel()
   const [activeTimeRange, setActiveTimeRange] = useState<TimeRange>('ALL')
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [hasOpenedExportDialog, setHasOpenedExportDialog] = useState(false)
   const marketTargets = useMemo(() => buildMarketTargets([market]), [market])
   const { width: windowWidth } = useWindowSize()
   const chartWidth = isMobile ? (windowWidth || 400) * 0.84 : Math.min((windowWidth ?? 1440) * 0.55, 900)
@@ -455,20 +459,25 @@ export default function MarketOutcomeGraph({
                   onShuffle={handleShuffleOutcome}
                   settings={chartSettings}
                   onSettingsChange={handleChartSettingsChange}
-                  onExportData={() => setExportDialogOpen(true)}
+                  onExportData={() => {
+                    setHasOpenedExportDialog(true)
+                    setExportDialogOpen(true)
+                  }}
                 />
               </div>
             )}
           </div>
         }
       />
-      <EventChartExportDialog
-        open={exportDialogOpen}
-        onOpenChange={setExportDialogOpen}
-        eventCreatedAt={eventCreatedAt}
-        markets={allMarkets}
-        isMultiMarket={allMarkets.length > 1}
-      />
+      {hasOpenedExportDialog && (
+        <EventChartExportDialog
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+          eventCreatedAt={eventCreatedAt}
+          markets={allMarkets}
+          isMultiMarket={allMarkets.length > 1}
+        />
+      )}
     </>
   )
 }

@@ -3,6 +3,7 @@
 import type { SetStateAction } from 'react'
 
 import { useLocale } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { memo, useCallback, useMemo, useState, useSyncExternalStore } from 'react'
 
 import type { TimeRange } from '@/app/[locale]/(platform)/event/[slug]/_hooks/useEventPriceHistory'
@@ -36,16 +37,15 @@ import {
   getTopMarketIds,
   resolveChartRangeStartMs,
   resolveEventHistoryEndAt,
+  shouldHideEventChart,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
 import { isTweetMarketsEvent } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventTweetMarkets'
-import SiteLogoIcon from '@/components/SiteLogoIcon'
 import { useCurrentTimestamp } from '@/hooks/useCurrentTimestamp'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { getUserPublicAddress } from '@/lib/user-address'
-import { useIsSingleMarket } from '@/stores/useOrder'
 import { useUser } from '@/stores/useUser'
 
 import type { ChartSettings } from './EventChartControls'
@@ -58,11 +58,12 @@ import {
 } from '../_utils/chartSettingsStorage'
 import EventChartCanvas from './EventChartCanvas'
 import EventChartControlsBar from './EventChartControlsBar'
-import EventChartExportDialog from './EventChartExportDialog'
 import EventChartHeader from './EventChartHeader'
 import EventChartLayout from './EventChartLayout'
 import EventChartLegend from './EventChartLegend'
-import EventMetaInformation from './EventMetaInformation'
+import EventChartSummary from './EventChartSummary'
+
+const EventChartExportDialog = dynamic(() => import('./EventChartExportDialog'), { ssr: false })
 
 function EventChartComponent({
   event,
@@ -84,16 +85,19 @@ function EventChartComponent({
   const site = useSiteIdentity()
   const user = useUser()
   const userAddress = getUserPublicAddress(user)
-  const isSingleMarketFromOrder = useIsSingleMarket()
   const maxSeriesCount = getMaxSeriesCount()
   const sportsMoneylineMarketIds = useMemo(
     () => getSportsMoneylineMarketIds(event).slice(0, maxSeriesCount),
     [event, maxSeriesCount],
   )
   const usesSportsMoneylineSeries = sportsMoneylineMarketIds.length > 1
-  const isSingleMarket = usesSportsMoneylineSeries ? false : (isSingleMarketOverride ?? isSingleMarketFromOrder)
-  const isNegRiskEnabled = Boolean(event.enable_neg_risk || event.neg_risk)
-  const shouldHideChart = !forceVisible && !isSingleMarket && !isNegRiskEnabled && !usesSportsMoneylineSeries
+  const isSingleMarket = usesSportsMoneylineSeries ? false : (isSingleMarketOverride ?? event.total_markets_count === 1)
+  const shouldHideChart = shouldHideEventChart(event, {
+    forceVisible,
+    isSingleMarket,
+    sportsMoneylineMarketIds,
+    maxSeriesCount,
+  })
   const shouldFetchChartData = !shouldHideChart
   const chartSettings = useSyncExternalStore(
     subscribeToChartSettings,
@@ -113,6 +117,7 @@ function EventChartComponent({
     snapshot: null,
   })
   const [exportDialogOpen, setExportDialogOpen] = useState(false)
+  const [hasOpenedExportDialog, setHasOpenedExportDialog] = useState(false)
   const nowMs = useCurrentTimestamp({ intervalMs: 30_000 })
   const currentTimestampMs = nowMs ?? 0
 
@@ -344,23 +349,6 @@ function EventChartComponent({
     [site.logoImageUrl, site.logoSvg, site.name],
   )
   const visibleWatermark = showWatermark ? watermark : {}
-  const chartLogo =
-    showWatermark && (watermark.iconSvg || watermark.iconImageUrl || watermark.label) ? (
-      <div className="flex items-center gap-1 text-xl text-muted-foreground opacity-50 select-none">
-        {watermark.iconSvg || watermark.iconImageUrl ? (
-          <SiteLogoIcon
-            logoSvg={watermark.iconSvg ?? ''}
-            logoImageUrl={watermark.iconImageUrl}
-            alt={`${watermark.label} logo`}
-            className="size-[1em] **:fill-current **:stroke-current"
-            imageClassName="size-[1em] object-contain"
-            size={20}
-          />
-        ) : null}
-        {watermark.label ? <span className="font-semibold">{watermark.label}</span> : null}
-      </div>
-    ) : null
-
   const legendSeries = effectiveSeries
   const hasLegendSeries = legendSeries.length > 0
   const oppositeOutcomeIndex = activeOutcomeIndex === OUTCOME_INDEX.YES ? OUTCOME_INDEX.NO : OUTCOME_INDEX.YES
@@ -606,12 +594,7 @@ function EventChartComponent({
   ) : null
 
   if (shouldHideChart) {
-    return (
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-        <EventMetaInformation event={event} currentTimestamp={nowMs || null} />
-        {chartLogo}
-      </div>
-    )
+    return <EventChartSummary event={event} showWatermark={showWatermark} />
   }
 
   if (!hasLegendSeries) {
@@ -680,18 +663,23 @@ function EventChartComponent({
               onToggleMarket={handleToggleMarket}
               settings={chartSettings}
               onSettingsChange={handleChartSettingsChange}
-              onExportData={() => setExportDialogOpen(true)}
+              onExportData={() => {
+                setHasOpenedExportDialog(true)
+                setExportDialogOpen(true)
+              }}
             />
           ) : undefined
         }
       />
-      <EventChartExportDialog
-        open={exportDialogOpen}
-        onOpenChange={setExportDialogOpen}
-        eventCreatedAt={event.created_at}
-        markets={event.markets}
-        isMultiMarket={event.total_markets_count > 1}
-      />
+      {hasOpenedExportDialog && (
+        <EventChartExportDialog
+          open={exportDialogOpen}
+          onOpenChange={setExportDialogOpen}
+          eventCreatedAt={event.created_at}
+          markets={event.markets}
+          isMultiMarket={event.total_markets_count > 1}
+        />
+      )}
     </>
   )
 }

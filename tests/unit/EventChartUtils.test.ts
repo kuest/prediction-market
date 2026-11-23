@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, expect, it, mock } from 'bun:test'
 
 import {
   buildHistoryWithLatestPointOverride,
   getFeaturedChartEvent,
   getSportsMoneylineMarketIds,
   resolveChartRangeStartMs,
+  shouldHideEventChart,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/EventChartUtils'
 
 describe('eventChartUtils', () => {
@@ -139,6 +140,9 @@ describe('eventChartUtils', () => {
     } as any
 
     expect(getSportsMoneylineMarketIds(event)).toEqual(['united-states-market', 'draw-market', 'belgium-market'])
+    expect(shouldHideEventChart(event, { isSingleMarket: false })).toBe(false)
+    expect(shouldHideEventChart(event, { isSingleMarket: false, maxSeriesCount: 1 })).toBe(true)
+    expect(shouldHideEventChart(event, { isSingleMarket: false, maxSeriesCount: 1, forceVisible: true })).toBe(false)
   })
 
   it('deduplicates binary sports moneyline outcome markets', () => {
@@ -174,5 +178,59 @@ describe('eventChartUtils', () => {
     } as any
 
     expect(getSportsMoneylineMarketIds(event)).toEqual(['match-winner-market'])
+    expect(shouldHideEventChart(event, { isSingleMarket: false })).toBe(true)
+    expect(shouldHideEventChart(event, { isSingleMarket: true })).toBe(false)
+  })
+
+  it.each([
+    [{ isSingleMarket: false }, true],
+    [{ isSingleMarket: true }, false],
+    [{ isSingleMarket: false, forceVisible: true }, false],
+  ] as const)('respects explicit chart visibility context %j', (context, hidden) => {
+    const event = { markets: [], total_markets_count: 2 } as any
+    expect(shouldHideEventChart(event, context)).toBe(hidden)
+  })
+
+  it.each(['enable_neg_risk', 'neg_risk'] as const)('keeps %s event charts visible', (flag) => {
+    const event = { markets: [], [flag]: true } as any
+    expect(shouldHideEventChart(event, { isSingleMarket: false })).toBe(false)
+  })
+
+  it.each([
+    [{ total_markets_count: 1 }, {}],
+    [{ total_markets_count: 2 }, { isSingleMarket: true }],
+    [{ total_markets_count: 2 }, { forceVisible: true }],
+    [{ total_markets_count: 2, enable_neg_risk: true }, {}],
+    [{ total_markets_count: 2, neg_risk: true }, {}],
+  ] as const)('skips sports model lookup when chart visibility is already known (%j, %j)', (eventFields, context) => {
+    const readSportsSlug = mock(() => undefined)
+    const event = {
+      ...eventFields,
+      get sports_sport_slug() {
+        return readSportsSlug()
+      },
+    } as any
+    expect(shouldHideEventChart(event, context)).toBe(false)
+    expect(readSportsSlug).not.toHaveBeenCalled()
+  })
+
+  it('looks up the sports model only when a regular multi-event needs classification', () => {
+    const readSportsSlug = mock(() => undefined)
+    const event = {
+      total_markets_count: 2,
+      get sports_sport_slug() {
+        return readSportsSlug()
+      },
+    } as any
+    expect(shouldHideEventChart(event)).toBe(true)
+    expect(readSportsSlug).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses the event total rather than the number of filtered markets for its default mode', () => {
+    const event = { total_markets_count: 2, markets: [{ condition_id: 'remaining-market' }] } as any
+    expect(shouldHideEventChart(event)).toBe(true)
+    expect(shouldHideEventChart({ ...event, total_markets_count: 1 })).toBe(false)
+    expect(shouldHideEventChart(event, { isSingleMarket: true })).toBe(false)
+    expect(shouldHideEventChart({ ...event, total_markets_count: 1 }, { isSingleMarket: false })).toBe(true)
   })
 })

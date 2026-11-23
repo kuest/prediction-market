@@ -1,23 +1,38 @@
 'use client'
 
+import dynamic from 'next/dynamic'
+
 import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import { useIsMobile } from '@/hooks/useIsMobile'
 
+import { shouldHideEventChart } from '../_utils/EventChartUtils'
 import { shouldUseLiveSeriesChart } from '../_utils/eventLiveSeriesChartEligibility'
-import EventChart from './EventChart'
-import EventLiveSeriesChart from './EventLiveSeriesChart'
+import EventChartSummary from './EventChartSummary'
+
+const EventChart = dynamic(() => import('./EventChart'), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+})
+
+const EventLiveSeriesChart = dynamic(() => import('./EventLiveSeriesChart'), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+})
 
 interface EventChartSectionProps {
   event: Event
   seriesEvents?: EventSeriesEntry[]
   liveChartConfig?: EventLiveChartConfig | null
+  forceVisible?: boolean
+  isSingleMarketOverride?: boolean
 }
 
 export default function EventChartSection({
   event,
   seriesEvents = [],
   liveChartConfig = null,
+  forceVisible = false,
+  isSingleMarketOverride,
 }: EventChartSectionProps) {
   const isMobile = useIsMobile()
 
@@ -27,5 +42,17 @@ export default function EventChartSection({
     )
   }
 
-  return <EventChart event={event} isMobile={isMobile} seriesEvents={seriesEvents} />
+  if (shouldHideEventChart(event, { forceVisible, isSingleMarket: isSingleMarketOverride })) {
+    return <EventChartSummary event={event} />
+  }
+
+  return (
+    <EventChart
+      event={event}
+      isMobile={isMobile}
+      seriesEvents={seriesEvents}
+      forceVisible={forceVisible}
+      isSingleMarketOverride={isSingleMarketOverride}
+    />
+  )
 }

@@ -1,12 +1,18 @@
 import type { ComponentProps, ReactNode } from 'react'
 
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, fireEvent, render as renderComponent, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, mock, jest } from 'bun:test'
 import { useMemo } from 'react'
 
 import EventSeriesPills from '@/app/[locale]/(platform)/event/[slug]/_components/EventSeriesPills'
 
-import { useFakeTimers, useRealTimers } from '../bun-test-helpers'
+import { stubGlobal, unstubAllGlobals, useFakeTimers, useRealTimers } from '../bun-test-helpers'
+
+function render(ui: ReactNode) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return renderComponent(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+}
 
 void mock.module('next-intl', () => ({
   useExtracted: () => (message: string) => message,
@@ -45,6 +51,102 @@ describe('eventSeriesPills', () => {
 
   afterEach(() => {
     useRealTimers()
+    unstubAllGlobals()
+  })
+
+  it('requests full history only when Past opens and keeps older results accessible', async () => {
+    useRealTimers()
+    const fetchMock = mock().mockResolvedValue(
+      Response.json([
+        createSeriesEvent('live-round', '2026-07-28T16:00:00.000Z', {
+          status: 'resolved',
+          resolved_at: '2026-07-28T16:00:00.000Z',
+        }),
+        createSeriesEvent('older-result', '2026-07-20T12:00:00.000Z', {
+          status: 'resolved',
+          resolved_at: '2026-07-20T12:00:00.000Z',
+        }),
+      ]),
+    )
+    stubGlobal('fetch', fetchMock)
+
+    render(
+      <EventSeriesPills
+        currentEventSlug="live-round"
+        seriesEvents={[
+          createSeriesEvent('recent-result', '2026-07-28T12:00:00.000Z', {
+            status: 'resolved',
+            resolved_at: '2026-07-28T12:00:00.000Z',
+          }),
+          createSeriesEvent('live-round', '2026-07-28T16:00:00.000Z'),
+        ]}
+      />,
+    )
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Past' }))
+
+    await waitFor(() => expect(screen.getByText('Jul 20')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledWith('/api/events/series?eventSlug=live-round', {
+      signal: expect.any(AbortSignal),
+    })
+    expect(screen.getByText('Jul 20').closest('a')).toHaveAttribute('href', '/event/older-result')
+    expect(screen.queryByRole('link', { name: 'Jul 28' })).not.toBeInTheDocument()
+    expect(screen.getByText('Ended {date}')).toBeInTheDocument()
+  })
+
+  it('removes initial rounds missing from refreshed public history while retaining the selected round', async () => {
+    useRealTimers()
+    stubGlobal(
+      'fetch',
+      mock().mockResolvedValue(
+        Response.json([
+          createSeriesEvent('older-result', '2026-07-20T12:00:00.000Z', {
+            status: 'resolved',
+            resolved_at: '2026-07-20T12:00:00.000Z',
+          }),
+        ]),
+      ),
+    )
+
+    render(
+      <EventSeriesPills
+        currentEventSlug="selected-round"
+        seriesEvents={[
+          createSeriesEvent('removed-result', '2026-07-28T12:00:00.000Z', { status: 'resolved' }),
+          createSeriesEvent('selected-round', '2026-07-28T16:00:00.000Z'),
+          createSeriesEvent('removed-future', '2026-07-29T16:00:00.000Z'),
+        ]}
+      />,
+    )
+
+    expect(document.querySelector('a[href="/event/removed-future"]')).not.toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Past' }))
+    await waitFor(() => expect(screen.getByText('Jul 20')).toBeInTheDocument())
+
+    expect(document.querySelector('a[href="/event/removed-result"]')).toBeNull()
+    expect(document.querySelector('a[href="/event/removed-future"]')).toBeNull()
+    expect(document.querySelector('a[href="/event/selected-round"]')).not.toBeNull()
+  })
+
+  it('puts archived rounds without resolved timestamps in Past instead of the live navigation', () => {
+    render(
+      <EventSeriesPills
+        currentEventSlug="archived-round"
+        seriesEvents={[
+          createSeriesEvent('archived-round', '2026-07-28T12:50:00.000Z', { status: 'archived' }),
+          createSeriesEvent('future-round', '2026-07-28T12:55:00.000Z'),
+        ]}
+        tradingWindowMs={5 * 60 * 1000}
+        variant="live"
+      />,
+    )
+
+    expect(screen.getByRole('button', { name: 'Past' })).toBeInTheDocument()
+    expect(screen.getByText('Ended {date}')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '8:50 AM' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '8:55 AM' })).toBeInTheDocument()
   })
 
   it('moves the live badge to the next trading window when its parent caches navigation', () => {

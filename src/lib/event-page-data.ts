@@ -8,6 +8,7 @@ import { loadMarketContextSettings } from '@/lib/ai/market-context-config'
 import { cacheTags } from '@/lib/cache-tags'
 import { EventRepository } from '@/lib/db/queries/event'
 import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
+import { selectInitialSeriesEvents } from '@/lib/event-series-navigation'
 import { resolveSportsEventGroupPayload } from '@/lib/sports-event-group'
 import { loadRuntimeThemeState } from '@/lib/theme-settings'
 import 'server-only'
@@ -52,6 +53,31 @@ export async function getEventRouteBySlug(eventSlug: string) {
   return data
 }
 
+async function loadEventSeriesData(
+  seriesSlug: string,
+): Promise<Pick<EventPageContentData, 'seriesEvents' | 'liveChartConfig'>> {
+  if (!seriesSlug) {
+    return { seriesEvents: [], liveChartConfig: null }
+  }
+
+  const [seriesEventsResult, liveChartConfigResult] = await Promise.all([
+    EventRepository.getSeriesEventsBySeriesSlug(seriesSlug),
+    EventRepository.getLiveChartConfigBySeriesSlug(seriesSlug),
+  ])
+
+  if (seriesEventsResult.error) {
+    throw new Error('Failed to load event series events.', { cause: seriesEventsResult.error })
+  }
+  if (liveChartConfigResult.error) {
+    throw new Error('Failed to load event live chart config.', { cause: liveChartConfigResult.error })
+  }
+
+  return {
+    seriesEvents: seriesEventsResult.data ?? [],
+    liveChartConfig: liveChartConfigResult.data ?? null,
+  }
+}
+
 export async function loadEventPagePublicContentData(
   eventSlug: string,
   locale: SupportedLocale,
@@ -60,9 +86,18 @@ export async function loadEventPagePublicContentData(
   cacheLife(PUBLIC_EVENT_PAGE_CACHE_LIFE)
   cacheTag(cacheTags.event(eventSlug))
 
-  const [marketContextSettings, eventResult] = await Promise.all([
+  const seriesDataPromise = getEventRouteBySlug(eventSlug).then(async (route) => {
+    const seriesSlug = route?.series_slug?.trim() ?? ''
+    return {
+      seriesSlug,
+      ...(await loadEventSeriesData(seriesSlug)),
+    }
+  })
+
+  const [marketContextSettings, eventResult, initialSeriesData] = await Promise.all([
     loadMarketContextSettings(),
     EventRepository.getEventBySlug(eventSlug, '', locale),
+    seriesDataPromise,
   ])
 
   const marketContextEnabled = marketContextSettings.enabled && Boolean(marketContextSettings.apiKey)
@@ -76,29 +111,12 @@ export async function loadEventPagePublicContentData(
     warningLabel: 'event page sports event group',
   })
 
-  let seriesEvents: EventSeriesEntry[] = []
-  let liveChartConfig: EventLiveChartConfig | null = null
-
   const seriesSlug = event.series_slug?.trim() ?? ''
+  const seriesData =
+    initialSeriesData.seriesSlug === seriesSlug ? initialSeriesData : await loadEventSeriesData(seriesSlug)
+  let { seriesEvents } = seriesData
   if (seriesSlug) {
     cacheTag(cacheTags.seriesEvents(seriesSlug))
-
-    const [seriesEventsResult, liveChartConfigResult] = await Promise.all([
-      EventRepository.getSeriesEventsBySeriesSlug(seriesSlug),
-      EventRepository.getLiveChartConfigBySeriesSlug(seriesSlug),
-    ])
-
-    if (seriesEventsResult.error) {
-      console.warn('Failed to load event series events:', seriesEventsResult.error)
-    } else {
-      seriesEvents = seriesEventsResult.data ?? []
-    }
-
-    if (liveChartConfigResult.error) {
-      console.warn('Failed to load event live chart config:', liveChartConfigResult.error)
-    } else {
-      liveChartConfig = liveChartConfigResult.data ?? null
-    }
   }
 
   if (seriesSlug && !seriesEvents.some((seriesEvent) => seriesEvent.slug === event.slug)) {
@@ -119,8 +137,8 @@ export async function loadEventPagePublicContentData(
   return {
     event,
     marketContextEnabled,
-    seriesEvents,
-    liveChartConfig,
+    seriesEvents: selectInitialSeriesEvents(seriesEvents, event.slug),
+    liveChartConfig: seriesData.liveChartConfig,
   }
 }
 
