@@ -295,6 +295,142 @@
         }
       }
     },
+    "/market-clarifications": {
+      "get": {
+        "summary": "List market clarifications",
+        "description": "Lists published Additional context notes from the synced market catalog. Filters use Kuest Gamma identifiers. Repeat a filter for multiple values; different filters are combined. This endpoint is public and does not trigger an upstream synchronization.",
+        "tags": [
+          "Markets"
+        ],
+        "parameters": [
+          {
+            "name": "market_id",
+            "in": "query",
+            "description": "Numeric market ID or condition ID. Use the condition ID to select a single deployment where the numeric ID is shared.",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^0[xX][0-9a-fA-F]{64}$"
+                  }
+                ]
+              },
+              "maxItems": 100
+            }
+          },
+          {
+            "name": "event_id",
+            "in": "query",
+            "description": "Numeric Kuest Gamma event ID.",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "maxItems": 100
+            }
+          },
+          {
+            "name": "question_id",
+            "in": "query",
+            "description": "Kuest on-chain question ID.",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^0[xX][0-9a-fA-F]{64}$"
+              },
+              "maxItems": 100
+            }
+          },
+          {
+            "name": "tx_hash",
+            "in": "query",
+            "description": "Transaction hash recorded with the clarification.",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^0[xX][0-9a-fA-F]{64}$"
+              },
+              "maxItems": 100
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Number of notes to return.",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 0,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Number of matching notes to skip.",
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "minimum": 0
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "description": "Comma-separated sort fields: id, market_id, event_id, tx_timestamp, created_at, published_at. Camel case is also accepted.",
+            "schema": {
+              "type": "string",
+              "default": "published_at"
+            }
+          },
+          {
+            "name": "ascending",
+            "in": "query",
+            "description": "Sort oldest/smallest first. Defaults to descending.",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching clarifications. Returns an empty array when none match.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MarketClarification"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequestResponse"
+          }
+        }
+      }
+    },
     "/markets/{id}": {
       "get": {
         "summary": "Get market by id",
@@ -1812,6 +1948,122 @@
         },
         "required": ["count"],
         "additionalProperties": false
+      },
+      "MarketClarification": {
+        "type": "object",
+        "required": [
+          "id",
+          "marketId",
+          "eventId",
+          "questionId",
+          "content"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Clarification ID in its source. The same ID can occur in different sources."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "kuest",
+              "polymarket"
+            ]
+          },
+          "marketId": {
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0
+              },
+              {
+                "type": "string",
+                "pattern": "^0[xX][0-9a-fA-F]{64}$"
+              }
+            ],
+            "description": "Numeric Kuest Gamma market ID, or its condition ID if no numeric ID exists."
+          },
+          "eventId": {
+            "type": "integer",
+            "description": "Numeric Kuest Gamma event ID."
+          },
+          "questionId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Kuest on-chain question ID."
+          },
+          "sourceMarketId": {
+            "type": "integer",
+            "description": "Source market ID if different from the Kuest ID."
+          },
+          "sourceEventId": {
+            "type": "integer",
+            "description": "Source event ID if different from the Kuest ID."
+          },
+          "sourceQuestionId": {
+            "type": "string",
+            "description": "Source question ID if different from the Kuest ID."
+          },
+          "content": {
+            "type": "string",
+            "description": "Plain-text clarification."
+          },
+          "state": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "success",
+              null
+            ],
+            "description": "The source publication state, if supplied. Drafts are not returned."
+          },
+          "clearBook": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Source metadata about whether open orders were cleared there. It does not cancel Kuest orders."
+          },
+          "showInFrontend": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "notifyDiscord": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "adapterAddress": {
+            "type": "string",
+            "nullable": true
+          },
+          "negRiskRequestId": {
+            "type": "string",
+            "nullable": true
+          },
+          "txHash": {
+            "type": "string",
+            "nullable": true
+          },
+          "txTimestamp": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "queuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "scheduledFor": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
       },
       "MarketDescription": {
         "type": "object",

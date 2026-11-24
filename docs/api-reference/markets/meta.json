@@ -9,6 +9,7 @@
     "gamma-get-market-by-slug",
     "gamma-get-market-description",
     "gamma-get-market-tags",
+    "gamma-list-market-clarifications",
     "---CLOB API---",
     "get-clob-market-info",
     "get-market-by-token-id",
