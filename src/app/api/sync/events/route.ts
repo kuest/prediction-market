@@ -24,6 +24,7 @@ import {
 import { db } from '@/lib/drizzle'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 import { setEventHiddenFromNew } from '@/lib/event-visibility'
+import { normalizeVisibleMarketClarifications, readVisibleMarketClarifications } from '@/lib/market-clarifications'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { syncMissingOnChainResolvedPayouts } from '@/lib/resolution-payout-sync'
 import { slugifyText } from '@/lib/slug'
@@ -1703,6 +1704,12 @@ async function processMarketData(
     marketIconPath &&
     (shouldDownloadMarketIcon(existingMarket, marketIconReference) || shouldUseCanonicalMarketIcon),
   )
+  const visibleMarketClarifications = normalizeVisibleMarketClarifications(metadata.market_clarifications)
+  const marketClarificationsChanged = Boolean(
+    existingMarket &&
+    JSON.stringify(visibleMarketClarifications) !==
+      JSON.stringify(readVisibleMarketClarifications(existingMarket.metadata)),
+  )
   const marketNeedsUpdate =
     !existingMarket ||
     !Number.isFinite(existingUpdatedAtMs) ||
@@ -1712,6 +1719,7 @@ async function processMarketData(
     (hasPolymarketConditionIdField &&
       (existingMarket.polymarket_condition_id ?? null) !== (polymarketConditionId ?? null)) ||
     polymarketTokenIdsChanged ||
+    marketClarificationsChanged ||
     existingAcceptingOrdersFlag !== acceptingOrdersFlag ||
     existingArchivedFlag !== archivedFlag ||
     shouldSyncMarketIcon
@@ -1818,6 +1826,9 @@ async function processMarketData(
   const storedMetadata = { ...metadata }
   delete storedMetadata.mirror_condition_id
   delete storedMetadata.mirror_outcome_token_ids
+  if (Object.hasOwn(storedMetadata, 'market_clarifications')) {
+    storedMetadata.market_clarifications = visibleMarketClarifications
+  }
 
   const conditionUpdate: Record<string, any> = {}
   if (umaRequestTxHash) {

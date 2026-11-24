@@ -88,7 +88,7 @@ export default function EventContent({
           <div className="grid gap-6">
             <EventMarketsSection event={event} liveChartConfig={liveChartConfig} />
             <EventMarketContextSlot enabled={marketContextEnabled} event={event} />
-            <EventRules event={event} />
+            <EventRules event={event} initialMarketConditionId={initialMarket?.condition_id} />
             {event.total_markets_count === 1 && singleMarket && shouldDisplayResolutionTimeline(singleMarket) && (
               <div className="rounded-xl border bg-background p-4">
                 <ResolutionTimelinePanel
