@@ -298,7 +298,7 @@
     "/market-clarifications": {
       "get": {
         "summary": "List market clarifications",
-        "description": "Lists published Additional context notes from the synced market catalog. Filters use Kuest Gamma identifiers. Repeat a filter for multiple values; different filters are combined. This endpoint is public and does not trigger an upstream synchronization.",
+        "description": "Lists published Additional context notes marked for display from the synced market catalog. Filters use Kuest Gamma identifiers. Repeat a filter for multiple values; different filters are combined. This endpoint is public and does not trigger an upstream synchronization.",
         "tags": [
           "Markets"
         ],
@@ -1956,13 +1956,15 @@
           "marketId",
           "eventId",
           "questionId",
-          "content"
+          "content",
+          "state",
+          "showInFrontend"
         ],
         "properties": {
           "id": {
             "type": "integer",
             "minimum": 0,
-            "description": "Clarification ID in its source. The same ID can occur in different sources."
+            "description": "Clarification ID in its source. IDs can repeat across sources; notes without a source share the Kuest ID namespace."
           },
           "source": {
             "type": "string",
@@ -1972,17 +1974,10 @@
             ]
           },
           "marketId": {
-            "oneOf": [
-              {
-                "type": "integer",
-                "minimum": 0
-              },
-              {
-                "type": "string",
-                "pattern": "^0[xX][0-9a-fA-F]{64}$"
-              }
-            ],
-            "description": "Numeric Kuest Gamma market ID, or its condition ID if no numeric ID exists."
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true,
+            "description": "Numeric Kuest Gamma market ID, or null for a market identified by a condition ID."
           },
           "eventId": {
             "type": "integer",
@@ -2011,12 +2006,10 @@
           },
           "state": {
             "type": "string",
-            "nullable": true,
             "enum": [
-              "success",
-              null
+              "success"
             ],
-            "description": "The source publication state, if supplied. Drafts are not returned."
+            "description": "Publication state. Drafts are not returned."
           },
           "clearBook": {
             "type": "boolean",
@@ -2025,7 +2018,9 @@
           },
           "showInFrontend": {
             "type": "boolean",
-            "nullable": true
+            "enum": [
+              true
+            ]
           },
           "notifyDiscord": {
             "type": "boolean",
@@ -2062,6 +2057,11 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "conditionId": {
+            "type": "string",
+            "pattern": "^0[xX][0-9a-fA-F]{64}$",
+            "description": "Kuest condition ID, present when marketId is null."
           }
         }
       },
