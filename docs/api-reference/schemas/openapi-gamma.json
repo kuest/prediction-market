@@ -298,7 +298,7 @@
     "/market-clarifications": {
       "get": {
         "summary": "List market clarifications",
-        "description": "Lists published Additional context notes marked for display from the synced market catalog. Filters use Kuest Gamma identifiers. Repeat a filter for multiple values; different filters are combined. This endpoint is public and does not trigger an upstream synchronization.",
+        "description": "Returns published settlement clarifications marked for display. Repeat a filter to match any of its values; different filters are combined.",
         "tags": [
           "Markets"
         ],
@@ -306,7 +306,7 @@
           {
             "name": "market_id",
             "in": "query",
-            "description": "Numeric market ID or condition ID. Use the condition ID to select a single deployment where the numeric ID is shared.",
+            "description": "Numeric market ID or condition ID. Use the condition ID when the numeric ID is shared across markets.",
             "style": "form",
             "explode": true,
             "schema": {
@@ -324,12 +324,15 @@
                 ]
               },
               "maxItems": 100
-            }
+            },
+            "example": [
+              512038
+            ]
           },
           {
             "name": "event_id",
             "in": "query",
-            "description": "Numeric Kuest Gamma event ID.",
+            "description": "Numeric event ID from the Gamma API.",
             "style": "form",
             "explode": true,
             "schema": {
@@ -369,6 +372,41 @@
                 "pattern": "^0[xX][0-9a-fA-F]{64}$"
               },
               "maxItems": 100
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CreatorParam"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Publication states to match. Only success can return results.",
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "queued",
+                  "success",
+                  "failed",
+                  "cancelled"
+                ]
+              },
+              "maxItems": 100
+            },
+            "example": [
+              "success"
+            ]
+          },
+          {
+            "name": "show_in_frontend",
+            "in": "query",
+            "description": "Only notes marked for display are public. Setting this to false returns an empty array.",
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -421,7 +459,20 @@
                   "items": {
                     "$ref": "#/components/schemas/MarketClarification"
                   }
-                }
+                },
+                "example": [
+                  {
+                    "id": 1001,
+                    "marketId": 512038,
+                    "eventId": 20001,
+                    "content": "The official result at the close of trading determines resolution.",
+                    "state": "success",
+                    "showInFrontend": true,
+                    "clearBook": false,
+                    "questionId": null,
+                    "txTimestamp": "2026-11-24T18:30:00Z"
+                  }
+                ]
               }
             }
           },
