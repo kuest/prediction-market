@@ -1,4 +1,4 @@
-import { ASSETS_HOST, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
+import { resolveAssetsOrigin, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
 interface WsrvLoaderParams {
   src: string
   width: number
@@ -30,11 +30,12 @@ export default function imageLoader({ src, width, quality }: WsrvLoaderParams): 
     return appendLoaderParams(src, width, quality)
   }
 
-  const normalizedSrc = resolveRemoteAssetReference(src)
+  const assetsOrigin = resolveAssetsOrigin()
+  const normalizedSrc = resolveRemoteAssetReference(src, assetsOrigin)
   if (!normalizedSrc) {
     return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
   }
-  if (new URL(normalizedSrc).hostname === ASSETS_HOST) {
+  if (new URL(normalizedSrc).origin === assetsOrigin) {
     return appendLoaderParams(normalizedSrc, width, quality)
   }
 

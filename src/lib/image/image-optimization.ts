@@ -1,5 +1,10 @@
-import { ASSETS_HOST } from '@/lib/image/asset-reference'
-const DEFAULT_IMAGE_HOST_PATTERNS = [ASSETS_HOST, '*.supabase.co'] as const
+import {
+  defaultPublicRuntimeConfig,
+  isRetiredAssetHost,
+  resolvePublicRuntimeEnv,
+} from '@/lib/public-runtime-config.shared'
+
+const DEFAULT_IMAGE_HOST_PATTERNS = ['*.supabase.co'] as const
 
 type EnvMap = NodeJS.ProcessEnv | Record<string, string | undefined>
 
@@ -58,5 +63,9 @@ function resolveS3ImageHostPatterns(env: EnvMap) {
 }
 
 export function getOptimizedImageHostPatterns(env: EnvMap = process.env) {
-  return Array.from(new Set([...DEFAULT_IMAGE_HOST_PATTERNS, ...resolveS3ImageHostPatterns(env)]))
+  const assetsHosts = [defaultPublicRuntimeConfig.assetsUrl, resolvePublicRuntimeEnv(env).assetsUrl].map(
+    (origin) => new URL(origin).hostname,
+  )
+  const hosts = [...assetsHosts, ...DEFAULT_IMAGE_HOST_PATTERNS, ...resolveS3ImageHostPatterns(env)]
+  return Array.from(new Set(hosts.filter((host) => !isRetiredAssetHost(host))))
 }

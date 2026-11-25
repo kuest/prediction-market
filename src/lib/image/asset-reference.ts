@@ -1,19 +1,26 @@
-export const ASSETS_HOST = 'assets.kuest.com'
-export const ASSETS_ORIGIN = `https://${ASSETS_HOST}`
+import {
+  defaultPublicRuntimeConfig,
+  isRetiredAssetHost,
+  normalizePublicAssetsUrl,
+  resolvePublicRuntimeEnv,
+} from '@/lib/public-runtime-config.shared'
+
 export const ASSET_ID = /^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$/
 
-export function isRetiredAssetHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/\.+$/, '')
-  return host === 'irys.xyz' || host.endsWith('.irys.xyz')
+export function resolveAssetsOrigin(): string {
+  if (typeof window !== 'undefined') {
+    return normalizePublicAssetsUrl(window.__PUBLIC_RUNTIME_CONFIG__?.assetsUrl)
+  }
+  return resolvePublicRuntimeEnv(process.env).assetsUrl
 }
 
-export function resolveRemoteAssetReference(value: unknown): string | null {
+export function resolveRemoteAssetReference(value: unknown, assetsOrigin = resolveAssetsOrigin()): string | null {
   if (typeof value !== 'string') {
     return null
   }
   const reference = value.trim()
   if (ASSET_ID.test(reference)) {
-    return `${ASSETS_ORIGIN}/${reference}`
+    return `${assetsOrigin}/${reference}`
   }
   if (!/^(?:https?:)?\/\//i.test(reference)) {
     return null
@@ -22,6 +29,9 @@ export function resolveRemoteAssetReference(value: unknown): string | null {
     const absolute = reference.startsWith('//') ? `https:${reference}` : reference
     const url = new URL(absolute)
     if (!url.username && !url.password && !isRetiredAssetHost(url.hostname)) {
+      if (url.origin === defaultPublicRuntimeConfig.assetsUrl && ASSET_ID.test(url.pathname.slice(1))) {
+        return `${assetsOrigin}${url.pathname}${url.search}${url.hash}`
+      }
       return absolute
     }
   } catch {

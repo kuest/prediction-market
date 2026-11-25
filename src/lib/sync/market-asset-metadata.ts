@@ -1,4 +1,5 @@
-import { ASSET_ID, ASSETS_ORIGIN } from '@/lib/image/asset-reference'
+import { ASSET_ID } from '@/lib/image/asset-reference'
+import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 
 export class RetryableMarketSyncError extends Error {
   constructor(message: string, cause: unknown) {
@@ -16,7 +17,8 @@ export async function fetchMarketAssetMetadata(metadataHash: string) {
     throw new Error('Invalid metadata asset ID')
   }
 
-  const url = `${ASSETS_ORIGIN}/${metadataHash}`
+  const { assetsUrl } = resolvePublicRuntimeEnv(process.env)
+  const url = `${assetsUrl}/${metadataHash}`
   let response: Response
   try {
     response = await fetch(url, {

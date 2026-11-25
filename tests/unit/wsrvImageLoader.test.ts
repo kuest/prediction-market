@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it } from 'bun:test'
 
 import wsrvImageLoader from '@/lib/image/image-loader'
 
+import { stubGlobal, unstubAllGlobals } from '../bun-test-helpers'
+
 describe('wsrvImageLoader', () => {
+  afterEach(unstubAllGlobals)
+
   it('keeps root-relative local assets on the app origin while encoding width', () => {
     expect(
       wsrvImageLoader({
@@ -31,6 +35,14 @@ describe('wsrvImageLoader', () => {
         quality: 70,
       }),
     ).toBe(`${assetUrl}?w=128&q=70`)
+  })
+
+  it('uses the operator runtime origin for canonical Kuest artwork', () => {
+    stubGlobal('window', { __PUBLIC_RUNTIME_CONFIG__: { assetsUrl: 'https://assets.operator.example' } })
+    const id = 'A'.repeat(43)
+    expect(wsrvImageLoader({ src: `https://assets.kuest.com/${id}`, width: 128 })).toBe(
+      `https://assets.operator.example/${id}?w=128&q=75`,
+    )
   })
 
   it('does not send retired URLs to the browser or optimizer', () => {

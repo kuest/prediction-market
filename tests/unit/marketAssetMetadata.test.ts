@@ -1,13 +1,21 @@
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
 import { resolveMarketAssetUrl, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
+import { getOptimizedImageHostPatterns } from '@/lib/image/image-optimization'
 import { fetchMarketAssetMetadata, RetryableMarketSyncError } from '@/lib/sync/market-asset-metadata'
+
+import { stubEnv, stubGlobal, unstubAllEnvs, unstubAllGlobals } from '../bun-test-helpers'
 
 const id = 'A'.repeat(43)
 const assetUrl = `https://assets.kuest.com/${id}`
+const operatorAssetUrl = `https://assets.operator.example/${id}`
 const metadata = { name: 'Q', slug: 'q', event: { slug: 'event' } }
 
-afterEach(() => mock.restore())
+afterEach(() => {
+  mock.restore()
+  unstubAllEnvs()
+  unstubAllGlobals()
+})
 
 describe('asset URLs', () => {
   it('resolves a bare ID and preserves full external and local image URLs', () => {
@@ -23,6 +31,25 @@ describe('asset URLs', () => {
     expect(resolveMarketAssetUrl(`//gateway.irys.xyz./${id}`)).toBeNull()
     expect(resolveMarketAssetUrl('https://user@cdn.example.com/photo.png')).toBeNull()
     expect(resolveMarketAssetUrl('javascript:alert(1)')).toBeNull()
+  })
+
+  it('uses the public runtime hostname for bare IDs and canonical URLs without changing external images', () => {
+    stubEnv('ASSETS_URL', 'https://assets.wrong-build.example')
+    stubGlobal('window', { __PUBLIC_RUNTIME_CONFIG__: { assetsUrl: 'https://assets.operator.example' } })
+    expect(resolveMarketAssetUrl(id)).toBe(operatorAssetUrl)
+    expect(resolveMarketAssetUrl(`${assetUrl}?v=1`)).toBe(`${operatorAssetUrl}?v=1`)
+    expect(resolveMarketAssetUrl(operatorAssetUrl)).toBe(operatorAssetUrl)
+    expect(resolveMarketAssetUrl('https://images.example/photo.png')).toBe('https://images.example/photo.png')
+    expect(resolveMarketAssetUrl('/images/logo.png')).toBe('/images/logo.png')
+  })
+
+  it('includes the registered origin and operator override in the image allowlist, never the retired host', () => {
+    expect(
+      getOptimizedImageHostPatterns({
+        ASSETS_URL: 'https://assets.operator.example',
+        S3_PUBLIC_URL: 'https://gateway.irys.xyz',
+      }),
+    ).toEqual(['assets.kuest.com', 'assets.operator.example', '*.supabase.co'])
   })
 })
 
@@ -45,6 +72,14 @@ describe('market metadata transport', () => {
     expect(missing.message).toContain('HTTP 404')
     await expect(fetchMarketAssetMetadata(id)).rejects.toBeInstanceOf(SyntaxError)
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('fetches metadata only from the configured operator proxy, with no second origin after a 404', async () => {
+    stubEnv('ASSETS_URL', 'https://assets.operator.example/')
+    const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(null, { status: 404 }))
+    await expect(fetchMarketAssetMetadata(id)).rejects.toThrow('HTTP 404')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(operatorAssetUrl)
   })
 
   it('retries transient HTTP statuses and network or response-body errors via the existing cursor branch', async () => {

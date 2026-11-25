@@ -24,7 +24,7 @@ import {
 import { db } from '@/lib/drizzle'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 import { setEventHiddenFromNew } from '@/lib/event-visibility'
-import { ASSET_ID, ASSETS_ORIGIN, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
+import { ASSET_ID, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
 import { resolveMarketClarificationsUpdate } from '@/lib/market-clarifications'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { syncMissingOnChainResolvedPayouts } from '@/lib/resolution-payout-sync'
@@ -3039,7 +3039,7 @@ async function fetchSyncImage(url: string, signal: AbortSignal | undefined): Pro
       return null
     }
 
-    const destination = resolveRemoteAssetReference(new URL(location, currentUrl).toString())
+    const destination = normalizeAssetReference(new URL(location, currentUrl).toString())
     if (!destination) {
       return null
     }
@@ -3083,7 +3083,7 @@ async function downloadAndSaveImage(assetReference: string, storagePath: string,
       return null
     }
 
-    const managedAsset = new URL(normalizedReference).origin === ASSETS_ORIGIN
+    const managedAsset = new URL(normalizedReference).origin === resolvePublicRuntimeEnv(process.env).assetsUrl
     let imageBuffer: ArrayBuffer
     try {
       const response = await fetchSyncImage(
@@ -3495,7 +3495,7 @@ async function normalizeSportsTeamAssets(
 }
 
 function normalizeAssetReference(value: unknown): string | null {
-  return resolveRemoteAssetReference(value)
+  return resolveRemoteAssetReference(value, resolvePublicRuntimeEnv(process.env).assetsUrl)
 }
 
 function buildSportsLogoStoragePath(reference: string): string {
@@ -3504,7 +3504,7 @@ function buildSportsLogoStoragePath(reference: string): string {
 
 function resolveStableAssetReference(assetReference: unknown): string | null {
   const url = normalizeAssetReference(assetReference)
-  if (!url || !url.startsWith(`${ASSETS_ORIGIN}/`)) {
+  if (!url || !url.startsWith(`${resolvePublicRuntimeEnv(process.env).assetsUrl}/`)) {
     return null
   }
   const id = new URL(url).pathname.slice(1)

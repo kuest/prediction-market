@@ -7,7 +7,7 @@ import * as http from 'node:http'
 import * as https from 'node:https'
 import { isIP } from 'node:net'
 
-import { isRetiredAssetHost } from '@/lib/image/asset-reference'
+import { isRetiredAssetHost } from '@/lib/public-runtime-config.shared'
 import 'server-only'
 
 const DEFAULT_MAX_IMAGE_BYTES = 2 * 1024 * 1024

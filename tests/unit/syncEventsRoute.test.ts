@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, mock, jest } from 'bun:test'
 
-import { hoisted, spyOn, stubGlobal, unstubAllGlobals, useFakeTimers, useRealTimers } from '../bun-test-helpers'
+import {
+  hoisted,
+  spyOn,
+  stubEnv,
+  stubGlobal,
+  unstubAllEnvs,
+  unstubAllGlobals,
+  useFakeTimers,
+  useRealTimers,
+} from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
   fetch: mock(),
@@ -74,6 +83,7 @@ describe('sync events route', () => {
 
   afterEach(() => {
     useRealTimers()
+    unstubAllEnvs()
     unstubAllGlobals()
     jest.restoreAllMocks()
   })
@@ -177,6 +187,11 @@ describe('sync events route', () => {
     expect(buildCanonicalIconStoragePath(`irys://${id}`, storagePath)).toBe(storagePath)
     expect(buildCanonicalIconStoragePath(`https://gateway.irys.xyz/${id}`, storagePath)).toBe(storagePath)
     expect(buildCanonicalIconStoragePath('https://example.com/icon.png', storagePath)).toBe(storagePath)
+    stubEnv('ASSETS_URL', 'https://assets.operator.example')
+    expect(buildCanonicalIconStoragePath(`https://assets.kuest.com/${id}`, storagePath)).toBe(`icons/source/${id}.png`)
+    expect(buildCanonicalIconStoragePath(`https://assets.operator.example/${id}`, storagePath)).toBe(
+      `icons/source/${id}.png`,
+    )
   })
 
   it('reuses sports source payload when partial incoming identity resolves to the same source', async () => {
@@ -648,6 +663,8 @@ describe('sync events route', () => {
   })
 
   it.each([200, 404, 503])('handles Assets metadata HTTP %i before persisting market rows', async (assetStatus) => {
+    const assetsOrigin = assetStatus === 200 ? 'https://assets.kuest.com' : 'https://assets.operator.example'
+    stubEnv('ASSETS_URL', assetsOrigin)
     useFakeTimers()
     jest.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
     mocks.isCronAuthorized.mockReturnValue(true)
@@ -714,7 +731,7 @@ describe('sync events route', () => {
     )
 
     expect(mocks.fetch).toHaveBeenCalledTimes(2)
-    expect(mocks.fetch.mock.calls[1][0]).toBe(`https://assets.kuest.com/${'A'.repeat(43)}`)
+    expect(mocks.fetch.mock.calls[1][0]).toBe(`${assetsOrigin}/${'A'.repeat(43)}`)
     if (assetStatus === 503) {
       expect(response.status).toBe(500)
       expect(updatePayloads.some((payload) => 'cursor_id' in payload)).toBe(false)
