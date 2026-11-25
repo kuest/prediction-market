@@ -78,12 +78,6 @@ Kalshi can do that one deal at a time. Kuest makes the same capability available
 | 🔧  | **[Vercel + Supabase](https://docs.kuest.com/manual-installation/vercel)** - hosted deployment with full codebase control                  | Technical operators   |
 | 🏗️  | **[Manual installation](https://docs.kuest.com/manual-installation/overview)** - Docker, VPS, Cloud Run, Fly.io, Kubernetes, and Terraform | Advanced / enterprise |
 
-### [Custom domains](https://docs.kuest.com/configuration/custom-domain)
-
-| Operator hostname      | Kuest upstream     |
-| ---------------------- | ------------------ |
-| `assets.<your-domain>` | `assets.kuest.com` |
-
 ---
 
 ## Who is this for

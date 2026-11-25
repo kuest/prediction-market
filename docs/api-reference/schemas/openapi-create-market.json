@@ -215,15 +215,15 @@
                     "negRiskMarketId": null
                   },
                   "metadata": {
-                    "eventImageUri": "https://assets.kuest.com/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                    "eventImageUri": "https://assets.kuest.com/O_3w1H8ZqI4dllnBBmavxJpxCRI_pnyr_LFeyaA50Sw",
                     "markets": [
                       {
                         "key": "binary",
                         "slug": "will-btc-close-above-110k-on-march-31-2028",
                         "question": "Will BTC close above $110k on March 31, 2028?",
                         "shortName": null,
-                        "metadataTxId": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA",
-                        "metadataUri": "https://assets.kuest.com/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA",
+                        "metadataTxId": "Wz4R0KCMgOqz7yJAERXIU2DIisNyAVwVRvzYt9sCCBE",
+                        "metadataUri": "https://assets.kuest.com/Wz4R0KCMgOqz7yJAERXIU2DIisNyAVwVRvzYt9sCCBE",
                         "requestId": null,
                         "questionId": "0x80f7bf1a2f8c6d6fc0b4537437d1c8f0f1d9ed9d622f5af7e253d45c0f8f2a31",
                         "conditionId": "0x3ab356f9f2142d4c3ca4e442bcf952f3df9fbe74fcb696ca6c2575c9980f9f83",

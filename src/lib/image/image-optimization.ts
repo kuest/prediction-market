@@ -62,10 +62,23 @@ function resolveS3ImageHostPatterns(env: EnvMap) {
   }
 }
 
-export function getOptimizedImageHostPatterns(env: EnvMap = process.env) {
-  const assetsHosts = [defaultPublicRuntimeConfig.assetsUrl, resolvePublicRuntimeEnv(env).assetsUrl].map(
-    (origin) => new URL(origin).hostname,
+export function getOptimizedImageRemotePatterns(env: EnvMap = process.env) {
+  const assetsHosts = [defaultPublicRuntimeConfig.assetsUrl, resolvePublicRuntimeEnv(env).assetsUrl].map((origin) => {
+    const { hostname, port } = new URL(origin)
+    return { hostname, port }
+  })
+  const storageHosts = [...DEFAULT_IMAGE_HOST_PATTERNS, ...resolveS3ImageHostPatterns(env)].map((hostname) => ({
+    hostname,
+    port: '',
+  }))
+  return Array.from(
+    new Map(
+      [...assetsHosts, ...storageHosts]
+        .filter(({ hostname }) => !isRetiredAssetHost(hostname))
+        .map(({ hostname, port }) => [
+          `${hostname}:${port}`,
+          { protocol: 'https' as const, hostname, port, pathname: '/**' },
+        ]),
+    ).values(),
   )
-  const hosts = [...assetsHosts, ...DEFAULT_IMAGE_HOST_PATTERNS, ...resolveS3ImageHostPatterns(env)]
-  return Array.from(new Set(hosts.filter((host) => !isRetiredAssetHost(host))))
 }

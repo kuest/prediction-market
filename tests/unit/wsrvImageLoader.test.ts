@@ -38,10 +38,10 @@ describe('wsrvImageLoader', () => {
   })
 
   it('uses the operator runtime origin for canonical Kuest artwork', () => {
-    stubGlobal('window', { __PUBLIC_RUNTIME_CONFIG__: { assetsUrl: 'https://assets.operator.example' } })
+    stubGlobal('window', { __PUBLIC_RUNTIME_CONFIG__: { assetsUrl: 'https://assets.operator.example:8443' } })
     const id = 'A'.repeat(43)
     expect(wsrvImageLoader({ src: `https://assets.kuest.com/${id}`, width: 128 })).toBe(
-      `https://assets.operator.example/${id}?w=128&q=75`,
+      `https://assets.operator.example:8443/${id}?w=128&q=75`,
     )
   })
 

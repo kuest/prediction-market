@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 
 import { resolveMarketAssetUrl, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
-import { getOptimizedImageHostPatterns } from '@/lib/image/image-optimization'
+import { getOptimizedImageRemotePatterns } from '@/lib/image/image-optimization'
 import { fetchMarketAssetMetadata, RetryableMarketSyncError } from '@/lib/sync/market-asset-metadata'
 
 import { stubEnv, stubGlobal, unstubAllEnvs, unstubAllGlobals } from '../bun-test-helpers'
@@ -43,13 +43,17 @@ describe('asset URLs', () => {
     expect(resolveMarketAssetUrl('/images/logo.png')).toBe('/images/logo.png')
   })
 
-  it('includes the registered origin and operator override in the image allowlist, never the retired host', () => {
+  it('allows the registered origin and exact operator host and port, never the retired host', () => {
     expect(
-      getOptimizedImageHostPatterns({
-        ASSETS_URL: 'https://assets.operator.example',
+      getOptimizedImageRemotePatterns({
+        ASSETS_URL: 'https://assets.operator.example:8443',
         S3_PUBLIC_URL: 'https://gateway.irys.xyz',
       }),
-    ).toEqual(['assets.kuest.com', 'assets.operator.example', '*.supabase.co'])
+    ).toEqual([
+      { protocol: 'https', hostname: 'assets.kuest.com', port: '', pathname: '/**' },
+      { protocol: 'https', hostname: 'assets.operator.example', port: '8443', pathname: '/**' },
+      { protocol: 'https', hostname: '*.supabase.co', port: '', pathname: '/**' },
+    ])
   })
 })
 
@@ -75,11 +79,11 @@ describe('market metadata transport', () => {
   })
 
   it('fetches metadata only from the configured operator proxy, with no second origin after a 404', async () => {
-    stubEnv('ASSETS_URL', 'https://assets.operator.example/')
+    stubEnv('ASSETS_URL', 'https://assets.operator.example:8443/')
     const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(null, { status: 404 }))
     await expect(fetchMarketAssetMetadata(id)).rejects.toThrow('HTTP 404')
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(operatorAssetUrl)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(`https://assets.operator.example:8443/${id}`)
   })
 
   it('retries transient HTTP statuses and network or response-body errors via the existing cursor branch', async () => {

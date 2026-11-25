@@ -89,6 +89,9 @@ describe('public runtime config resolution', () => {
       expect(resolvePublicRuntimeEnv({ CHAIN_ID, ASSETS_URL: ' https://assets.operator.example/ ' }).assetsUrl).toBe(
         'https://assets.operator.example',
       )
+      expect(resolvePublicRuntimeEnv({ CHAIN_ID, ASSETS_URL: 'https://assets.operator.example:8443/' }).assetsUrl).toBe(
+        'https://assets.operator.example:8443',
+      )
       for (const ASSETS_URL of [
         'http://assets.operator.example',
         'https://assets.operator.example/prefix',

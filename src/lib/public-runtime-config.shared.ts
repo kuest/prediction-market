@@ -100,7 +100,6 @@ export function normalizePublicAssetsUrl(value?: string): string {
       const url = new URL(value.trim())
       if (
         url.protocol === 'https:' &&
-        !url.port &&
         !url.username &&
         !url.password &&
         url.pathname === '/' &&

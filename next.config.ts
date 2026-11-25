@@ -5,9 +5,9 @@ import { createMDX } from 'fumadocs-mdx/next'
 import createNextIntlPlugin from 'next-intl/plugin'
 
 import { resolveCommitSha } from '@/lib/git'
-import { getOptimizedImageHostPatterns } from '@/lib/image/image-optimization'
+import { getOptimizedImageRemotePatterns } from '@/lib/image/image-optimization'
 
-const optimizedImageHostPatterns = getOptimizedImageHostPatterns(process.env)
+const optimizedImageRemotePatterns = getOptimizedImageRemotePatterns(process.env)
 const commitSha = resolveCommitSha()
 const instantNavigationTest = process.env.NEXT_INSTANT_TEST === '1'
 
@@ -40,12 +40,7 @@ const config: NextConfig = {
     loaderFile: './src/lib/image/image-loader.ts',
     deviceSizes: [256, 384, 640, 768],
     imageSizes: [16, 20, 24, 32, 36, 40, 42, 44, 48, 56, 64, 96, 128],
-    remotePatterns: optimizedImageHostPatterns.map((hostname) => ({
-      protocol: 'https',
-      hostname,
-      port: '',
-      pathname: '/**',
-    })),
+    remotePatterns: optimizedImageRemotePatterns,
   },
   async headers() {
     return [
