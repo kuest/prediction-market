@@ -384,10 +384,9 @@ export default function EventRules({
     const timestamp = note.txTimestamp ?? note.createdAt
     return timestamp && (!latest || timestamp > latest) ? timestamp : latest
   }, null)
-  const manualUpdatedAt = additionalContext ? event.additional_context_updated_at ?? event.updated_at : null
+  const manualUpdatedAt = additionalContext ? (event.additional_context_updated_at ?? event.updated_at) : null
   const latestUpdatedAt =
-    clarificationUpdatedAt &&
-      (!manualUpdatedAt || !(Date.parse(manualUpdatedAt) >= Date.parse(clarificationUpdatedAt)))
+    clarificationUpdatedAt && (!manualUpdatedAt || !(Date.parse(manualUpdatedAt) >= Date.parse(clarificationUpdatedAt)))
       ? clarificationUpdatedAt
       : manualUpdatedAt
   const additionalContextUpdatedAtLabel = formatAdditionalContextUpdatedAt(latestUpdatedAt)
@@ -516,7 +515,9 @@ export default function EventRules({
             {contextEntries.map((entry, index) => (
               <div key={entry.key} className="space-y-3">
                 {index > 0 && <Separator />}
-                <p className="text-sm/relaxed wrap-anywhere whitespace-pre-line text-muted-foreground">{entry.content}</p>
+                <p className="text-sm/relaxed wrap-anywhere whitespace-pre-line text-muted-foreground">
+                  {entry.content}
+                </p>
               </div>
             ))}
           </div>

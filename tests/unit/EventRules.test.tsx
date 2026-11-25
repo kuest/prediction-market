@@ -151,11 +151,16 @@ describe('eventRules', () => {
     } as any
 
     act(() => useOrder.getState().setMarket(secondMarket))
-    render(<EventRules event={createEvent({
-      additional_context: 'Manual event context',
-      additional_context_updated_at: '2026-11-24T00:00:00Z',
-      markets: [firstMarket, secondMarket],
-    })} mode="inline" />)
+    render(
+      <EventRules
+        event={createEvent({
+          additional_context: 'Manual event context',
+          additional_context_updated_at: '2026-11-24T00:00:00Z',
+          markets: [firstMarket, secondMarket],
+        })}
+        mode="inline"
+      />,
+    )
 
     expect(screen.getAllByText('Additional context')).toHaveLength(1)
     const panel = screen.getByText('Additional context').closest('section')!
@@ -176,10 +181,16 @@ describe('eventRules', () => {
   })
 
   it('starts expanded with a single market note and no manual event context', () => {
-    const metadata = { market_clarifications: [{ id: 1, state: 'success', showInFrontend: true, content: 'Only note' }] }
-    render(<EventRules event={createEvent({
-      markets: [{ condition_id: 'condition-1', outcomes: [], metadata } as any],
-    })} />)
+    const metadata = {
+      market_clarifications: [{ id: 1, state: 'success', showInFrontend: true, content: 'Only note' }],
+    }
+    render(
+      <EventRules
+        event={createEvent({
+          markets: [{ condition_id: 'condition-1', outcomes: [], metadata } as any],
+        })}
+      />,
+    )
 
     expect(screen.getByRole('button', { name: 'Rules & Resolution' })).toHaveAttribute('aria-expanded', 'true')
     const panel = screen.getByText('Additional context').closest('section')!
@@ -203,9 +214,7 @@ describe('eventRules', () => {
     ] as any
     const event = createEvent({ markets })
 
-    const { rerender } = render(
-      <EventRules event={event} initialMarketConditionId="condition-second" mode="inline" />,
-    )
+    const { rerender } = render(<EventRules event={event} initialMarketConditionId="condition-second" mode="inline" />)
     expect(screen.getByText('Second market note')).toBeInTheDocument()
     expect(screen.queryByText('First market note')).not.toBeInTheDocument()
 

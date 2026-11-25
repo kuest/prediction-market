@@ -73,7 +73,7 @@ export function readVisibleMarketClarifications(metadata: unknown): VisibleMarke
 export function resolveMarketClarificationsUpdate(
   incomingMetadata: unknown,
   existingMetadata: unknown,
-): { notes: VisibleMarketClarification[] | undefined, changed: boolean } {
+): { notes: VisibleMarketClarification[] | undefined; changed: boolean } {
   const existing = readMarketClarificationsUpdate(existingMetadata)
   const incoming = readMarketClarificationsUpdate(incomingMetadata)
   return {

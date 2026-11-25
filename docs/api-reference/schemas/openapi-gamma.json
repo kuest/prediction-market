@@ -299,9 +299,7 @@
       "get": {
         "summary": "List market clarifications",
         "description": "Returns published settlement clarifications marked for display. Repeat a filter to match any of its values; different filters are combined.",
-        "tags": [
-          "Markets"
-        ],
+        "tags": ["Markets"],
         "parameters": [
           {
             "name": "market_id",
@@ -325,9 +323,7 @@
               },
               "maxItems": 100
             },
-            "example": [
-              512038
-            ]
+            "example": [512038]
           },
           {
             "name": "event_id",
@@ -387,19 +383,11 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "enum": [
-                  "pending",
-                  "queued",
-                  "success",
-                  "failed",
-                  "cancelled"
-                ]
+                "enum": ["pending", "queued", "success", "failed", "cancelled"]
               },
               "maxItems": 100
             },
-            "example": [
-              "success"
-            ]
+            "example": ["success"]
           },
           {
             "name": "show_in_frontend",
@@ -2002,15 +1990,7 @@
       },
       "MarketClarification": {
         "type": "object",
-        "required": [
-          "id",
-          "marketId",
-          "eventId",
-          "questionId",
-          "content",
-          "state",
-          "showInFrontend"
-        ],
+        "required": ["id", "marketId", "eventId", "questionId", "content", "state", "showInFrontend"],
         "properties": {
           "id": {
             "type": "integer",
@@ -2019,10 +1999,7 @@
           },
           "source": {
             "type": "string",
-            "enum": [
-              "kuest",
-              "polymarket"
-            ]
+            "enum": ["kuest", "polymarket"]
           },
           "marketId": {
             "type": "integer",
@@ -2057,9 +2034,7 @@
           },
           "state": {
             "type": "string",
-            "enum": [
-              "success"
-            ],
+            "enum": ["success"],
             "description": "Publication state. Drafts are not returned."
           },
           "clearBook": {
@@ -2069,9 +2044,7 @@
           },
           "showInFrontend": {
             "type": "boolean",
-            "enum": [
-              true
-            ]
+            "enum": [true]
           },
           "notifyDiscord": {
             "type": "boolean",
