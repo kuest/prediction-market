@@ -299,7 +299,7 @@ export function resolveResolvedHomeSportsMoneylineWinner(
     (button): button is HomeSportsMoneylineButton => Boolean(button),
   )
 
-  let hasSplitPayout = false
+  let resolvedWinner: ResolvedHomeSportsMoneylineWinner | null = null
   for (const button of buttons) {
     const market = event.markets.find((candidate) => candidate.condition_id === button.conditionId)
     if (!market) {
@@ -307,16 +307,16 @@ export function resolveResolvedHomeSportsMoneylineWinner(
     }
 
     if (hasEqualPositiveBinaryPayout(market.condition?.payout_numerators)) {
-      hasSplitPayout = true
-      continue
+      // The card combines these markets, so a split cannot produce a single winner.
+      return null
     }
 
     const winnerIndex = resolveBinaryWinningOutcomeIndex(market)
-    if (winnerIndex !== button.outcomeIndex) {
+    if (resolvedWinner || winnerIndex !== button.outcomeIndex) {
       continue
     }
 
-    return {
+    resolvedWinner = {
       conditionId: button.conditionId,
       label: resolveResolvedWinnerLabel(model, button.tone),
       outcomeIndex: button.outcomeIndex,
@@ -324,9 +324,8 @@ export function resolveResolvedHomeSportsMoneylineWinner(
     }
   }
 
-  // A recorded split payout is not a missing result; the score cannot create a settlement winner.
-  if (hasSplitPayout) {
-    return null
+  if (resolvedWinner) {
+    return resolvedWinner
   }
 
   const finalScore = parseSportsScore(event.sports_score)

@@ -445,7 +445,11 @@ describe('sportsHomeCard', () => {
     })
   })
 
-  it('falls back to the sports score when separated moneyline markets have no explicit winner', () => {
+  it.each([
+    { label: 'no payout', firstPayout: undefined, lastPayout: undefined, showsWinner: true },
+    { label: 'one winner', firstPayout: [1, 0], lastPayout: [0, 1], showsWinner: true },
+    { label: 'a split after a winning payout', firstPayout: [1, 0], lastPayout: [1, 1], showsWinner: false },
+  ])('renders separated moneylines with $label', ({ firstPayout, lastPayout, showsWinner }) => {
     const event = {
       sports_score: '2 - 1',
       sports_sport_slug: 'soccer',
@@ -480,6 +484,7 @@ describe('sportsHomeCard', () => {
           sports_market_type: 'moneyline',
           short_title: 'Santos FC',
           title: 'Will Santos FC win?',
+          condition: { payout_numerators: firstPayout },
           outcomes: [
             { outcome_index: 0, outcome_text: 'Yes' },
             { outcome_index: 1, outcome_text: 'No' },
@@ -500,6 +505,7 @@ describe('sportsHomeCard', () => {
           sports_market_type: 'moneyline',
           short_title: 'CR Vasco da Gama',
           title: 'Will CR Vasco da Gama win?',
+          condition: { payout_numerators: lastPayout },
           outcomes: [
             { outcome_index: 0, outcome_text: 'Yes' },
             { outcome_index: 1, outcome_text: 'No' },
@@ -511,12 +517,9 @@ describe('sportsHomeCard', () => {
     const model = buildHomeSportsMoneylineModel(event)
 
     expect(model).not.toBeNull()
-    expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual({
-      conditionId: 'santos-market',
-      label: 'Santos FC',
-      outcomeIndex: 0,
-      tone: 'team1',
-    })
+    expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual(
+      showsWinner ? { conditionId: 'santos-market', label: 'Santos FC', outcomeIndex: 0, tone: 'team1' } : null,
+    )
   })
 
   it('does not map non-neg-risk separated yes/no moneylines as a binary market', () => {
