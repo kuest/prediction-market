@@ -48,19 +48,12 @@ function useAboutPanelDerivations({
 
     const prioritizedMarket = sourceEvent.markets.find((item) => item.condition_id === market.condition_id)
     const marketRules = market.market_rules?.trim() || prioritizedMarket?.market_rules?.trim() || sourceEvent.rules
-    if (!prioritizedMarket) {
-      return {
-        ...sourceEvent,
-        rules: marketRules || sourceEvent.rules,
-      }
-    }
-
     return {
       ...sourceEvent,
       rules: marketRules || sourceEvent.rules,
       markets: [
-        prioritizedMarket,
-        ...sourceEvent.markets.filter((item) => item.condition_id !== prioritizedMarket.condition_id),
+        prioritizedMarket ?? market,
+        ...sourceEvent.markets.filter((item) => item.condition_id !== market.condition_id),
       ],
     }
   }, [event, market, rulesEvent])
@@ -100,7 +93,7 @@ export default function SportsEventAboutPanel({
     return (
       <div className="grid gap-6">
         {marketContextEnabled && <EventMarketContext event={event} marketConditionId={market?.condition_id ?? null} />}
-        <EventRules event={aboutRulesEvent} showEndDate />
+        <EventRules event={aboutRulesEvent} marketConditionId={market?.condition_id} showEndDate />
 
         {market && shouldShowResolution && (
           <div className="rounded-xl border bg-background p-4">
@@ -126,7 +119,7 @@ export default function SportsEventAboutPanel({
 
   return (
     <div className="grid gap-3 pb-2">
-      <EventRules event={aboutRulesEvent} mode="inline" showEndDate />
+      <EventRules event={aboutRulesEvent} marketConditionId={market?.condition_id} mode="inline" showEndDate />
 
       {market && shouldShowResolution && (
         <section className="grid gap-2">

@@ -23,6 +23,7 @@ import {
   UMA_NEG_RISK_ADAPTER_POLYMARKET_ADDRESS,
 } from '@/lib/contracts'
 import { isDirectResolutionMarket } from '@/lib/direct-resolution'
+import { readVisibleMarketClarifications } from '@/lib/market-clarifications'
 import { getMirrorResolutionType } from '@/lib/mirror-resolution'
 import { resolveUmaProposeTarget } from '@/lib/uma'
 import { cn } from '@/lib/utils'
@@ -35,6 +36,8 @@ interface EventRulesProps {
   event: Event
   mode?: 'accordion' | 'inline'
   showEndDate?: boolean
+  marketConditionId?: string
+  initialMarketConditionId?: string
 }
 
 const RESOLVER_GRADIENTS = [
@@ -181,21 +184,29 @@ function ResolutionRewardsIcon({ amount, label }: { amount: string; label: strin
   )
 }
 
-export default function EventRules({ event, mode = 'accordion', showEndDate = false }: EventRulesProps) {
+export default function EventRules({
+  event,
+  mode = 'accordion',
+  showEndDate = false,
+  marketConditionId,
+  initialMarketConditionId,
+}: EventRulesProps) {
   const t = useExtracted()
   const locale = useLocale()
   const siteIdentity = useSiteIdentity()
-  const hasAdditionalContext =
-    typeof event.additional_context === 'string' && event.additional_context.trim().length > 0
   const isInline = mode === 'inline'
   const selectedMarketConditionId = useOrder((state) => state.market?.condition_id)
   const isNegRiskEvent = Boolean(
     event.enable_neg_risk || event.neg_risk || event.neg_risk_augmented || event.neg_risk_market_id,
   )
-  const selectedNegRiskMarket = isNegRiskEvent
-    ? event.markets.find((market) => market.condition_id === selectedMarketConditionId)
-    : null
-  const primaryMarket = selectedNegRiskMarket ?? event.markets[0]
+  const selectedMarket = event.markets.find((market) => market.condition_id === selectedMarketConditionId)
+  const primaryMarket = (isNegRiskEvent ? selectedMarket : null) ?? event.markets[0]
+  const clarificationMarket =
+    event.markets.find((market) => market.condition_id === marketConditionId) ??
+    selectedMarket ??
+    event.markets.find((market) => market.condition_id === initialMarketConditionId) ??
+    event.markets[0]
+  const clarifications = readVisibleMarketClarifications(clarificationMarket?.metadata)
   const resolutionRewardMarketKey = [
     event.id,
     primaryMarket?.condition_id,
@@ -363,10 +374,22 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
   const isUmaResolver = normalizedResolverAddress ? UMA_RESOLVER_ADDRESS_SET.has(normalizedResolverAddress) : false
   const hasResolutionSourceUrl = Boolean(resolutionSourceUrl)
   const resolverBadgeClassName = isUmaResolver ? 'bg-transparent' : `bg-linear-to-r ${resolverGradient}`
-  const additionalContext = hasAdditionalContext ? (event.additional_context?.trim() ?? '') : ''
-  const additionalContextUpdatedAtLabel = formatAdditionalContextUpdatedAt(
-    event.additional_context_updated_at ?? event.updated_at,
-  )
+  const additionalContext = typeof event.additional_context === 'string' ? event.additional_context.trim() : ''
+  const contextEntries = [
+    ...(additionalContext ? [{ key: 'event', content: additionalContext }] : []),
+    ...clarifications.map((note) => ({ key: `${note.source ?? 'polymarket'}:${note.id}`, content: note.content })),
+  ]
+  const hasAdditionalContext = contextEntries.length > 0
+  const clarificationUpdatedAt = clarifications.reduce<string | null>((latest, note) => {
+    const timestamp = note.txTimestamp ?? note.createdAt
+    return timestamp && (!latest || timestamp > latest) ? timestamp : latest
+  }, null)
+  const manualUpdatedAt = additionalContext ? (event.additional_context_updated_at ?? event.updated_at) : null
+  const latestUpdatedAt =
+    clarificationUpdatedAt && (!manualUpdatedAt || !(Date.parse(manualUpdatedAt) >= Date.parse(clarificationUpdatedAt)))
+      ? clarificationUpdatedAt
+      : manualUpdatedAt
+  const additionalContextUpdatedAtLabel = formatAdditionalContextUpdatedAt(latestUpdatedAt)
 
   const resolverDetails = (
     <div className="flex min-w-0 items-start gap-3">
@@ -474,7 +497,7 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
 
   const content = (
     <div className={cn('space-y-2', { 'p-3': !isInline })}>
-      {additionalContext && (
+      {hasAdditionalContext && (
         <section className="overflow-hidden rounded-xl border bg-card">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3">
             <div className="flex min-w-0 items-center gap-2">
@@ -488,8 +511,15 @@ export default function EventRules({ event, mode = 'accordion', showEndDate = fa
             )}
           </div>
           <Separator />
-          <div className="p-4">
-            <p className="text-sm/relaxed whitespace-pre-line text-muted-foreground">{additionalContext}</p>
+          <div className="space-y-3 p-4">
+            {contextEntries.map((entry, index) => (
+              <div key={entry.key} className="space-y-3">
+                {index > 0 && <Separator />}
+                <p className="text-sm/relaxed wrap-anywhere whitespace-pre-line text-muted-foreground">
+                  {entry.content}
+                </p>
+              </div>
+            ))}
           </div>
         </section>
       )}

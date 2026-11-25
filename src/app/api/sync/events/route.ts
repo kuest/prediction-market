@@ -24,6 +24,7 @@ import {
 import { db } from '@/lib/drizzle'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 import { setEventHiddenFromNew } from '@/lib/event-visibility'
+import { resolveMarketClarificationsUpdate } from '@/lib/market-clarifications'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { syncMissingOnChainResolvedPayouts } from '@/lib/resolution-payout-sync'
 import { slugifyText } from '@/lib/slug'
@@ -1703,6 +1704,7 @@ async function processMarketData(
     marketIconPath &&
     (shouldDownloadMarketIcon(existingMarket, marketIconReference) || shouldUseCanonicalMarketIcon),
   )
+  const marketClarifications = resolveMarketClarificationsUpdate(metadata, existingMarket?.metadata)
   const marketNeedsUpdate =
     !existingMarket ||
     !Number.isFinite(existingUpdatedAtMs) ||
@@ -1712,6 +1714,7 @@ async function processMarketData(
     (hasPolymarketConditionIdField &&
       (existingMarket.polymarket_condition_id ?? null) !== (polymarketConditionId ?? null)) ||
     polymarketTokenIdsChanged ||
+    marketClarifications.changed ||
     existingAcceptingOrdersFlag !== acceptingOrdersFlag ||
     existingArchivedFlag !== archivedFlag ||
     shouldSyncMarketIcon
@@ -1818,6 +1821,10 @@ async function processMarketData(
   const storedMetadata = { ...metadata }
   delete storedMetadata.mirror_condition_id
   delete storedMetadata.mirror_outcome_token_ids
+  delete storedMetadata.market_clarifications
+  if (marketClarifications.notes !== undefined) {
+    storedMetadata.market_clarifications = marketClarifications.notes
+  }
 
   const conditionUpdate: Record<string, any> = {}
   if (umaRequestTxHash) {
