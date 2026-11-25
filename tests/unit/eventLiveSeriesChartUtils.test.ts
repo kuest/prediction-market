@@ -12,7 +12,7 @@ import {
   formatDateAtTimezone,
   formatTimeAtTimezone,
   getVisibleCountdownUnits,
-  isCanonicalBinanceDailySnapshot,
+  isCanonicalChainlinkCloseSnapshot,
   isCanonicalEventBoundEquityCloseSnapshot,
   isCanonicalGoldDailyCloseSnapshot,
   isGoldDailySeries,
@@ -20,8 +20,7 @@ import {
   LIVE_PRICE_TRANSITION_MS,
   LIVE_DATA_RETENTION_MS,
   MAX_POINTS,
-  POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
-  requiresCanonicalBinanceDailyClose,
+  requiresCanonicalChainlinkClose,
   resolveRecentPersistedLivePrice,
   resolveLiveChartPaddedDomainEnd,
   resolveDisplayedLiveSeriesBaselinePrice,
@@ -29,7 +28,9 @@ import {
   resolveLivePriceTransitionDuration,
   resolveLiveSeriesCountdown,
   resolveLiveSeriesDisplayPrice,
-  resolveLiveSeriesRealtimeTopic,
+  resolveLiveSeriesRealtimeFeed,
+  resolveLiveSeriesHistorySource,
+  resolveLiveSeriesReferenceStart,
   resolveLiveSeriesStartTimestamp,
   SERIES_KEY,
 } from '@/app/[locale]/(platform)/event/[slug]/_utils/eventLiveSeriesChartUtils'
@@ -208,71 +209,105 @@ function readLivePrice(point: DataPoint) {
   return point[SERIES_KEY] as number
 }
 
-describe('resolveLiveSeriesRealtimeTopic', () => {
-  it('keeps legacy Chainlink markets on the spot topic before the cutover', () => {
+describe('resolveLiveSeriesRealtimeFeed', () => {
+  it.each(['BTC/USD', 'ETH/USDT', 'SOLUSD', 'XRP/USD', 'DOGE/USD', 'HYPE/USD', 'BNB/USD', 'ZEC/USD'])(
+    'uses Binance Spot without a TWAP window for %s',
+    (symbol) => {
+      expect(
+        resolveLiveSeriesRealtimeFeed({
+          topic: 'price.crypto.twap',
+          provider: 'chainlink',
+          window_seconds: 60,
+          symbol,
+        }),
+      ).toEqual({ topic: 'price.crypto', provider: 'binance', window_seconds: null })
+    },
+  )
+
+  it('also switches explicitly pinned Chainlink spot for a covered pair', () => {
     expect(
-      resolveLiveSeriesRealtimeTopic({
-        configuredTopic: 'crypto_prices_chainlink',
-        activeWindowMinutes: 5,
-        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
+      resolveLiveSeriesRealtimeFeed({
+        topic: 'price.crypto',
+        provider: 'chainlink',
+        window_seconds: null,
+        symbol: 'BTC/USD',
       }),
-    ).toBe('crypto_prices_chainlink')
+    ).toEqual({ topic: 'price.crypto', provider: 'binance', window_seconds: null })
   })
 
-  it('uses the 30-second TWAP for five-minute markets after the cutover', () => {
-    expect(
-      resolveLiveSeriesRealtimeTopic({
-        configuredTopic: 'crypto_prices_chainlink',
-        activeWindowMinutes: 5,
-        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 5 * 60 * 1000,
-      }),
-    ).toBe('crypto_prices_twap_thirty')
+  it.each([
+    { topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 30, symbol: 'BTC/USD' },
+    { topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60, symbol: 'ALT/USD' },
+    { topic: 'price.crypto', provider: 'chainlink', window_seconds: null, symbol: 'BTC/USDC' },
+    { topic: 'price.crypto', provider: 'pyth', window_seconds: null, symbol: 'BTC/USD' },
+    { topic: 'price.crypto', provider: null, window_seconds: null, symbol: 'BTC/USD' },
+    { topic: 'price.equity', provider: 'pyth', window_seconds: null, symbol: 'XAUUSD' },
+    { topic: 'price.equity.twap', provider: 'chainlink', window_seconds: 60, symbol: 'EURUSD' },
+  ])('preserves uncovered or unrelated live subscriptions: %o', (config) => {
+    const { symbol: _symbol, ...expected } = config
+    expect(resolveLiveSeriesRealtimeFeed(config)).toEqual(expected)
   })
 
-  it('uses the actual market start when selecting the realtime feed', () => {
+  it('reads historical source from event resolution metadata rather than the new series feed', () => {
     expect(
-      resolveLiveSeriesRealtimeTopic({
-        configuredTopic: 'crypto_prices_chainlink',
-        activeWindowMinutes: 5,
-        eventStartTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS - 1,
-        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 5 * 60 * 1000,
-      }),
-    ).toBe('crypto_prices_chainlink')
+      resolveLiveSeriesHistorySource(
+        [{ resolution_source_url: 'https://www.binance.com/en/trade/BTC_USDT' }] as any,
+        'chainlink',
+      ),
+    ).toBe('binance')
+    expect(resolveLiveSeriesHistorySource([{ resolution_source: 'Chainlink' }] as any, 'chainlink')).toBe('chainlink')
     expect(
-      resolveLiveSeriesRealtimeTopic({
-        configuredTopic: 'crypto_prices_chainlink',
-        activeWindowMinutes: 5,
-        eventStartTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS,
-        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 10 * 60 * 1000,
-      }),
-    ).toBe('crypto_prices_twap_thirty')
+      resolveLiveSeriesHistorySource(
+        [{ resolution_source_url: 'https://data.chain.link/streams/btc-usd' }] as any,
+        'pyth',
+      ),
+    ).toBe('chainlink')
+    expect(resolveLiveSeriesHistorySource([], 'pyth')).toBe('pyth')
+  })
+  it('uses the API window start fallback when an event has no valid explicit start', () => {
+    const end = 1_800_000_000_000
+    expect(resolveLiveSeriesReferenceStart(null, end, 60)).toBe(end - 3_600_000)
+    expect(resolveLiveSeriesReferenceStart(end, end, 60)).toBe(end - 3_600_000)
+    expect(resolveLiveSeriesReferenceStart(end - 3_500_000, end, 60)).toBe(end - 3_500_000)
+  })
+  it('keeps the four-hour event close pending until its Chainlink mark arrives', () => {
+    const options = { topic: 'price.crypto.twap', activeWindowMinutes: 240 }
+    const classification = classifyLiveSeriesReference({ ...options, provider: 'chainlink' })
+    expect(classification).toBe('chainlink_four_hour')
+    expect(classifyLiveSeriesReference({ ...options, provider: 'binance' })).toBe('other')
+    const requiresCanonicalClose = requiresCanonicalChainlinkClose({
+      snapshot: null,
+      snapshotStatus: 'unavailable',
+      seriesClassification: classification,
+    })
+    expect(requiresCanonicalClose).toBe(true)
+    expect(isCanonicalChainlinkCloseSnapshot({ source: 'chainlink', interval: '4h' } as any)).toBe(true)
+    const display = { isEventClosed: true, renderedPrice: 90, fallbackCurrentPrice: 90, requiresCanonicalClose }
+    expect(resolveLiveSeriesDisplayPrice({ ...display, finalPrice: null })).toBeNull()
+    expect(resolveLiveSeriesDisplayPrice({ ...display, finalPrice: 105 })).toBe(105)
   })
 
-  it.each([15, 4 * 60])('uses the 60-second TWAP for %s-minute markets after the cutover', (minutes) => {
+  it('requires canonical hourly close even before the first response', () => {
+    const classification = classifyLiveSeriesReference({
+      topic: 'price.crypto.twap',
+      provider: 'chainlink',
+      activeWindowMinutes: 60,
+    })
+    expect(classification).toBe('chainlink_hourly')
     expect(
-      resolveLiveSeriesRealtimeTopic({
-        configuredTopic: 'crypto_prices_chainlink',
-        activeWindowMinutes: minutes,
-        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + minutes * 60 * 1000,
+      requiresCanonicalChainlinkClose({
+        snapshot: null,
+        snapshotStatus: 'loading',
+        seriesClassification: classification,
       }),
-    ).toBe('crypto_prices_twap_sixty')
-  })
-
-  it('does not change unsupported cadences or unrelated topics', () => {
+    ).toBe(true)
     expect(
-      resolveLiveSeriesRealtimeTopic({
-        configuredTopic: 'crypto_prices_chainlink',
-        activeWindowMinutes: 60,
-        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 60 * 60 * 1000,
+      requiresCanonicalChainlinkClose({
+        snapshot: null,
+        snapshotStatus: 'unavailable',
+        seriesClassification: classification,
       }),
-    ).toBe('crypto_prices_chainlink')
-    expect(
-      resolveLiveSeriesRealtimeTopic({
-        configuredTopic: 'equity_prices',
-        activeWindowMinutes: 5,
-        eventEndTimestamp: POLYMARKET_CHAINLINK_TWAP_CUTOVER_MS + 5 * 60 * 1000,
-      }),
-    ).toBe('equity_prices')
+    ).toBe(true)
   })
 })
 
@@ -785,12 +820,12 @@ describe('event live series chart utils', () => {
     ).toBe(103)
   })
 
-  it('requires a canonical close for confirmed daily Binance snapshots', () => {
+  it('requires a canonical close for confirmed daily Chainlink snapshots', () => {
     const snapshot = {
       series_slug: 'btc-up-or-down-daily',
       instrument: 'BTC/USD',
       interval: '1d' as const,
-      source: 'binance' as const,
+      source: 'chainlink' as const,
       interval_ms: 86_400_000,
       event_window_start_ms: 100,
       event_window_end_ms: 200,
@@ -802,53 +837,54 @@ describe('event live series chart utils', () => {
       is_event_closed: true,
     }
 
-    expect(isCanonicalBinanceDailySnapshot(snapshot)).toBe(true)
+    expect(isCanonicalChainlinkCloseSnapshot(snapshot)).toBe(true)
     expect(
-      requiresCanonicalBinanceDailyClose({
+      requiresCanonicalChainlinkClose({
         snapshot,
         snapshotStatus: 'ready',
-        seriesClassification: 'binance_daily',
+        seriesClassification: 'chainlink_daily',
       }),
     ).toBe(true)
     expect(
-      requiresCanonicalBinanceDailyClose({
+      requiresCanonicalChainlinkClose({
         snapshot: { ...snapshot, interval: '5m' },
         snapshotStatus: 'ready',
         seriesClassification: 'other',
       }),
     ).toBe(false)
     expect(
-      requiresCanonicalBinanceDailyClose({
-        snapshot: { ...snapshot, source: 'chainlink' },
+      requiresCanonicalChainlinkClose({
+        snapshot: { ...snapshot, source: 'binance' },
         snapshotStatus: 'ready',
         seriesClassification: 'other',
       }),
     ).toBe(false)
   })
 
-  it('keeps an expected Binance daily close canonical while its snapshot is unavailable', () => {
+  it('keeps an expected Chainlink daily close canonical while its snapshot is unavailable', () => {
     expect(
       classifyLiveSeriesReference({
-        topic: 'crypto_prices_chainlink',
+        provider: 'chainlink',
+        topic: 'price.crypto.twap',
         activeWindowMinutes: 1440,
       }),
-    ).toBe('binance_daily')
+    ).toBe('chainlink_daily')
     expect(
-      requiresCanonicalBinanceDailyClose({
+      requiresCanonicalChainlinkClose({
         snapshot: null,
         snapshotStatus: 'loading',
-        seriesClassification: 'binance_daily',
+        seriesClassification: 'chainlink_daily',
       }),
     ).toBe(true)
     expect(
-      requiresCanonicalBinanceDailyClose({
+      requiresCanonicalChainlinkClose({
         snapshot: null,
         snapshotStatus: 'unavailable',
-        seriesClassification: 'binance_daily',
+        seriesClassification: 'chainlink_daily',
       }),
     ).toBe(true)
     expect(
-      requiresCanonicalBinanceDailyClose({
+      requiresCanonicalChainlinkClose({
         snapshot: {
           series_slug: 'btc-up-or-down-daily',
           instrument: 'BTC/USD',
@@ -865,21 +901,23 @@ describe('event live series chart utils', () => {
           is_event_closed: true,
         },
         snapshotStatus: 'ready',
-        seriesClassification: 'binance_daily',
+        seriesClassification: 'chainlink_daily',
       }),
     ).toBe(true)
   })
 
-  it('does not classify intraday crypto or daily equities as Binance daily series', () => {
+  it('distinguishes hourly crypto from daily equities', () => {
     expect(
       classifyLiveSeriesReference({
-        topic: 'crypto_prices_chainlink',
+        provider: 'chainlink',
+        topic: 'price.crypto.twap',
         activeWindowMinutes: 60,
       }),
-    ).toBe('other')
+    ).toBe('chainlink_hourly')
     expect(
       classifyLiveSeriesReference({
-        topic: 'equity_prices',
+        provider: 'pyth',
+        topic: 'price.equity',
         activeWindowMinutes: 390,
       }),
     ).toBe('other')

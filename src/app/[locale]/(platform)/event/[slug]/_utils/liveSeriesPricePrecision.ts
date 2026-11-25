@@ -1,5 +1,5 @@
 export function resolveLiveSeriesTopicPriceDigits(topic: string) {
-  return topic.trim().toLowerCase() === 'equity_prices' ? 2 : 4
+  return topic.trim().toLowerCase() === 'price.equity' ? 2 : 4
 }
 
 function resolveAdaptiveCryptoPriceDigits(referencePrice?: number | null) {
@@ -20,7 +20,7 @@ export function resolveLiveSeriesPriceDisplayDigits(
   showPriceDecimals: boolean,
   referencePrice?: number | null,
 ) {
-  const isEquityTopic = topic.trim().toLowerCase() === 'equity_prices'
+  const isEquityTopic = topic.trim().toLowerCase() === 'price.equity'
   if (isEquityTopic) {
     return showPriceDecimals ? 2 : 0
   }

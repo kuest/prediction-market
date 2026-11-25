@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
 
+import { event_live_chart_configs } from '@/lib/db/schema/events/tables'
 import { PUBLIC_EVENT_PAGE_CACHE_LIFE } from '@/lib/event-page-cache'
 import { buildSportsSlugResolver } from '@/lib/sports-slug-mapping'
 
@@ -172,10 +173,17 @@ describe('event repository first-load queries', () => {
   })
 
   it('tags shared chart configuration with the same series invalidation and lifetime', async () => {
-    const config = { series_slug: 'btc-5m', enabled: true }
+    const config = { series_slug: 'btc-5m', provider: 'chainlink', window_seconds: 60, enabled: true }
     mocks.select.mockReturnValue(queryResult(Promise.resolve([config])))
 
     expect(await EventRepository.getLiveChartConfigBySeriesSlug('btc-5m')).toEqual({ data: config, error: null })
+    expect(mocks.select).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: event_live_chart_configs.provider,
+        window_seconds: event_live_chart_configs.window_seconds,
+      }),
+    )
+    expect(mocks.select.mock.calls[0]?.[0]).not.toHaveProperty('event_type')
     expect(mocks.cacheLife).toHaveBeenCalledWith(PUBLIC_EVENT_PAGE_CACHE_LIFE)
     expect(mocks.cacheTag).toHaveBeenCalledWith('series-events:btc-5m')
   })
