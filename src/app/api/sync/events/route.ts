@@ -24,6 +24,7 @@ import {
 import { db } from '@/lib/drizzle'
 import { loadAutoDeployNewEventsEnabled } from '@/lib/event-sync-settings'
 import { setEventHiddenFromNew } from '@/lib/event-visibility'
+import { ASSET_ID, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
 import { resolveMarketClarificationsUpdate } from '@/lib/market-clarifications'
 import { resolvePublicRuntimeEnv } from '@/lib/public-runtime-config.shared'
 import { syncMissingOnChainResolvedPayouts } from '@/lib/resolution-payout-sync'
@@ -40,11 +41,15 @@ import {
   tryAcquireSyncLock,
   updateSyncStatus,
 } from '@/lib/sync/cron-route'
+import {
+  fetchMarketAssetMetadata,
+  isTransientAssetResponse,
+  RetryableMarketSyncError,
+} from '@/lib/sync/market-asset-metadata'
 import { triggerTranslationEnqueue } from '@/lib/translations/trigger-enqueue'
 
 export const maxDuration = 300
 
-const IRYS_GATEWAY = process.env.IRYS_GATEWAY || 'https://gateway.irys.xyz'
 const SYNC_TIME_LIMIT_MS = 250_000
 const PNL_PAGE_SIZE = 200
 const INITIAL_MARKET_LOOKBACK_DAYS = 14
@@ -226,13 +231,6 @@ interface ProcessMarketDataResult {
 }
 
 type MarketMappingDatabase = Pick<typeof db, 'insert' | 'select' | 'update'>
-
-class RetryableMarketSyncError extends Error {
-  constructor(message: string, cause: unknown) {
-    super(message, { cause })
-    this.name = 'RetryableMarketSyncError'
-  }
-}
 
 export function resolveAdditionalContextUpdatedAtIso(params: {
   hasAdditionalContextField: boolean
@@ -902,7 +900,7 @@ async function processMarket(
   if (!market.metadataHash) {
     throw new Error(`Market ${market.id} missing required metadataHash field`)
   }
-  const metadata = await fetchMetadata(market.metadataHash)
+  const metadata = await fetchMarketAssetMetadata(market.metadataHash)
   if (isMarketMetadataExpired(metadata) && !(await hasStoredMarket(market.id))) {
     return {
       eventIdForStatusUpdate: null,
@@ -981,26 +979,6 @@ async function hasStoredMarket(conditionId: string) {
     .limit(1)
 
   return rows.length > 0
-}
-
-async function fetchMetadata(metadataHash: string) {
-  const url = `${IRYS_GATEWAY}/${metadataHash}`
-
-  const response = await fetch(url, {
-    keepalive: true,
-  })
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch metadata from ${url}: ${response.statusText}`)
-  }
-
-  const metadata = await response.json()
-
-  if (!metadata.name || !metadata.slug || !metadata.event) {
-    throw new Error(`Invalid metadata: missing required fields. Got: ${JSON.stringify(Object.keys(metadata))}`)
-  }
-
-  return metadata
 }
 
 async function syncEventHiddenFromArchivedMarkets(eventId: string): Promise<boolean> {
@@ -3048,6 +3026,28 @@ function resolveImageStoragePath(storagePath: string, extension: string) {
   return `${storagePath}.${extension}`
 }
 
+async function fetchSyncImage(url: string, signal: AbortSignal | undefined): Promise<Response | null> {
+  let currentUrl = url
+  for (let redirects = 0; redirects <= 5; redirects++) {
+    const response = await fetch(currentUrl, { keepalive: true, redirect: 'manual', signal })
+    if (![301, 302, 303, 307, 308].includes(response.status)) {
+      return response
+    }
+    const location = response.headers.get('location')
+    await response.body?.cancel().catch(() => undefined)
+    if (!location) {
+      return null
+    }
+
+    const destination = normalizeAssetReference(new URL(location, currentUrl).toString())
+    if (!destination) {
+      return null
+    }
+    currentUrl = destination
+  }
+  return null
+}
+
 async function downloadAndSaveImage(assetReference: string, storagePath: string, options: { timeoutMs?: number } = {}) {
   try {
     const normalizedReference = normalizeAssetReference(assetReference)
@@ -3078,46 +3078,57 @@ async function downloadAndSaveImage(assetReference: string, storagePath: string,
       }
     }
 
-    const imageUrl = /^https?:\/\//i.test(normalizedReference)
-      ? normalizedReference
-      : `${IRYS_GATEWAY}/${normalizedReference}`
     const remainingTimeout = remainingTimeoutMs()
     if (remainingTimeout !== undefined && remainingTimeout <= 0) {
       return null
     }
-    const response = await fetch(imageUrl, {
-      keepalive: true,
-      signal: remainingTimeout === undefined ? undefined : AbortSignal.timeout(Math.max(1, remainingTimeout)),
-    })
 
-    if (!response.ok) {
-      console.error(`Failed to download image: ${response.statusText}`)
-      return null
+    const managedAsset = new URL(normalizedReference).origin === resolvePublicRuntimeEnv(process.env).assetsUrl
+    let imageBuffer: ArrayBuffer
+    try {
+      const response = await fetchSyncImage(
+        normalizedReference,
+        managedAsset || remainingTimeout !== undefined
+          ? AbortSignal.timeout(Math.max(1, remainingTimeout ?? 10_000))
+          : undefined,
+      )
+      if (!response?.ok) {
+        if (managedAsset && response && isTransientAssetResponse(response.status)) {
+          throw new Error(`Asset server returned HTTP ${response.status}`)
+        }
+        return null
+      }
+      imageBuffer = await response.arrayBuffer()
+      const imageBytes = new Uint8Array(imageBuffer)
+      const resolvedMeta = resolveImageMeta(response.headers.get('content-type'), imageBytes)
+      const resolvedPath = resolveImageStoragePath(storagePath, resolvedMeta.extension)
+      const uploadTimeoutMs = remainingTimeoutMs()
+      if (uploadTimeoutMs != null && uploadTimeoutMs <= 0) {
+        return null
+      }
+
+      const { error } = await uploadPublicAsset(resolvedPath, imageBuffer, {
+        contentType: resolvedMeta.contentType,
+        cacheControl: '31536000',
+        upsert: true,
+        timeoutMs: uploadTimeoutMs,
+      })
+
+      if (error) {
+        console.error(`Failed to upload image: ${error}`)
+        return null
+      }
+      return resolvedPath
+    } catch (error) {
+      if (managedAsset) {
+        throw new RetryableMarketSyncError(`Failed to download asset image ${normalizedReference}`, error)
+      }
+      throw error
     }
-
-    const imageBuffer = await response.arrayBuffer()
-    const imageBytes = new Uint8Array(imageBuffer)
-    const resolvedMeta = resolveImageMeta(response.headers.get('content-type'), imageBytes)
-    const resolvedPath = resolveImageStoragePath(storagePath, resolvedMeta.extension)
-    const uploadTimeoutMs = remainingTimeoutMs()
-    if (uploadTimeoutMs != null && uploadTimeoutMs <= 0) {
-      return null
-    }
-
-    const { error } = await uploadPublicAsset(resolvedPath, imageBuffer, {
-      contentType: resolvedMeta.contentType,
-      cacheControl: '31536000',
-      upsert: true,
-      timeoutMs: uploadTimeoutMs,
-    })
-
-    if (error) {
-      console.error(`Failed to upload image: ${error}`)
-      return null
-    }
-
-    return resolvedPath
   } catch (error) {
+    if (error instanceof RetryableMarketSyncError) {
+      throw error
+    }
     console.error(`Failed to process image ${assetReference}:`, error)
     return null
   }
@@ -3484,61 +3495,20 @@ async function normalizeSportsTeamAssets(
 }
 
 function normalizeAssetReference(value: unknown): string | null {
-  const normalized = normalizeStringField(value)
-  if (!normalized) {
-    return null
-  }
-
-  if (/^https?:\/\//i.test(normalized)) {
-    return normalized
-  }
-
-  const withoutScheme = normalized.replace(/^irys:\/\//i, '').trim()
-  if (!withoutScheme) {
-    return null
-  }
-
-  const withoutQuery = withoutScheme.split('?')[0]?.trim()
-  if (!withoutQuery) {
-    return null
-  }
-
-  const parts = withoutQuery.split('/').filter(Boolean)
-  return parts.length > 0 ? (parts.at(-1) ?? withoutQuery) : withoutQuery
+  return resolveRemoteAssetReference(value, resolvePublicRuntimeEnv(process.env).assetsUrl)
 }
 
 function buildSportsLogoStoragePath(reference: string): string {
   return buildCanonicalIconStoragePath(reference, `${SPORTS_LOGO_STORAGE_PREFIX}/logo-${hashStringToHex(reference)}`)
 }
 
-function isStableAssetReference(reference: string): boolean {
-  return /^[A-Za-z0-9_-]+$/.test(reference)
-}
-
 function resolveStableAssetReference(assetReference: unknown): string | null {
-  const normalizedReference = normalizeAssetReference(assetReference)
-  if (!normalizedReference) {
+  const url = normalizeAssetReference(assetReference)
+  if (!url || !url.startsWith(`${resolvePublicRuntimeEnv(process.env).assetsUrl}/`)) {
     return null
   }
-  if (isStableAssetReference(normalizedReference)) {
-    return normalizedReference
-  }
-  if (!/^https?:\/\//i.test(normalizedReference)) {
-    return null
-  }
-
-  try {
-    const referenceUrl = new URL(normalizedReference)
-    const gatewayUrl = new URL(IRYS_GATEWAY)
-    if (referenceUrl.hostname !== gatewayUrl.hostname) {
-      return null
-    }
-
-    const candidate = referenceUrl.pathname.split('/').filter(Boolean).at(-1) ?? ''
-    return isStableAssetReference(candidate) ? candidate : null
-  } catch {
-    return null
-  }
+  const id = new URL(url).pathname.slice(1)
+  return ASSET_ID.test(id) ? id : null
 }
 
 export function buildCanonicalIconStoragePath(assetReference: unknown, fallbackStoragePath: string): string {

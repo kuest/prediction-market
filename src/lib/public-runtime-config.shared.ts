@@ -2,6 +2,7 @@ import { DEFAULT_LIFI_INTEGRATOR } from '@/lib/lifi-config.shared'
 import { AMOY_CHAIN_ID, parseNetworkChainId, POLYGON_MAINNET_CHAIN_ID } from '@/lib/network'
 
 export interface PublicRuntimeConfig {
+  assetsUrl: string
   clobUrl: string
   commitSha: string
   communityUrl: string
@@ -57,6 +58,7 @@ function getNetworkServiceUrls(chainId: number) {
 const DEFAULT_AMOY_SERVICE_URLS = getNetworkServiceUrls(AMOY_CHAIN_ID)
 
 export const defaultPublicRuntimeConfig: PublicRuntimeConfig = {
+  assetsUrl: 'https://assets.kuest.com',
   clobUrl: DEFAULT_AMOY_SERVICE_URLS.clobUrl,
   commitSha: 'unknown',
   communityUrl: DEFAULT_AMOY_SERVICE_URLS.communityUrl,
@@ -87,12 +89,40 @@ export function normalizePublicRuntimeEnvValue(value: string | undefined, fallba
   return normalized && normalized.length > 0 ? normalized : fallback
 }
 
+export function isRetiredAssetHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/, '')
+  return host === 'irys.xyz' || host.endsWith('.irys.xyz')
+}
+
+export function normalizePublicAssetsUrl(value?: string): string {
+  if (value?.trim()) {
+    try {
+      const url = new URL(value.trim())
+      if (
+        url.protocol === 'https:' &&
+        !url.username &&
+        !url.password &&
+        url.pathname === '/' &&
+        !url.search &&
+        !url.hash &&
+        !isRetiredAssetHost(url.hostname)
+      ) {
+        return url.origin
+      }
+    } catch {
+      // Invalid configuration cannot become a fetch destination.
+    }
+  }
+  return defaultPublicRuntimeConfig.assetsUrl
+}
+
 export function resolvePublicRuntimeEnv(
   env: Readonly<Partial<NodeJS.ProcessEnv>>,
 ): Omit<PublicRuntimeConfig, 'commitSha' | 'siteUrl'> {
   const chainId = parseNetworkChainId(env.CHAIN_ID, defaultPublicRuntimeConfig.chainId)
   const networkServiceUrls = getNetworkServiceUrls(chainId)
   return {
+    assetsUrl: normalizePublicAssetsUrl(env.ASSETS_URL),
     clobUrl: normalizePublicRuntimeEnvValue(env.CLOB_URL, networkServiceUrls.clobUrl),
     communityUrl: normalizePublicRuntimeEnvValue(env.COMMUNITY_URL, networkServiceUrls.communityUrl),
     createMarketUrl: normalizePublicRuntimeEnvValue(env.CREATE_MARKET_URL, defaultPublicRuntimeConfig.createMarketUrl),

@@ -9,6 +9,7 @@ import {
 } from '@/lib/community-profile'
 import { UserRepository } from '@/lib/db/queries/user'
 import { formatCurrency, formatSignedCurrency, truncateAddress } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import {
   fetchSafeOgImageDataUrl,
   normalizeOutboundImageUrl,
@@ -97,37 +98,13 @@ function normalizePrice(rawValue: unknown) {
 }
 
 function resolvePositionIconUrl(rawIcon: unknown, siteUrl: string) {
-  const icon = typeof rawIcon === 'string' ? rawIcon.trim() : ''
-  if (!icon) {
-    return ''
-  }
-
-  if (icon.startsWith('/')) {
-    return normalizeOutboundImageUrl(icon, { siteUrl })
-  }
-
-  if (icon.startsWith('http://') || icon.startsWith('https://')) {
-    return normalizeOutboundImageUrl(icon)
-  }
-
-  return normalizeOutboundImageUrl(`https://gateway.irys.xyz/${icon}`)
+  const url = resolveMarketAssetUrl(rawIcon)
+  return normalizeOutboundImageUrl(url, { siteUrl })
 }
 
 function resolveProfileAvatarUrl(rawAvatar: unknown, siteUrl: string) {
-  const avatar = typeof rawAvatar === 'string' ? rawAvatar.trim() : ''
-  if (!avatar) {
-    return ''
-  }
-
-  if (avatar.startsWith('/')) {
-    return normalizeOutboundImageUrl(avatar, { siteUrl })
-  }
-
-  if (avatar.startsWith('http://') || avatar.startsWith('https://')) {
-    return normalizeOutboundImageUrl(avatar)
-  }
-
-  return ''
+  const url = resolveMarketAssetUrl(rawAvatar)
+  return normalizeOutboundImageUrl(url, { siteUrl })
 }
 
 function resolveOutcomeLabel(rawPosition: Record<string, unknown>): 'Yes' | 'No' {

@@ -1,4 +1,10 @@
-const DEFAULT_IMAGE_HOST_PATTERNS = ['*.irys.xyz', '*.supabase.co'] as const
+import {
+  defaultPublicRuntimeConfig,
+  isRetiredAssetHost,
+  resolvePublicRuntimeEnv,
+} from '@/lib/public-runtime-config.shared'
+
+const DEFAULT_IMAGE_HOST_PATTERNS = ['*.supabase.co'] as const
 
 type EnvMap = NodeJS.ProcessEnv | Record<string, string | undefined>
 
@@ -56,6 +62,23 @@ function resolveS3ImageHostPatterns(env: EnvMap) {
   }
 }
 
-export function getOptimizedImageHostPatterns(env: EnvMap = process.env) {
-  return Array.from(new Set([...DEFAULT_IMAGE_HOST_PATTERNS, ...resolveS3ImageHostPatterns(env)]))
+export function getOptimizedImageRemotePatterns(env: EnvMap = process.env) {
+  const assetsHosts = [defaultPublicRuntimeConfig.assetsUrl, resolvePublicRuntimeEnv(env).assetsUrl].map((origin) => {
+    const { hostname, port } = new URL(origin)
+    return { hostname, port }
+  })
+  const storageHosts = [...DEFAULT_IMAGE_HOST_PATTERNS, ...resolveS3ImageHostPatterns(env)].map((hostname) => ({
+    hostname,
+    port: '',
+  }))
+  return Array.from(
+    new Map(
+      [...assetsHosts, ...storageHosts]
+        .filter(({ hostname }) => !isRetiredAssetHost(hostname))
+        .map(({ hostname, port }) => [
+          `${hostname}:${port}`,
+          { protocol: 'https' as const, hostname, port, pathname: '/**' },
+        ]),
+    ).values(),
+  )
 }

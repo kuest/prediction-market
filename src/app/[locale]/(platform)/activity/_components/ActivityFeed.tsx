@@ -35,6 +35,7 @@ import { PUBLIC_ALLOWED_MARKET_CREATORS_PATH } from '@/lib/allowed-market-creato
 import { MICRO_UNIT } from '@/lib/constants'
 import { mapDataApiActivityToActivityOrder } from '@/lib/data-api/user'
 import { formatDollarValueLabel, formatSharePriceLabel, toMicro } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { POLYGON_SCAN_BASE } from '@/lib/network'
 import { buildPublicProfilePath, isPlatformMainCategorySlug } from '@/lib/platform-routing'
 import { cn } from '@/lib/utils'
@@ -266,11 +267,7 @@ function resolveCategories(payload: LiveActivityPayload, categoryValues: Readonl
 }
 
 function resolveMarketIcon(iconUrl?: string | null) {
-  if (!iconUrl) {
-    return null
-  }
-
-  return iconUrl.startsWith('http') ? iconUrl : `https://gateway.irys.xyz/${iconUrl}`
+  return resolveMarketAssetUrl(iconUrl)
 }
 
 function resolveOutcomeColorClass(outcomeText?: string | null) {

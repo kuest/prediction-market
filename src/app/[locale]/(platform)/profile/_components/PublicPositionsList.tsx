@@ -46,6 +46,7 @@ import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { fetchOrderBookSummary } from '@/lib/clob'
 import { getExchangeEip712Domain, ORDER_SIDE, ORDER_TYPE, OUTCOME_INDEX } from '@/lib/constants'
 import { formatAmountInputValue, formatCentsLabel } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { applyPositionDeltasToPublicPositions, updateQueryDataWhere } from '@/lib/optimistic-trading'
 import { calculateMarketFill, normalizeBookLevels } from '@/lib/order-panel-utils'
 import { buildShareCardPayload } from '@/lib/share-card'
@@ -658,7 +659,7 @@ function useSellPositionFlow({
           isLimitOrder: false,
           outcomeText,
           eventTitle: position.title,
-          marketImage: position.icon ? `https://gateway.irys.xyz/${position.icon}` : undefined,
+          marketImage: resolveMarketAssetUrl(position.icon) ?? undefined,
           marketTitle: position.title,
           sellAmountValue: fill.totalCost > 0 ? fill.totalCost : 0,
           avgSellPrice: avgSellPriceLabel,
@@ -937,9 +938,7 @@ export default function PublicPositionsList({ userAddress }: PublicPositionsList
           onOpenChange={handleSellModalChange}
           outcomeLabel={getOutcomeLabel(sellModalPayload.position)}
           outcomeShortLabel={sellModalPayload.position.title}
-          outcomeIconUrl={
-            sellModalPayload.position.icon ? `https://gateway.irys.xyz/${sellModalPayload.position.icon}` : undefined
-          }
+          outcomeIconUrl={resolveMarketAssetUrl(sellModalPayload.position.icon) ?? undefined}
           shares={sellModalPayload.shares}
           filledShares={sellModalPayload.filledShares}
           avgPriceCents={sellModalPayload.avgPriceCents}

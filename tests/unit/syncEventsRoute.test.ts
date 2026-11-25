@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, mock, jest } from 'bun:test'
 
-import { hoisted, spyOn, stubGlobal, unstubAllGlobals, useFakeTimers, useRealTimers } from '../bun-test-helpers'
+import {
+  hoisted,
+  spyOn,
+  stubEnv,
+  stubGlobal,
+  unstubAllEnvs,
+  unstubAllGlobals,
+  useFakeTimers,
+  useRealTimers,
+} from '../bun-test-helpers'
 
 const mocks = hoisted(() => ({
   fetch: mock(),
@@ -74,6 +83,7 @@ describe('sync events route', () => {
 
   afterEach(() => {
     useRealTimers()
+    unstubAllEnvs()
     unstubAllGlobals()
     jest.restoreAllMocks()
   })
@@ -154,7 +164,7 @@ describe('sync events route', () => {
 
   it('only downloads an existing market icon when its source reference changes', async () => {
     const { shouldDownloadMarketIcon } = await import('@/app/api/sync/events/route')
-    const existingReference = 'existing-icon-hash'
+    const existingReference = 'A'.repeat(43)
     const existingMarket = {
       icon_url: '/storage/markets/icons/example.png',
       metadata: JSON.stringify({ icon: existingReference }),
@@ -162,23 +172,25 @@ describe('sync events route', () => {
 
     expect(shouldDownloadMarketIcon(undefined, existingReference)).toBe(true)
     expect(shouldDownloadMarketIcon(existingMarket, existingReference)).toBe(false)
-    expect(shouldDownloadMarketIcon(existingMarket, 'new-icon-hash')).toBe(true)
-    expect(shouldDownloadMarketIcon({ ...existingMarket, icon_url: null }, 'new-icon-hash')).toBe(false)
+    expect(shouldDownloadMarketIcon(existingMarket, 'B'.repeat(42) + 'A')).toBe(true)
+    expect(shouldDownloadMarketIcon({ ...existingMarket, icon_url: null }, 'B'.repeat(42) + 'A')).toBe(false)
     expect(shouldDownloadMarketIcon(existingMarket, null)).toBe(false)
   })
 
   it('uses one canonical storage path for the same immutable asset reference', async () => {
     const { buildCanonicalIconStoragePath } = await import('@/app/api/sync/events/route')
 
-    expect(buildCanonicalIconStoragePath('irys://shared-icon', 'events/icons/event')).toBe(
-      'icons/source/shared-icon.png',
-    )
-    expect(buildCanonicalIconStoragePath('shared-icon', 'events/icons/event')).toBe('icons/source/shared-icon.png')
-    expect(buildCanonicalIconStoragePath('https://gateway.irys.xyz/shared-icon', 'events/icons/event')).toBe(
-      'icons/source/shared-icon.png',
-    )
-    expect(buildCanonicalIconStoragePath('https://example.com/icon.png', 'events/icons/event')).toBe(
-      'events/icons/event',
+    const id = 'A'.repeat(43)
+    const storagePath = 'events/icons/event'
+    expect(buildCanonicalIconStoragePath(id, storagePath)).toBe(`icons/source/${id}.png`)
+    expect(buildCanonicalIconStoragePath(`https://assets.kuest.com/${id}`, storagePath)).toBe(`icons/source/${id}.png`)
+    expect(buildCanonicalIconStoragePath(`irys://${id}`, storagePath)).toBe(storagePath)
+    expect(buildCanonicalIconStoragePath(`https://gateway.irys.xyz/${id}`, storagePath)).toBe(storagePath)
+    expect(buildCanonicalIconStoragePath('https://example.com/icon.png', storagePath)).toBe(storagePath)
+    stubEnv('ASSETS_URL', 'https://assets.operator.example')
+    expect(buildCanonicalIconStoragePath(`https://assets.kuest.com/${id}`, storagePath)).toBe(`icons/source/${id}.png`)
+    expect(buildCanonicalIconStoragePath(`https://assets.operator.example/${id}`, storagePath)).toBe(
+      `icons/source/${id}.png`,
     )
   })
 
@@ -650,7 +662,9 @@ describe('sync events route', () => {
     })
   })
 
-  it('reads metadata and skips expired new markets before persisting them', async () => {
+  it.each([200, 404, 503])('handles Assets metadata HTTP %i before persisting market rows', async (assetStatus) => {
+    const assetsOrigin = assetStatus === 200 ? 'https://assets.kuest.com' : 'https://assets.operator.example'
+    stubEnv('ASSETS_URL', assetsOrigin)
     useFakeTimers()
     jest.setSystemTime(new Date('2026-08-03T12:00:00.000Z'))
     mocks.isCronAuthorized.mockReturnValue(true)
@@ -668,7 +682,10 @@ describe('sync events route', () => {
       errors: [],
     })
     mocks.select.mockImplementation(() => makeSelectChain([]))
-    mocks.update.mockImplementation(() => makeUpdateChain([{ id: 'sync-row' }]))
+    const updatePayloads: Array<Record<string, unknown>> = []
+    mocks.update.mockImplementation(() =>
+      makeUpdateChain([{ id: 'sync-row' }], (payload) => updatePayloads.push(payload as Record<string, unknown>)),
+    )
     mocks.fetch
       .mockResolvedValueOnce({
         ok: true,
@@ -680,7 +697,7 @@ describe('sync events route', () => {
                 oracle: '0xoracle',
                 questionId: '0xquestion',
                 resolved: false,
-                metadataHash: 'metadata-hash',
+                metadataHash: 'A'.repeat(43),
                 creator: '0xabcdef0000000000000000000000000000000001',
                 creationTimestamp: '1785758400',
                 updatedAt: '1785758400',
@@ -689,19 +706,20 @@ describe('sync events route', () => {
           },
         }),
       })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          name: 'Expired market',
-          slug: 'expired-market',
-          end_time: '2026-08-01T00:00:00.000Z',
-          event: {
-            title: 'Expired event',
-            slug: 'expired-event',
-            end_time: '2026-08-01T00:00:00.000Z',
-          },
-        }),
-      })
+      .mockResolvedValueOnce(
+        assetStatus === 200
+          ? Response.json({
+              name: 'Expired market',
+              slug: 'expired-market',
+              end_time: '2026-08-01T00:00:00.000Z',
+              event: {
+                title: 'Expired event',
+                slug: 'expired-event',
+                end_time: '2026-08-01T00:00:00.000Z',
+              },
+            })
+          : new Response(null, { status: assetStatus }),
+      )
 
     const { GET } = await import('@/app/api/sync/events/route')
     const response = await GET(
@@ -712,18 +730,27 @@ describe('sync events route', () => {
       }),
     )
 
+    expect(mocks.fetch).toHaveBeenCalledTimes(2)
+    expect(mocks.fetch.mock.calls[1][0]).toBe(`${assetsOrigin}/${'A'.repeat(43)}`)
+    if (assetStatus === 503) {
+      expect(response.status).toBe(500)
+      expect(updatePayloads.some((payload) => 'cursor_id' in payload)).toBe(false)
+      return
+    }
+
     expect(response.status).toBe(200)
-    await expect(response.json()).resolves.toEqual({
+    await expect(response.json()).resolves.toMatchObject({
       success: true,
       processed: 0,
       fetched: 1,
       skippedCreators: 0,
-      skippedExpired: 1,
-      errors: 0,
-      errorDetails: [],
+      skippedExpired: assetStatus === 200 ? 1 : 0,
+      errors: assetStatus === 404 ? 1 : 0,
       timeLimitReached: false,
     })
-    expect(mocks.fetch).toHaveBeenCalledTimes(2)
-    expect(mocks.update).toHaveBeenCalledTimes(4)
+    expect(updatePayloads).toContainEqual({
+      cursor_updated_at: BigInt(1_785_758_400),
+      cursor_id: 'initial-market-sync:1784548800:0xcondition',
+    })
   })
 })

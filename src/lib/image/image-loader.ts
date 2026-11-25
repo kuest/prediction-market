@@ -1,3 +1,4 @@
+import { resolveAssetsOrigin, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
 interface WsrvLoaderParams {
   src: string
   width: number
@@ -12,15 +13,6 @@ function appendLoaderParams(src: string, width: number, quality?: number) {
   url.searchParams.set('q', (quality ?? 75).toString())
 
   return isRootRelativeSrc ? `${url.pathname}${url.search}` : url.toString()
-}
-
-function isIrysUrl(src: string) {
-  try {
-    const url = new URL(src)
-    return url.hostname.endsWith('.irys.xyz')
-  } catch {
-    return false
-  }
 }
 
 export default function imageLoader({ src, width, quality }: WsrvLoaderParams): string {
@@ -38,9 +30,12 @@ export default function imageLoader({ src, width, quality }: WsrvLoaderParams): 
     return appendLoaderParams(src, width, quality)
   }
 
-  const normalizedSrc = src.startsWith('//') ? `https:${src}` : src
-
-  if (isIrysUrl(normalizedSrc)) {
+  const assetsOrigin = resolveAssetsOrigin()
+  const normalizedSrc = resolveRemoteAssetReference(src, assetsOrigin)
+  if (!normalizedSrc) {
+    return 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+  }
+  if (new URL(normalizedSrc).origin === assetsOrigin) {
     return appendLoaderParams(normalizedSrc, width, quality)
   }
 

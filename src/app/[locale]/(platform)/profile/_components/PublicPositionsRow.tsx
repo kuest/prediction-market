@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Link } from '@/i18n/navigation'
 import { formatCentsLabel, formatCurrency, formatSharesLabel } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { cn } from '@/lib/utils'
 
 import type { PublicPosition } from './PublicPositionItem'
@@ -26,7 +27,7 @@ interface PublicPositionsRowProps {
 
 export default function PublicPositionsRow({ position, onShareClick, onSellClick }: PublicPositionsRowProps) {
   const t = useExtracted()
-  const imageSrc = position.icon ? `https://gateway.irys.xyz/${position.icon}` : null
+  const imageSrc = resolveMarketAssetUrl(position.icon)
   const avgPrice = position.avgPrice ?? 0
   const nowPrice = getLatestPrice(position)
   const shares = position.size ?? 0

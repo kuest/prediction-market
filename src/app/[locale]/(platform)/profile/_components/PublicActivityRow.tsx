@@ -17,6 +17,7 @@ import useLocalizedTimeAgo from '@/hooks/useLocalizedTimeAgo'
 import { Link } from '@/i18n/navigation'
 import { MICRO_UNIT } from '@/lib/constants'
 import { formatCurrency } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { cn } from '@/lib/utils'
 
 export default function PublicActivityRow({ activity }: PublicActivityRowProps) {
@@ -34,11 +35,7 @@ export default function PublicActivityRow({ activity }: PublicActivityRowProps) 
   const outcomeIsYes = outcomeText.toLowerCase().includes('yes') || activity.outcome?.index === 0
   const outcomeColor = outcomeIsYes ? 'bg-yes/15 text-yes' : 'bg-no/15 text-no'
   const showOutcomeBadge = (variant === 'buy' || variant === 'sell') && outcomeText !== fallbackOutcomeLabel
-  const imageUrl = activity.market.icon_url
-    ? activity.market.icon_url.startsWith('http')
-      ? activity.market.icon_url
-      : `https://gateway.irys.xyz/${activity.market.icon_url}`
-    : null
+  const imageUrl = resolveMarketAssetUrl(activity.market.icon_url)
   const isResolutionFlow = variant === 'resolution_bond' || variant === 'resolution_reward'
   const isTradingReward = variant === 'liquidity_reward' || variant === 'maker_rebate'
   const isFundsFlow = variant === 'deposit' || variant === 'withdraw' || isResolutionFlow || isTradingReward

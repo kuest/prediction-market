@@ -17,6 +17,7 @@ void mock.module('@/lib/db/queries/settings', () => ({
 }))
 
 const RUNTIME_ENV_KEYS_BY_CONFIG_KEY = {
+  assetsUrl: 'ASSETS_URL',
   clobUrl: 'CLOB_URL',
   communityUrl: 'COMMUNITY_URL',
   createMarketUrl: 'CREATE_MARKET_URL',
@@ -69,12 +70,37 @@ describe('public runtime config resolution', () => {
 
   it('allows Kuest service URL env values to override defaults', () => {
     const env = Object.fromEntries(
-      KUEST_DEFAULT_CONFIG_KEYS.map((key) => [RUNTIME_ENV_KEYS_BY_CONFIG_KEY[key], `https://override.example/${key}`]),
+      KUEST_DEFAULT_CONFIG_KEYS.map((key) => [
+        RUNTIME_ENV_KEYS_BY_CONFIG_KEY[key],
+        key === 'assetsUrl' ? 'https://assets.override.example' : `https://override.example/${key}`,
+      ]),
     )
     const config = resolvePublicRuntimeEnv(env)
 
     for (const key of KUEST_DEFAULT_CONFIG_KEYS) {
-      expect(config[key]).toBe(`https://override.example/${key}`)
+      expect(config[key]).toBe(env[RUNTIME_ENV_KEYS_BY_CONFIG_KEY[key]])
+    }
+  })
+
+  it('uses the same Assets service on both networks and accepts only HTTPS origins', () => {
+    for (const CHAIN_ID of ['137', '80002']) {
+      const assetsUrl = defaultPublicRuntimeConfig.assetsUrl
+      expect(resolvePublicRuntimeEnv({ CHAIN_ID }).assetsUrl).toBe(assetsUrl)
+      expect(resolvePublicRuntimeEnv({ CHAIN_ID, ASSETS_URL: ' https://assets.operator.example/ ' }).assetsUrl).toBe(
+        'https://assets.operator.example',
+      )
+      expect(resolvePublicRuntimeEnv({ CHAIN_ID, ASSETS_URL: 'https://assets.operator.example:8443/' }).assetsUrl).toBe(
+        'https://assets.operator.example:8443',
+      )
+      for (const ASSETS_URL of [
+        'http://assets.operator.example',
+        'https://assets.operator.example/prefix',
+        'https://user@assets.operator.example',
+        'https://assets.operator.example?mode=read',
+        'https://gateway.irys.xyz',
+      ]) {
+        expect(resolvePublicRuntimeEnv({ CHAIN_ID, ASSETS_URL }).assetsUrl).toBe(assetsUrl)
+      }
     }
   })
 
@@ -133,11 +159,13 @@ describe('public runtime config resolution', () => {
 
     const { getPublicRuntimeConfig } = await import('@/lib/public-runtime-config.server')
     const config = await getPublicRuntimeConfig({
+      ASSETS_URL: 'https://assets.operator.example',
       SITE_URL: 'https://kuest.test',
       VERCEL_GIT_COMMIT_MESSAGE: 'Sync fork\n\nUpstream: abcdef1234567890',
     })
 
     expect(config.commitSha).toBe('abcdef1')
     expect(config.lifiIntegrator).toBe('kuest-widget')
+    expect(config.assetsUrl).toBe('https://assets.operator.example')
   })
 })

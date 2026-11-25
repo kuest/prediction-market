@@ -6,6 +6,8 @@ import { lookup } from 'node:dns/promises'
 import * as http from 'node:http'
 import * as https from 'node:https'
 import { isIP } from 'node:net'
+
+import { isRetiredAssetHost } from '@/lib/public-runtime-config.shared'
 import 'server-only'
 
 const DEFAULT_MAX_IMAGE_BYTES = 2 * 1024 * 1024
@@ -271,7 +273,7 @@ export function normalizeOutboundImageUrl(
     if (parsed.username || parsed.password) {
       return ''
     }
-    if (isDisallowedHostname(parsed.hostname)) {
+    if (isDisallowedHostname(parsed.hostname) || isRetiredAssetHost(parsed.hostname)) {
       return ''
     }
     return parsed.toString()

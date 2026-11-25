@@ -215,15 +215,15 @@
                     "negRiskMarketId": null
                   },
                   "metadata": {
-                    "eventImageUri": "irys://5r0hmkzYcVP9Quy2f8VfQzLJ7mgoQ4Ur3D",
+                    "eventImageUri": "https://assets.kuest.com/O_3w1H8ZqI4dllnBBmavxJpxCRI_pnyr_LFeyaA50Sw",
                     "markets": [
                       {
                         "key": "binary",
                         "slug": "will-btc-close-above-110k-on-march-31-2028",
                         "question": "Will BTC close above $110k on March 31, 2028?",
                         "shortName": null,
-                        "metadataTxId": "7N8t5fb6X9uP2zv4rYjYkJ8V8EuCthXtp",
-                        "metadataUri": "irys://7N8t5fb6X9uP2zv4rYjYkJ8V8EuCthXtp",
+                        "metadataTxId": "Wz4R0KCMgOqz7yJAERXIU2DIisNyAVwVRvzYt9sCCBE",
+                        "metadataUri": "https://assets.kuest.com/Wz4R0KCMgOqz7yJAERXIU2DIisNyAVwVRvzYt9sCCBE",
                         "requestId": null,
                         "questionId": "0x80f7bf1a2f8c6d6fc0b4537437d1c8f0f1d9ed9d622f5af7e253d45c0f8f2a31",
                         "conditionId": "0x3ab356f9f2142d4c3ca4e442bcf952f3df9fbe74fcb696ca6c2575c9980f9f83",
@@ -1129,11 +1129,14 @@
             "nullable": true
           },
           "metadataTxId": {
-            "type": "string"
+            "type": "string",
+            "description": "Bare SHA-256 base64url metadata reference recorded on-chain.",
+            "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
           },
           "metadataUri": {
             "type": "string",
-            "pattern": "^irys://"
+            "format": "uri",
+            "pattern": "^https://assets\\.kuest\\.com/[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
           },
           "requestId": {
             "type": "string",
@@ -1148,7 +1151,8 @@
           "optionImageUri": {
             "type": "string",
             "nullable": true,
-            "pattern": "^irys://"
+            "format": "uri",
+            "pattern": "^https://assets\\.kuest\\.com/[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
           }
         }
       },
@@ -1158,7 +1162,8 @@
         "properties": {
           "eventImageUri": {
             "type": "string",
-            "pattern": "^irys://"
+            "format": "uri",
+            "pattern": "^https://assets\\.kuest\\.com/[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$"
           },
           "markets": {
             "type": "array",

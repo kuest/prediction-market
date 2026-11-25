@@ -7,6 +7,7 @@ import EventIconImage from '@/components/EventIconImage'
 import { useOutcomeLabel } from '@/hooks/useOutcomeLabel'
 import { getAvatarPlaceholderStyle, shouldUseAvatarPlaceholder } from '@/lib/avatar'
 import { formatDollarValueLabel, formatSharePriceLabel } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { cn } from '@/lib/utils'
 
 interface FollowedTradeSummaryProps {
@@ -33,14 +34,7 @@ interface FollowedTradeAvatarProps {
 }
 
 function resolveTradeAlertImageUrl(value?: string | null) {
-  const normalized = value?.trim() ?? ''
-  if (!normalized) {
-    return null
-  }
-  if (normalized.startsWith('http://') || normalized.startsWith('https://') || normalized.startsWith('/')) {
-    return normalized
-  }
-  return `https://gateway.irys.xyz/${normalized}`
+  return resolveMarketAssetUrl(value)
 }
 
 export function resolveTradeAlertOutcomeColorClass(outcome?: string | null) {

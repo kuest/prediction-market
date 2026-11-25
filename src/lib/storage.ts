@@ -1,4 +1,5 @@
 import 'server-only'
+import { ASSET_ID, resolveRemoteAssetReference } from '@/lib/image/asset-reference'
 
 export const ASSETS_BUCKET = 'kuest-assets'
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on'])
@@ -163,8 +164,11 @@ export function getPublicAssetUrl(assetPath: string | null): string {
     return ''
   }
 
-  if (assetPath.startsWith('http://') || assetPath.startsWith('https://')) {
-    return assetPath
+  if (/^(?:https?:)?\/\//i.test(assetPath) || ASSET_ID.test(assetPath)) {
+    return resolveRemoteAssetReference(assetPath) ?? ''
+  }
+  if (/^[a-z][a-z\d+.-]*:/i.test(assetPath)) {
+    return ''
   }
 
   const normalizedPath = normalizeAssetPath(assetPath)
