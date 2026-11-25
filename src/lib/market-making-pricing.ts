@@ -5,7 +5,7 @@ export interface SponsorshipOptions {
 
 // Safe defaults while config loads, and for Escrow versions without UI presets.
 export const DEFAULT_SPONSORSHIP_OPTIONS: SponsorshipOptions = {
-  depthPerSideUsdc: [90, 500, 1000, 2000, 3000],
+  depthPerSideUsdc: [90, 150, 250, 500, 1000],
   maxSpreadBps: [200, 300, 400, 500],
 }
 

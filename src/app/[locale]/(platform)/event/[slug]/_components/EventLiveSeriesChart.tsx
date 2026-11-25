@@ -1,12 +1,14 @@
 'use client'
 
 import { useExtracted, useLocale } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 import type { DataPoint, SeriesConfig } from '@/types/PredictionChartTypes'
 
 import PredictionChart from '@/components/PredictionChart'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useSiteIdentity } from '@/hooks/useSiteIdentity'
 import { useWindowSize } from '@/hooks/useWindowSize'
 import { resolveEventPagePath } from '@/lib/events-routing'
@@ -32,6 +34,7 @@ import {
   isGoldMarketSessionOpen,
   isShortLiveSeriesCadence,
   isUsEquityMarketOpen,
+  livePriceFeedKey,
   LIVE_CHART_HEIGHT,
   LIVE_CHART_MARGIN_BOTTOM,
   LIVE_CHART_MARGIN_LEFT,
@@ -73,11 +76,14 @@ import {
   resolveLiveSeriesDeltaDisplayDigits,
   resolveLiveSeriesPriceDisplayDigits,
 } from '../_utils/liveSeriesPricePrecision'
-import EventChart from './EventChart'
 import EventLiveSeriesChartHeader from './EventLiveSeriesChartHeader'
 import EventLiveSeriesChartOverlay from './EventLiveSeriesChartOverlay'
 import EventLiveSeriesViewSwitch from './EventLiveSeriesViewSwitch'
 import EventSeriesPills from './EventSeriesPills'
+
+const EventChart = dynamic(() => import('./EventChart'), {
+  loading: () => <Skeleton className="h-96 w-full" />,
+})
 
 const LIVE_AXIS_RESPONSE_MS = 1_250
 const LIVE_AXIS_SETTLE_RATIO = 0.000_05
@@ -235,13 +241,10 @@ export default function EventLiveSeriesChart({
   showLiveMarketLink = true,
   featuredChartLayout = false,
 }: EventLiveSeriesChartProps) {
-  const subscriptionSymbol = useMemo(
-    () => normalizeSubscriptionSymbol(config.topic, config.symbol),
-    [config.symbol, config.topic],
-  )
-  const resetKey = preserveSeriesContinuity
-    ? `${config.topic}:${config.provider}:${config.window_seconds}:${subscriptionSymbol}`
-    : `${event.id}:${config.topic}:${config.provider}:${config.window_seconds}:${subscriptionSymbol}`
+  const realtimeFeed = resolveLiveSeriesRealtimeFeed(config)
+  const subscriptionSymbol = normalizeSubscriptionSymbol(realtimeFeed.topic, config.symbol)
+  const feedKey = `${livePriceFeedKey(config)}:${livePriceFeedKey(realtimeFeed)}:${subscriptionSymbol}`
+  const resetKey = preserveSeriesContinuity ? feedKey : `${event.id}:${feedKey}`
 
   return (
     <EventLiveSeriesChartContent
@@ -251,6 +254,7 @@ export default function EventLiveSeriesChart({
       seriesEvents={seriesEvents}
       config={config}
       subscriptionSymbol={subscriptionSymbol}
+      realtimeFeed={realtimeFeed}
       chartWidth={chartWidth}
       chartHeightOffset={chartHeightOffset}
       showSeriesControls={showSeriesControls}
@@ -270,6 +274,7 @@ interface EventLiveSeriesChartContentProps {
   seriesEvents: EventSeriesEntry[]
   config: EventLiveChartConfig
   subscriptionSymbol: string
+  realtimeFeed: ReturnType<typeof resolveLiveSeriesRealtimeFeed>
   chartWidth?: number
   chartHeightOffset: number
   showSeriesControls: boolean
@@ -287,6 +292,7 @@ function EventLiveSeriesChartContent({
   seriesEvents,
   config,
   subscriptionSymbol,
+  realtimeFeed,
   chartWidth: providedChartWidth,
   chartHeightOffset,
   showSeriesControls,
@@ -330,30 +336,10 @@ function EventLiveSeriesChartContent({
       }),
     [config.active_window_minutes, config.series_slug, scheduledEndTimestamp, startTimestamp],
   )
-  const realtimeFeed = useMemo(
-    () =>
-      resolveLiveSeriesRealtimeFeed({
-        seriesSlug: config.series_slug,
-        configuredTopic: config.topic,
-        provider: config.provider,
-        windowSeconds: config.window_seconds,
-        activeWindowMinutes: config.active_window_minutes,
-        eventStartTimestamp: liveSeriesStartTimestamp,
-        eventEndTimestamp: scheduledEndTimestamp,
-      }),
-    [
-      config.series_slug,
-      config.active_window_minutes,
-      config.topic,
-      config.provider,
-      config.window_seconds,
-      liveSeriesStartTimestamp,
-      scheduledEndTimestamp,
-    ],
-  )
-  const referenceSource = resolveLiveSeriesHistorySource(event.markets, realtimeFeed.provider)
+  const referenceSource = resolveLiveSeriesHistorySource(event.markets, config.provider)
+  const referenceTopic = config.topic
   const realtimeTopic = realtimeFeed.topic
-  const realtimeConfig = useMemo(() => ({ ...config, ...realtimeFeed }), [config, realtimeFeed])
+  const usesBinanceSpot = realtimeFeed.provider === 'binance' && config.provider === 'chainlink'
   const hasExplicitEndTimestamp = explicitEndTimestamp != null
   const resolvedMarketsCount = event.markets.filter((market) => market.is_resolved || market.condition?.resolved).length
   const hasResolvedState = Boolean(
@@ -371,7 +357,7 @@ function EventLiveSeriesChartContent({
     referenceSnapshotStatus,
     persistedFallbackPrice: snapshotFallbackPrice,
   } = useLiveSeriesPriceSnapshot({
-    config: realtimeConfig,
+    config,
     source: referenceSource,
     eventSlug: event.slug,
     subscriptionSymbol,
@@ -387,24 +373,32 @@ function EventLiveSeriesChartContent({
   const seriesReferenceClassification = useMemo(
     () =>
       classifyLiveSeriesReference({
-        topic: realtimeTopic,
-        provider: referenceSource ?? realtimeFeed.provider,
+        topic: referenceTopic,
+        provider: referenceSource ?? config.provider,
         activeWindowMinutes: config.active_window_minutes,
       }),
-    [config.active_window_minutes, realtimeTopic, realtimeFeed.provider, referenceSource],
+    [config.active_window_minutes, config.provider, referenceTopic, referenceSource],
   )
 
-  const { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status, feedUnavailable, marketStatus } =
-    useLiveSeriesWebSocket({
-      topic: realtimeTopic,
-      provider: realtimeFeed.provider,
-      windowSeconds: realtimeFeed.window_seconds,
-      eventEndTimestamp: explicitEndTimestamp,
-      subscriptionSymbol,
-      isLiveView: isLiveView && !isEventClosed,
-    })
+  const {
+    data,
+    idleRecovery,
+    idleRecoveryVersion,
+    resumedAtTimestamp,
+    status,
+    feedUnavailable: realtimeFeedUnavailable,
+    marketStatus,
+  } = useLiveSeriesWebSocket({
+    topic: realtimeTopic,
+    provider: realtimeFeed.provider,
+    windowSeconds: realtimeFeed.window_seconds,
+    eventEndTimestamp: explicitEndTimestamp,
+    subscriptionSymbol,
+    isLiveView: isLiveView && !isEventClosed,
+  })
 
-  const persistedFallbackPrice = feedUnavailable ? null : snapshotFallbackPrice
+  const feedUnavailable = realtimeFeedUnavailable && (!usesBinanceSpot || !isEventClosed)
+  const persistedFallbackPrice = feedUnavailable && !usesBinanceSpot ? null : snapshotFallbackPrice
 
   const isMarketClosed = useMemo(() => {
     if (realtimeTopic.trim().toLowerCase() !== 'price.equity') {
@@ -445,8 +439,8 @@ function EventLiveSeriesChartContent({
       : fallbackChartWidth
 
   const snapshotOpeningPrice = useMemo(
-    () => normalizeReferencePrice(referenceSnapshot?.opening_price, realtimeTopic),
-    [realtimeTopic, referenceSnapshot?.opening_price],
+    () => normalizeReferencePrice(referenceSnapshot?.opening_price, referenceTopic),
+    [referenceTopic, referenceSnapshot?.opening_price],
   )
   const [retainedOpeningPrice, setRetainedOpeningPrice] = useState<number | null>(snapshotOpeningPrice)
   useLayoutEffect(() => {
@@ -468,19 +462,19 @@ function EventLiveSeriesChartContent({
   const referenceOpeningPrice =
     snapshotOpeningPrice ?? (preserveSeriesContinuity ? retainedOpeningPrice : snapshotOpeningPrice)
   const referenceClosingPrice = useMemo(
-    () => normalizeReferencePrice(referenceSnapshot?.closing_price, realtimeTopic),
-    [realtimeTopic, referenceSnapshot?.closing_price],
+    () => normalizeReferencePrice(referenceSnapshot?.closing_price, referenceTopic),
+    [referenceTopic, referenceSnapshot?.closing_price],
   )
   const latestReferencePriceBeforeEnd = useMemo(
     () =>
       resolveTimestampBoundedPrice({
         value: referenceSnapshot?.latest_price,
-        topic: realtimeTopic,
+        topic: referenceTopic,
         timestamp: referenceSnapshot?.latest_source_timestamp_ms ?? referenceSnapshot?.latest_window_end_ms,
         endTimestamp,
       }),
     [
-      realtimeTopic,
+      referenceTopic,
       endTimestamp,
       referenceSnapshot?.latest_price,
       referenceSnapshot?.latest_source_timestamp_ms,
@@ -543,8 +537,8 @@ function EventLiveSeriesChartContent({
       return finalPrice
     }
 
-    return resolveRecentPersistedLivePrice(persistedFallbackPrice, nowMs)
-  }, [finalPrice, isEventClosed, nowMs, persistedFallbackPrice])
+    return usesBinanceSpot ? null : resolveRecentPersistedLivePrice(persistedFallbackPrice, nowMs)
+  }, [finalPrice, isEventClosed, nowMs, persistedFallbackPrice, usesBinanceSpot])
 
   const tradingWindowMs = useMemo(() => {
     const configuredWindowMinutes = Number(config.active_window_minutes)
@@ -579,8 +573,11 @@ function EventLiveSeriesChartContent({
 
   const isTradingWindowActive = !isEventClosed && nowMs >= tradingWindowStartMs
   const liveSeriesEvent = useMemo(
-    () => findLiveSeriesEvent(seriesEvents, event.slug, nowMs, tradingWindowMs),
-    [event.slug, nowMs, seriesEvents, tradingWindowMs],
+    () =>
+      showLiveMarketLink && isEventClosed
+        ? findLiveSeriesEvent(seriesEvents, event.slug, nowMs, tradingWindowMs)
+        : null,
+    [event.slug, isEventClosed, nowMs, seriesEvents, showLiveMarketLink, tradingWindowMs],
   )
   const liveMarketHref =
     showLiveMarketLink && isEventClosed && liveSeriesEvent ? resolveEventPagePath(liveSeriesEvent) : null
@@ -593,13 +590,13 @@ function EventLiveSeriesChartContent({
         closingPrice: finalPrice,
         history: (referenceSnapshot?.price_history ?? []).map((point) => ({
           timestamp_ms: point.timestamp_ms,
-          price: normalizeReferencePrice(point.price, realtimeTopic) ?? Number.NaN,
+          price: normalizeReferencePrice(point.price, referenceTopic) ?? Number.NaN,
         })),
       }),
     [
       endTimestamp,
       finalPrice,
-      realtimeTopic,
+      referenceTopic,
       referenceOpeningPrice,
       referenceSnapshot?.price_history,
       tradingWindowStartMs,
@@ -616,6 +613,10 @@ function EventLiveSeriesChartContent({
 
     if ((requiresCanonicalGoldClose || requiresCanonicalEquityClose) && !isFinitePositivePrice(finalPrice)) {
       return []
+    }
+
+    if (usesBinanceSpot) {
+      return closedFallbackData
     }
 
     const preCloseData = data.filter((point) => {
@@ -649,6 +650,7 @@ function EventLiveSeriesChartContent({
     needsCanonicalChainlinkClose,
     requiresCanonicalEquityClose,
     requiresCanonicalGoldClose,
+    usesBinanceSpot,
   ])
 
   const renderData = useMemo(() => {
@@ -795,7 +797,7 @@ function EventLiveSeriesChartContent({
   const axisInitializationPhase =
     data.length > 0 ? 'realtime-ready' : dataSource.length > 0 ? `fallback-ready:${fallbackCurrentPrice}` : 'empty'
   const chartScopeKey = preserveSeriesContinuity
-    ? `${config.series_slug}:${config.topic}:${config.provider}:${config.window_seconds}:${subscriptionSymbol}`
+    ? `${config.series_slug}:${livePriceFeedKey(realtimeFeed)}:${subscriptionSymbol}`
     : `${event.id}:${realtimeTopic}:${realtimeFeed.provider}:${realtimeFeed.window_seconds}:${subscriptionSymbol}`
   const axisValues = useStableLiveChartAxis(
     candidateAxisValues,

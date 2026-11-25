@@ -52,9 +52,39 @@ describe('price frames', () => {
     expect(parse(message)).toEqual([{ symbol: 'btcusd', price: 99.125, timestamp }])
     expect(parse({ ...frame, payload: { ...frame.payload, timestamp: undefined } })).toEqual([])
   })
+  it('accepts Binance USDT spot only under the canonical symbol and its own source', () => {
+    const point = { timestamp, value: 99, full_accuracy_value: '99.125' }
+    const payload = { symbol: 'btcusd', source: 'binance', quote_asset: 'USDT', ...point }
+    const spot = { ...frame, channel: 'price.crypto', payload }
+    function parseSpot(message: unknown) {
+      return extractLivePriceUpdates(message, 'price.crypto', 'btcusd', 'binance', null)
+    }
+    expect(parseSpot(spot)).toEqual([{ symbol: 'btcusd', price: 99.125, timestamp }])
+    expect(
+      parseSpot({
+        ...spot,
+        snapshot: true,
+        payload: { symbol: 'btcusd', source: 'binance', quote_asset: 'USDT', data: [point] },
+      }),
+    ).toEqual([{ symbol: 'btcusd', price: 99.125, timestamp }])
+    for (const invalid of [
+      { source: 'chainlink' },
+      { quote_asset: 'USD' },
+      { quote_asset: undefined },
+      { window_seconds: 60 },
+      { symbol: 'btcusdt' },
+    ]) {
+      expect(parseSpot({ ...spot, payload: { ...payload, ...invalid } })).toEqual([])
+    }
+    expect(parse(spot)).toEqual([])
+  })
+
   it('isolates cached prices by source and TWAP window', () => {
     expect(livePriceFeedKey({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 30 })).not.toBe(
       livePriceFeedKey({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60 }),
     )
+    const spot = livePriceFeedKey({ topic: 'price.crypto', provider: 'binance', window_seconds: null })
+    expect(spot).not.toBe(livePriceFeedKey({ topic: 'price.crypto', provider: 'chainlink', window_seconds: null }))
+    expect(spot).not.toBe(livePriceFeedKey({ topic: 'price.crypto.twap', provider: 'chainlink', window_seconds: 60 }))
   })
 })

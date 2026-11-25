@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 
+import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon, GavelIcon, TriangleIcon } from 'lucide-react'
 import { useExtracted, useLocale } from 'next-intl'
 import { useMemo, useState } from 'react'
@@ -25,9 +26,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { Spinner } from '@/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useNowTimestamp } from '@/hooks/useNowTimestamp'
 import { Link } from '@/i18n/navigation'
+import { isResolvedSeriesEvent } from '@/lib/event-series-navigation'
 import { resolveEventPagePath } from '@/lib/events-routing'
 import { cn } from '@/lib/utils'
 
@@ -75,14 +78,6 @@ function getSeriesEventDate(event: EventSeriesEntry) {
 function getSeriesEventTimestamp(event: EventSeriesEntry) {
   const date = getSeriesEventDate(event)
   return date ? date.getTime() : Number.NEGATIVE_INFINITY
-}
-
-function isSeriesEventResolved(event: EventSeriesEntry) {
-  if (event.status === 'resolved') {
-    return true
-  }
-
-  return parseSeriesEventDate(event.resolved_at) !== null
 }
 
 function getSeriesEventLabel(event: EventSeriesEntry, locale = 'en-US', fallback = 'Unknown date') {
@@ -176,11 +171,11 @@ function useSeriesNavigation({
     const currentEvent = filteredSeriesEvents.find((event) => event.slug === currentEventSlug) ?? null
 
     const past = filteredSeriesEvents
-      .filter((event) => isSeriesEventResolved(event))
+      .filter((event) => isResolvedSeriesEvent(event))
       .sort((a, b) => getSeriesEventTimestamp(b) - getSeriesEventTimestamp(a))
 
     const unresolved = filteredSeriesEvents
-      .filter((event) => !isSeriesEventResolved(event))
+      .filter((event) => !isResolvedSeriesEvent(event))
       .sort((a, b) => getSeriesEventTimestamp(a) - getSeriesEventTimestamp(b))
 
     const currentTradingEvent =
@@ -191,13 +186,13 @@ function useSeriesNavigation({
             const eventTimestamp = getSeriesEventTimestamp(event)
             return Number.isFinite(eventTimestamp) && eventTimestamp > nowTimestamp
           }) ??
-          (currentEvent && !isSeriesEventResolved(currentEvent) ? currentEvent : null))
-    const hasUnresolvedCurrentEvent = Boolean(currentEvent && !isSeriesEventResolved(currentEvent))
+          (currentEvent && !isResolvedSeriesEvent(currentEvent) ? currentEvent : null))
+    const hasUnresolvedCurrentEvent = Boolean(currentEvent && !isResolvedSeriesEvent(currentEvent))
 
     return {
       pastResolvedEvents: past,
       unresolvedEvents: unresolved,
-      currentResolvedEvent: currentEvent && isSeriesEventResolved(currentEvent) ? currentEvent : null,
+      currentResolvedEvent: currentEvent && isResolvedSeriesEvent(currentEvent) ? currentEvent : null,
       currentTradingEventId: currentTradingEvent?.id ?? null,
       hasSeriesNavigation:
         (hasComparableSeriesEvents && (past.length > 0 || unresolved.length > 0)) || hasUnresolvedCurrentEvent,
@@ -344,11 +339,37 @@ export default function EventSeriesPills({
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false)
   const [hoveredPastBadgeId, setHoveredPastBadgeId] = useState<string | null>(null)
   const nowTimestamp = useNowTimestamp()
+  const history = useQuery<EventSeriesEntry[]>({
+    queryKey: ['event-series-history', currentEventSlug],
+    queryFn: async ({ signal }) => {
+      const params = new URLSearchParams({ eventSlug: currentEventSlug! })
+      const response = await fetch(`/api/events/series?${params}`, { signal })
+      if (!response.ok) {
+        throw new Error('Failed to load event series history')
+      }
+      return response.json()
+    },
+    enabled: isPastMenuOpen && Boolean(currentEventSlug),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const navigationEvents = useMemo(() => {
+    if (!history.data) {
+      return seriesEvents
+    }
+
+    const eventsBySlug = new Map(history.data.map((event) => [event.slug, event]))
+    const currentEvent = seriesEvents.find((event) => event.slug === currentEventSlug)
+    if (currentEvent && !eventsBySlug.has(currentEvent.slug)) {
+      eventsBySlug.set(currentEvent.slug, currentEvent)
+    }
+    return Array.from(eventsBySlug.values())
+  }, [currentEventSlug, history.data, seriesEvents])
 
   const { pastResolvedEvents, unresolvedEvents, currentResolvedEvent, currentTradingEventId, hasSeriesNavigation } =
     useSeriesNavigation({
       currentEventSlug,
-      seriesEvents,
+      seriesEvents: navigationEvents,
       nowTimestamp,
       tradingWindowMs,
     })
@@ -462,6 +483,10 @@ export default function EventSeriesPills({
                 align="start"
                 className="z-20 max-h-80 min-w-44 overflow-y-auto rounded-lg p-0.5"
               >
+                {history.isFetching && <Spinner className="mx-auto my-2" />}
+                {history.isError && (
+                  <DropdownMenuItem onClick={() => void history.refetch()}>{t('Try again')}</DropdownMenuItem>
+                )}
                 {pastResolvedEvents.map((event) => {
                   const isCurrentEvent = event.slug === currentEventSlug
                   const etTimeLabel = `${eventPillTimeLabel(event, 'America/New_York', true, true)} ET`
@@ -638,6 +663,10 @@ export default function EventSeriesPills({
                 `z-20 max-h-80 min-w-44 scrollbar-none overflow-y-auto p-1 [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden`,
               )}
             >
+              {history.isFetching && <Spinner className="mx-auto my-2" />}
+              {history.isError && (
+                <DropdownMenuItem onClick={() => void history.refetch()}>{t('Try again')}</DropdownMenuItem>
+              )}
               {pastResolvedEvents.map((event) => {
                 const isCurrentEvent = event.slug === currentEventSlug
                 const etTimeLabel = `${eventPillTimeLabel(event, 'America/New_York', true, true)} ET`

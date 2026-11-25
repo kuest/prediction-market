@@ -140,3 +140,60 @@ describe('hourly event references', () => {
     }
   })
 })
+
+describe('Chainlink four-hour live-series snapshot', () => {
+  afterEach(unstubAllGlobals)
+
+  it.each([
+    ['2026-11-23T13:00:00Z', '2026-11-23T17:00:00Z', '2026-11-23T16:00:00Z'],
+    ['2026-10-30T12:00:00Z', '2026-10-30T16:00:00Z', '2026-10-30T12:00:00Z'],
+  ])('uses the exact boundaries of %s to %s', async (start, end, prior) => {
+    const startMs = Date.parse(start)
+    const endMs = Date.parse(end)
+    function mark(time: number, price: number) {
+      return {
+        instrument: 'BTC/USD',
+        interval: '4h',
+        source: 'chainlink',
+        window_end_ms: time,
+        settlement_price: price,
+      }
+    }
+    const rows = [mark(startMs, 100)]
+    if (Date.parse(prior) !== startMs) {
+      rows.push(mark(Date.parse(prior), 90))
+    }
+    stubGlobal(
+      'fetch',
+      mock(async (input: string | URL | Request) => {
+        const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+        if (url.pathname === '/series-map') {
+          return Response.json({
+            series: [{ series_slug: 'four-hour-test', instrument: 'BTC/USD', interval: '4h', source: 'chainlink' }],
+          })
+        }
+        if (url.pathname === '/marks/latest') {
+          return Response.json({ markets: [] })
+        }
+        const through = Number(url.searchParams.get('to'))
+        return Response.json({ rows: rows.filter((row) => row.window_end_ms <= through) })
+      }),
+    )
+    const originalUrl = process.env.PRICE_REFERENCE_URL
+    process.env.PRICE_REFERENCE_URL = 'https://four-hour-reference.test'
+    try {
+      const request = new Request(
+        `https://kuest.test/api/price-reference/live-series?seriesSlug=four-hour-test&eventStartMs=${startMs}&eventEndMs=${endMs}&activeWindowMinutes=240`,
+      )
+      expect(await (await GET(request)).json()).toMatchObject({ opening_price: 100, closing_price: null })
+      rows.push(mark(endMs, 105))
+      expect(await (await GET(request)).json()).toMatchObject({ opening_price: 100, closing_price: 105 })
+    } finally {
+      if (originalUrl === undefined) {
+        delete process.env.PRICE_REFERENCE_URL
+      } else {
+        process.env.PRICE_REFERENCE_URL = originalUrl
+      }
+    }
+  })
+})

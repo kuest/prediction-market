@@ -331,6 +331,7 @@ describe('useLiveSeriesPriceSnapshot', () => {
 
   it.each([
     [60, 'chainlink'],
+    [240, 'chainlink'],
     [1440, 'chainlink'],
     [60, 'pyth'],
   ] as const)('keeps checking a %s-minute %s close until available', async (minutes, source) => {

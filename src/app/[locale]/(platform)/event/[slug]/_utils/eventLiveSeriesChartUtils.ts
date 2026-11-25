@@ -1,6 +1,7 @@
-import type { Event, EventSeriesEntry } from '@/types'
+import type { Event, EventLiveChartConfig, EventSeriesEntry } from '@/types'
 import type { DataPoint } from '@/types/PredictionChartTypes'
 
+import { isResolvedSeriesEvent } from '@/lib/event-series-navigation'
 import { formatCurrency } from '@/lib/formatters'
 
 import { resolveLiveSeriesTopicPriceDigits } from './liveSeriesPricePrecision'
@@ -215,7 +216,7 @@ export interface LiveSeriesPriceSnapshot {
 }
 
 export type LiveSeriesPriceSnapshotStatus = 'loading' | 'ready' | 'unavailable'
-export type LiveSeriesReferenceClassification = 'chainlink_daily' | 'chainlink_hourly' | 'other'
+export type LiveSeriesReferenceClassification = 'chainlink_daily' | 'chainlink_hourly' | 'chainlink_four_hour' | 'other'
 
 export function classifyLiveSeriesReference({
   topic,
@@ -236,7 +237,9 @@ export function classifyLiveSeriesReference({
     ? 'chainlink_daily'
     : normalizedWindowMinutes === 60
       ? 'chainlink_hourly'
-      : 'other'
+      : normalizedWindowMinutes === 240
+        ? 'chainlink_four_hour'
+        : 'other'
 }
 
 export function resolveLiveSeriesReferenceStart(start: number | null, end: number, activeWindowMinutes: number) {
@@ -246,7 +249,10 @@ export function resolveLiveSeriesReferenceStart(start: number | null, end: numbe
 }
 
 export function isCanonicalChainlinkCloseSnapshot(snapshot: LiveSeriesPriceSnapshot | null) {
-  return snapshot?.source === 'chainlink' && (snapshot.interval === '1d' || snapshot.interval === '1h')
+  return (
+    snapshot?.source === 'chainlink' &&
+    (snapshot.interval === '1d' || snapshot.interval === '1h' || snapshot.interval === '4h')
+  )
 }
 
 function hasCanonicalDailyClose({
@@ -327,7 +333,7 @@ export function requiresCanonicalChainlinkClose({
   snapshotStatus: LiveSeriesPriceSnapshotStatus
   seriesClassification: LiveSeriesReferenceClassification
 }) {
-  if (seriesClassification === 'chainlink_daily' || seriesClassification === 'chainlink_hourly') {
+  if (seriesClassification !== 'other') {
     return true
   }
 
@@ -412,6 +418,9 @@ export function extractLivePriceUpdates(
   }
   const payload = message.payload
   if (provider && payload.source !== provider) {
+    return []
+  }
+  if (provider === 'binance' && (payload.quote_asset !== 'USDT' || payload.window_seconds != null)) {
     return []
   }
   if (windowSeconds != null && payload.window_seconds !== windowSeconds) {
@@ -697,20 +706,22 @@ export function resolveLiveSeriesStartTimestamp({
   return eventStartTimestamp
 }
 
+const BINANCE_SPOT_SYMBOLS = new Set(['btcusd', 'ethusd', 'solusd', 'xrpusd', 'dogeusd', 'hypeusd', 'bnbusd', 'zecusd'])
+
 export function resolveLiveSeriesRealtimeFeed({
-  configuredTopic,
+  topic,
   provider,
-  windowSeconds,
-}: {
-  seriesSlug: string
-  configuredTopic: string
-  provider: string | null
-  windowSeconds: number | null
-  activeWindowMinutes: number
-  eventStartTimestamp?: number | null
-  eventEndTimestamp: number | null
-}) {
-  return { topic: configuredTopic, provider, window_seconds: windowSeconds }
+  symbol,
+  window_seconds,
+}: Pick<EventLiveChartConfig, 'topic' | 'provider' | 'symbol' | 'window_seconds'>) {
+  const isChainlinkCrypto =
+    provider === 'chainlink' &&
+    ((topic === 'price.crypto' && window_seconds == null) || (topic === 'price.crypto.twap' && window_seconds === 60))
+  if (isChainlinkCrypto && BINANCE_SPOT_SYMBOLS.has(normalizeSubscriptionSymbol(topic, symbol))) {
+    return { topic: 'price.crypto', provider: 'binance', window_seconds: null }
+  }
+
+  return { topic, provider, window_seconds }
 }
 
 export function resolveLiveSeriesHistorySource(markets: Event['markets'], configuredProvider: string | null) {
@@ -797,7 +808,11 @@ export function findLiveSeriesEvent(
   let liveEventEndTimestamp = Number.POSITIVE_INFINITY
 
   for (const seriesEvent of seriesEvents) {
-    if (seriesEvent.slug === currentEventSlug || seriesEvent.status !== 'active') {
+    if (
+      seriesEvent.slug === currentEventSlug ||
+      seriesEvent.status !== 'active' ||
+      isResolvedSeriesEvent(seriesEvent)
+    ) {
       continue
     }
 

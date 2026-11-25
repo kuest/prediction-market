@@ -61,9 +61,9 @@ void mock.module('@/app/[locale]/(platform)/_actions/deposit-wallet', () => ({
   updateOnboardingUsernameAction: mocks.updateOnboardingUsernameAction,
 }))
 
-void mock.module('@/app/[locale]/(platform)/_components/TradingOnboardingDialogs', () => ({
+void mock.module('@/app/[locale]/(platform)/_components/TradingOnboardingShell', () => ({
   __esModule: true,
-  default: function MockTradingOnboardingDialogs(props: any) {
+  default: function MockTradingOnboardingShell(props: any) {
     mocks.dialogProps = props
     return <div data-testid="active-modal">{props.activeModal ?? ''}</div>
   },
@@ -217,6 +217,21 @@ describe('tradingOnboardingProvider', () => {
     useUser.setState(null)
     jest.restoreAllMocks()
     unstubAllGlobals()
+  })
+
+  it('keeps the lightweight payment resume shell mounted while every dialog is closed', async () => {
+    render(
+      <TradingOnboardingProvider>
+        <div>Page content</div>
+      </TradingOnboardingProvider>,
+    )
+
+    expect(screen.getByText('Page content')).toBeInTheDocument()
+    await waitFor(() => expect(mocks.dialogProps).not.toBeNull())
+    expect(mocks.dialogProps.activeModal).toBeNull()
+    expect(mocks.dialogProps.depositModalOpen).toBe(false)
+    expect(mocks.dialogProps.withdrawModalOpen).toBe(false)
+    expect(mocks.dialogProps.fundModalOpen).toBe(false)
   })
 
   it.each([

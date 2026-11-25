@@ -313,7 +313,7 @@ function subscribeToLiveSeriesPriceSnapshot(onStoreChange: () => void, request: 
   const isEventBoundEquity =
     request.seriesSlug === 'hood-daily-up-or-down' || request.seriesSlug === 'coin-daily-up-or-down'
   const isChainlinkBoundary =
-    (request.activeWindowMinutes === 60 || request.activeWindowMinutes === 1440) &&
+    [60, 240, 1440].includes(request.activeWindowMinutes) &&
     request.topic === 'price.crypto.twap:chainlink:60' &&
     (request.source == null || request.source === 'chainlink')
   const needsExtendedCloseRefresh = isGoldDaily || isEventBoundEquity || isChainlinkBoundary
