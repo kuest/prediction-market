@@ -1,6 +1,9 @@
 import type { Event, Market, Outcome, SportsTeam } from '@/types'
 
-import { resolveUniqueBinaryWinningOutcomeIndexFromPayoutNumerators } from '@/lib/binary-outcome-resolution'
+import {
+  hasEqualPositiveBinaryPayout,
+  resolveUniqueBinaryWinningOutcomeIndexFromPayoutNumerators,
+} from '@/lib/binary-outcome-resolution'
 import { doesTextMatchTeam, normalizeComparableText, parseSportsScore } from '@/lib/sports-resolution'
 
 const normalizeText = normalizeComparableText
@@ -296,9 +299,15 @@ export function resolveResolvedHomeSportsMoneylineWinner(
     (button): button is HomeSportsMoneylineButton => Boolean(button),
   )
 
+  let hasSplitPayout = false
   for (const button of buttons) {
     const market = event.markets.find((candidate) => candidate.condition_id === button.conditionId)
     if (!market) {
+      continue
+    }
+
+    if (hasEqualPositiveBinaryPayout(market.condition?.payout_numerators)) {
+      hasSplitPayout = true
       continue
     }
 
@@ -313,6 +322,11 @@ export function resolveResolvedHomeSportsMoneylineWinner(
       outcomeIndex: button.outcomeIndex,
       tone: button.tone,
     }
+  }
+
+  // A recorded split payout is not a missing result; the score cannot create a settlement winner.
+  if (hasSplitPayout) {
+    return null
   }
 
   const finalScore = parseSportsScore(event.sports_score)

@@ -269,9 +269,19 @@ describe('sportsHomeCard', () => {
     expect(model?.drawButton?.conditionId).toBe('draw-market')
   })
 
-  it('resolves the winning sports moneyline button for binary markets', () => {
+  it.each([
+    { label: 'a unique payout', payouts: [1, 0], hasWinningFlag: true, showsWinner: true },
+    { label: 'an equal payout', payouts: [1, 1], hasWinningFlag: false, showsWinner: false },
+    {
+      label: 'an equal payout with a stale winning flag',
+      payouts: ['1', '1'],
+      hasWinningFlag: true,
+      showsWinner: false,
+    },
+  ])('uses $label instead of the sports score for binary markets', ({ payouts, hasWinningFlag, showsWinner }) => {
     const event = {
       sports_sport_slug: 'cs2',
+      sports_score: '2 - 1',
       main_tag: 'games',
       tags: [
         {
@@ -306,7 +316,7 @@ describe('sportsHomeCard', () => {
             {
               outcome_index: 0,
               outcome_text: 'Liquid',
-              is_winning_outcome: true,
+              is_winning_outcome: hasWinningFlag,
             },
             {
               outcome_index: 1,
@@ -315,7 +325,7 @@ describe('sportsHomeCard', () => {
             },
           ],
           condition: {
-            payout_numerators: [1, 0],
+            payout_numerators: payouts,
           },
         },
       ],
@@ -324,12 +334,9 @@ describe('sportsHomeCard', () => {
     const model = buildHomeSportsMoneylineModel(event)
 
     expect(model).not.toBeNull()
-    expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual({
-      conditionId: 'match-winner-condition',
-      label: 'Liquid',
-      outcomeIndex: 0,
-      tone: 'team1',
-    })
+    expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual(
+      showsWinner ? { conditionId: 'match-winner-condition', label: 'Liquid', outcomeIndex: 0, tone: 'team1' } : null,
+    )
   })
 
   it('resolves draw as the winning sports moneyline button for separated neg-risk markets', () => {
