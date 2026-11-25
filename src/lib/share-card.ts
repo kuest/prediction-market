@@ -1,5 +1,6 @@
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { formatCentsLabel, formatCurrency, formatPercent } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 
 type ShareCardVariant = 'yes' | 'no'
 
@@ -63,14 +64,7 @@ function getOutcomeVariant(position: ShareCardPosition, outcomeLabel: string): S
 }
 
 function resolveShareImageUrl(icon?: string | null): string | undefined {
-  const trimmed = typeof icon === 'string' ? icon.trim() : ''
-  if (!trimmed) {
-    return undefined
-  }
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
-    return trimmed
-  }
-  return `https://gateway.irys.xyz/${trimmed}`
+  return resolveMarketAssetUrl(icon) ?? undefined
 }
 
 export function buildShareCardPayload(position: ShareCardPosition, user?: ShareCardUserInfo): ShareCardPayload {

@@ -61,6 +61,7 @@ import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { useSignaturePromptRunner } from '@/hooks/useSignaturePromptRunner'
 import { Link } from '@/i18n/navigation'
 import { COLLATERAL_TOKEN_ADDRESS, MARKET_MAKER_ESCROW_ADDRESS, POLY_SYNCER_CREATOR_ADDRESS } from '@/lib/contracts'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import {
   linkSponsorEmail,
   NotificationApiError,
@@ -474,22 +475,6 @@ function fundingErrorMessage(error: unknown, copy: MarketMakingCopy) {
   return copy.transactionFailed
 }
 
-function normalizeImageUrl(value: string | null) {
-  const normalized = value?.trim()
-  if (!normalized) {
-    return null
-  }
-  if (normalized.startsWith('/') && !normalized.startsWith('//')) {
-    return normalized
-  }
-  try {
-    const parsed = new URL(normalized)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null
-  } catch {
-    return null
-  }
-}
-
 function getMarketEndDate(item: MarketMakingDiscoveryItem) {
   const parsed = item.endDate ? new Date(item.endDate) : null
   if (parsed && Number.isFinite(parsed.getTime())) {
@@ -537,7 +522,7 @@ function getMarketLabel(item: MarketMakingDiscoveryItem, copy: MarketMakingCopy)
 }
 
 function MarketAvatar({ item }: { item: MarketMakingDiscoveryItem }) {
-  const imageUrl = normalizeImageUrl(item.iconUrl)
+  const imageUrl = resolveMarketAssetUrl(item.iconUrl)
   if (imageUrl) {
     return (
       <div className="relative size-12 shrink-0 overflow-hidden rounded-xl border bg-muted sm:size-14">
@@ -707,7 +692,7 @@ function MarketRow({
       {item.markets.length > 1 && expanded && (
         <div className="mt-4 divide-y rounded-xl border bg-muted/20 px-4">
           {item.markets.map((market) => {
-            const marketImageUrl = item.showMarketIcons ? normalizeImageUrl(market.iconUrl) : null
+            const marketImageUrl = item.showMarketIcons ? resolveMarketAssetUrl(market.iconUrl) : null
             return (
               <div key={market.id} className="flex min-w-0 items-center justify-between gap-4 py-3 text-sm">
                 <span className="flex min-w-0 items-center gap-3">

@@ -1,4 +1,5 @@
-const DEFAULT_IMAGE_HOST_PATTERNS = ['*.irys.xyz', '*.supabase.co'] as const
+import { ASSETS_HOST } from '@/lib/image/asset-reference'
+const DEFAULT_IMAGE_HOST_PATTERNS = [ASSETS_HOST, '*.supabase.co'] as const
 
 type EnvMap = NodeJS.ProcessEnv | Record<string, string | undefined>
 

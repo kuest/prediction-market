@@ -39,6 +39,7 @@ import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePublicRuntimeConfig } from '@/hooks/usePublicRuntimeConfig'
 import { Link } from '@/i18n/navigation'
 import { MARKET_MAKER_ESCROW_ADDRESS, ZERO_ADDRESS } from '@/lib/contracts'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import {
   ESCROW_CAMPAIGN_STATUS,
   getEffectiveCampaignStatus,
@@ -163,24 +164,8 @@ function formatDateTime(timestamp: number, locale: string) {
   return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(timestamp * 1000)
 }
 
-function normalizeImageUrl(value: string | null) {
-  const normalized = value?.trim()
-  if (!normalized) {
-    return null
-  }
-  if (normalized.startsWith('/') && !normalized.startsWith('//')) {
-    return normalized
-  }
-  try {
-    const parsed = new URL(normalized)
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : null
-  } catch {
-    return null
-  }
-}
-
 function CampaignImage({ campaign, size = 'md' }: { campaign: MarketMakingCampaignRecord; size?: 'sm' | 'md' }) {
-  const imageUrl = normalizeImageUrl(campaign.iconUrl)
+  const imageUrl = resolveMarketAssetUrl(campaign.iconUrl)
   const sizeClass = size === 'sm' ? 'size-10 rounded-lg' : 'size-14 rounded-xl'
   if (imageUrl) {
     return (

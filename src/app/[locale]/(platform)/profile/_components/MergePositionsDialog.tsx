@@ -24,6 +24,7 @@ import {
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { Link } from '@/i18n/navigation'
 import { formatCurrency } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { cn } from '@/lib/utils'
 
 export interface MergeableMarket {
@@ -82,31 +83,34 @@ export function MergePositionsDialog({
     </div>
   ) : (
     <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
-      {markets.map((market) => (
-        <Link
-          key={market.conditionId}
-          href={`/event/${market.eventSlug}`}
-          className={cn('flex items-start gap-3 rounded-lg p-3 transition-colors', 'hover:bg-muted/60')}
-        >
-          <div className="relative size-10 overflow-hidden rounded-md bg-muted sm:size-12">
-            {market.icon ? (
-              <EventIconImage
-                src={`https://gateway.irys.xyz/${market.icon}`}
-                alt={`${market.title} icon`}
-                sizes="(min-width: 640px) 48px, 40px"
-                containerClassName="size-full"
-              />
-            ) : (
-              <div className="grid size-full place-items-center text-xs text-muted-foreground">{t('No image')}</div>
-            )}
-          </div>
+      {markets.map((market) => {
+        const imageUrl = resolveMarketAssetUrl(market.icon)
+        return (
+          <Link
+            key={market.conditionId}
+            href={`/event/${market.eventSlug}`}
+            className={cn('flex items-start gap-3 rounded-lg p-3 transition-colors', 'hover:bg-muted/60')}
+          >
+            <div className="relative size-10 overflow-hidden rounded-md bg-muted sm:size-12">
+              {imageUrl ? (
+                <EventIconImage
+                  src={imageUrl}
+                  alt={`${market.title} icon`}
+                  sizes="(min-width: 640px) 48px, 40px"
+                  containerClassName="size-full"
+                />
+              ) : (
+                <div className="grid size-full place-items-center text-xs text-muted-foreground">{t('No image')}</div>
+              )}
+            </div>
 
-          <div className="min-w-0 flex-1 space-y-1">
-            <h3 className="text-sm/tight font-semibold text-foreground">{market.title}</h3>
-            <p className="text-sm text-muted-foreground">Value {formatMergeValue(market.mergeAmount || 0)}</p>
-          </div>
-        </Link>
-      ))}
+            <div className="min-w-0 flex-1 space-y-1">
+              <h3 className="text-sm/tight font-semibold text-foreground">{market.title}</h3>
+              <p className="text-sm text-muted-foreground">Value {formatMergeValue(market.mergeAmount || 0)}</p>
+            </div>
+          </Link>
+        )
+      })}
     </div>
   )
 

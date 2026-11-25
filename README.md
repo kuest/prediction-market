@@ -78,6 +78,14 @@ Kalshi can do that one deal at a time. Kuest makes the same capability available
 | 🔧  | **[Vercel + Supabase](https://docs.kuest.com/manual-installation/vercel)** - hosted deployment with full codebase control                  | Technical operators   |
 | 🏗️  | **[Manual installation](https://docs.kuest.com/manual-installation/overview)** - Docker, VPS, Cloud Run, Fly.io, Kubernetes, and Terraform | Advanced / enterprise |
 
+### Custom domains
+
+The [Kuest Custom Domain Proxy](https://github.com/kuest/custom-domain) maps
+`assets.<your-domain>` to `assets.kuest.com` for market metadata, images, and avatars.
+The one-click deployment adds the hostname automatically. Existing independent proxy installations
+must update and redeploy the Worker with the same `DOMAIN` to add the Assets hostname.
+See the [custom-domain setup guide](https://docs.kuest.com/configuration/custom-domain) for the deployment steps.
+
 ---
 
 ## Who is this for

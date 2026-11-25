@@ -4,6 +4,7 @@ import type { DataPoint } from '@/types/PredictionChartTypes'
 import { OUTCOME_INDEX } from '@/lib/constants'
 import { fetchUserActivityData, mapDataApiActivityToActivityOrder } from '@/lib/data-api/user'
 import { formatSharePriceLabel } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 
 export interface TradeFlowLabelItem {
   id: string
@@ -126,16 +127,7 @@ export function buildTradeFlowLabel(price: number, size: number) {
 }
 
 export function resolveOutcomeIconUrl(iconUrl?: string | null) {
-  if (!iconUrl) {
-    return ''
-  }
-
-  const trimmed = iconUrl.trim()
-  if (!trimmed) {
-    return ''
-  }
-
-  return trimmed.startsWith('http') ? trimmed : `https://gateway.irys.xyz/${trimmed}`
+  return resolveMarketAssetUrl(iconUrl) ?? ''
 }
 
 export function pruneTradeFlowItems(items: TradeFlowLabelItem[], now: number) {

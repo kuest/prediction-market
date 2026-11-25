@@ -5,6 +5,7 @@ import type { DataApiPosition } from '@/lib/data-api/user'
 import { MICRO_UNIT, OUTCOME_INDEX } from '@/lib/constants'
 import { getDataApiUrl } from '@/lib/data-api/client'
 import { db } from '@/lib/drizzle'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { resolveNegRiskAdapterAddressFromMetadata } from '@/lib/neg-risk-adapter'
 import { getPublicAssetUrl } from '@/lib/storage'
 import { normalizeAddress } from '@/lib/wallet'
@@ -70,14 +71,7 @@ function toNumber(value: unknown): number {
 }
 
 function resolveDataApiIcon(icon?: string | null): string | undefined {
-  const trimmed = typeof icon === 'string' ? icon.trim() : ''
-  if (!trimmed) {
-    return undefined
-  }
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('/')) {
-    return trimmed
-  }
-  return `https://gateway.irys.xyz/${trimmed}`
+  return resolveMarketAssetUrl(icon) ?? undefined
 }
 
 function normalizeValueByPrice(value: number, size: number): number {

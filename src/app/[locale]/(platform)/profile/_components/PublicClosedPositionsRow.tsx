@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { Link } from '@/i18n/navigation'
 import { formatCentsLabel, formatCurrency, formatSharesLabel } from '@/lib/formatters'
+import { resolveMarketAssetUrl } from '@/lib/image/asset-reference'
 import { cn } from '@/lib/utils'
 
 import type { PublicPosition } from './PublicPositionItem'
@@ -24,7 +25,7 @@ interface PublicClosedPositionsRowProps {
 
 export default function PublicClosedPositionsRow({ position, onShareClick }: PublicClosedPositionsRowProps) {
   const t = useExtracted()
-  const imageSrc = position.icon ? `https://gateway.irys.xyz/${position.icon}` : null
+  const imageSrc = resolveMarketAssetUrl(position.icon)
   const outcomeLabel = getOutcomeLabel(position)
   const outcomeColor = getOutcomeBadgeColorClassName(position)
   const eventSlug = position.eventSlug || position.slug

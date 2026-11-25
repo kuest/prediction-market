@@ -22,14 +22,20 @@ describe('wsrvImageLoader', () => {
     ).toBe('/images/logo.png?v=1&w=128&q=75')
   })
 
-  it('adds width params to irys urls without proxying them through wsrv', () => {
+  it('uses the Assets Worker directly without proxying through wsrv', () => {
+    const assetUrl = `https://assets.kuest.com/${'A'.repeat(43)}`
     expect(
       wsrvImageLoader({
-        src: 'https://gateway.irys.xyz/images/logo.png',
+        src: assetUrl,
         width: 128,
         quality: 70,
       }),
-    ).toBe('https://gateway.irys.xyz/images/logo.png?w=128&q=70')
+    ).toBe(`${assetUrl}?w=128&q=70`)
+  })
+
+  it('does not send retired URLs to the browser or optimizer', () => {
+    expect(wsrvImageLoader({ src: 'https://gateway.irys.xyz/old-image', width: 128 })).toStartWith('data:image/gif;')
+    expect(wsrvImageLoader({ src: 'irys://old-image', width: 128 })).toStartWith('data:image/gif;')
   })
 
   it('normalizes protocol-relative urls before proxying them through wsrv', () => {
