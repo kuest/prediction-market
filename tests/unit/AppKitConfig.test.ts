@@ -16,7 +16,7 @@ void mock.module('@reown/appkit-adapter-wagmi', () => ({
   },
 }))
 
-void mock.module('@wagmi/core', () => ({
+void mock.module('wagmi', () => ({
   cookieStorage: mocks.cookieStorage,
   createStorage: mocks.createStorage,
 }))

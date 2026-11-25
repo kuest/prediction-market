@@ -13,12 +13,6 @@ updates:
       - dependency-name: '@fullcalendar/react'
         versions:
           - '7.x'
-      - dependency-name: '@wagmi/core'
-        versions:
-          - '3.x'
-      - dependency-name: 'wagmi'
-        versions:
-          - '3.x'
     groups:
       bun-dependencies:
         patterns:
