@@ -97,13 +97,15 @@ describe('eventRules', () => {
   })
 
   it('uses clarifications from a selected sports market outside the hero rules event', () => {
-    const createMarket = (condition_id: string, content: string): Event['markets'][number] => ({
-      ...createEvent().markets[0]!,
-      condition_id,
-      metadata: JSON.stringify({
-        market_clarifications: [{ id: 1, content, state: 'success', showInFrontend: true }],
-      }),
-    })
+    function createMarket(conditionId: string, content: string): Event['markets'][number] {
+      return {
+        ...createEvent().markets[0]!,
+        condition_id: conditionId,
+        metadata: JSON.stringify({
+          market_clarifications: [{ id: 1, content, state: 'success', showInFrontend: true }],
+        }),
+      }
+    }
     const market = createMarket('selected-prop', 'The selected prop uses the official box score.')
     const heroMarket = createMarket('hero-market', 'The hero market uses the match result.')
     render(
