@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test'
 
-import { normalizeVisibleMarketClarifications, readVisibleMarketClarifications } from '@/lib/market-clarifications'
+import {
+  normalizeVisibleMarketClarifications,
+  readVisibleMarketClarifications,
+  resolveMarketClarificationsUpdate,
+} from '@/lib/market-clarifications'
 
 describe('market clarifications metadata', () => {
   const publicNote = {
@@ -44,6 +48,25 @@ describe('market clarifications metadata', () => {
       ['polymarket', 'The source report must include the full month.', '2026-11-25T00:12:00.000Z'],
       ['kuest', 'Clarification from Kuest.', null],
     ])
+  })
+
+  it('preserves saved notes on omitted or malformed metadata and clears on an explicit empty array', () => {
+    const existing = JSON.stringify({ market_clarifications: [publicNote] })
+    const notes = readVisibleMarketClarifications(existing)
+    expect(resolveMarketClarificationsUpdate({}, existing)).toEqual({ notes, changed: false })
+    expect(resolveMarketClarificationsUpdate({ market_clarifications: null }, existing)).toEqual({
+      notes,
+      changed: false,
+    })
+    expect(resolveMarketClarificationsUpdate({ market_clarifications: [publicNote] }, existing)).toEqual({
+      notes,
+      changed: false,
+    })
+    expect(resolveMarketClarificationsUpdate({ market_clarifications: [] }, existing)).toEqual({
+      notes: [],
+      changed: true,
+    })
+    expect(resolveMarketClarificationsUpdate({}, null)).toEqual({ notes: undefined, changed: false })
   })
 
   it('treats missing and malformed data as having no visible notes', () => {

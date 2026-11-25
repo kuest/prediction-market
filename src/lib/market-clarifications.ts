@@ -56,13 +56,28 @@ export function normalizeVisibleMarketClarifications(value: unknown): VisibleMar
   return Array.from(unique.values())
 }
 
-export function readVisibleMarketClarifications(metadata: unknown): VisibleMarketClarification[] {
-  if (typeof metadata === 'string') {
-    try {
-      return normalizeVisibleMarketClarifications(parseObject(JSON.parse(metadata))?.market_clarifications)
-    } catch {
-      return []
-    }
+function readMarketClarificationsUpdate(metadata: unknown): VisibleMarketClarification[] | undefined {
+  try {
+    const object = parseObject(typeof metadata === 'string' ? JSON.parse(metadata) : metadata)
+    const notes = object?.market_clarifications
+    return Array.isArray(notes) ? normalizeVisibleMarketClarifications(notes) : undefined
+  } catch {
+    return undefined
   }
-  return normalizeVisibleMarketClarifications(parseObject(metadata)?.market_clarifications)
+}
+
+export function readVisibleMarketClarifications(metadata: unknown): VisibleMarketClarification[] {
+  return readMarketClarificationsUpdate(metadata) ?? []
+}
+
+export function resolveMarketClarificationsUpdate(
+  incomingMetadata: unknown,
+  existingMetadata: unknown,
+): { notes: VisibleMarketClarification[] | undefined, changed: boolean } {
+  const existing = readMarketClarificationsUpdate(existingMetadata)
+  const incoming = readMarketClarificationsUpdate(incomingMetadata)
+  return {
+    notes: incoming ?? existing,
+    changed: incoming !== undefined && JSON.stringify(incoming) !== JSON.stringify(existing ?? []),
+  }
 }
