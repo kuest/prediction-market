@@ -37,6 +37,8 @@ void mock.module('@/hooks/useSiteIdentity', () => ({
 
 void mock.module('@/lib/uma', () => ({
   resolveUmaProposeTarget: () => null,
+  buildUmaProposeUrl: () => null,
+  buildUmaSettledUrl: () => null,
 }))
 
 void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/DirectResolutionButton', () => ({
@@ -53,6 +55,8 @@ void mock.module('@/app/[locale]/(platform)/event/[slug]/_components/DirectResol
   ),
 }))
 
+const { default: SportsEventAboutPanel } =
+  await import('@/app/[locale]/(platform)/sports/_components/SportsEventAboutPanel')
 const { default: EventRules } = await import('@/app/[locale]/(platform)/event/[slug]/_components/EventRules')
 
 function createEvent(overrides: Partial<Event> = {}): Event {
@@ -90,6 +94,27 @@ describe('eventRules', () => {
     mocks.useLocale.mockReset()
     mocks.useLocale.mockReturnValue('en')
     useOrder.getState().reset()
+  })
+
+  it('uses clarifications from a selected sports market outside the hero rules event', () => {
+    const createMarket = (condition_id: string, content: string): Event['markets'][number] => ({
+      ...createEvent().markets[0]!,
+      condition_id,
+      metadata: JSON.stringify({
+        market_clarifications: [{ id: 1, content, state: 'success', showInFrontend: true }],
+      }),
+    })
+    const market = createMarket('selected-prop', 'The selected prop uses the official box score.')
+    const heroMarket = createMarket('hero-market', 'The hero market uses the match result.')
+    render(
+      <SportsEventAboutPanel
+        event={createEvent({ markets: [market] })}
+        rulesEvent={createEvent({ markets: [heroMarket] })}
+        market={market}
+      />,
+    )
+    expect(screen.getByText('The selected prop uses the official box score.')).toBeInTheDocument()
+    expect(screen.queryByText('The hero market uses the match result.')).not.toBeInTheDocument()
   })
 
   it('renders the created-at label for english with the full localized timestamp', () => {

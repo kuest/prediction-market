@@ -23,6 +23,7 @@ describe('market clarifications metadata', () => {
         { ...publicNote, id: 12, showInFrontend: false },
         { ...publicNote, id: 13, showInFrontend: null },
         { ...publicNote, id: 14, content: '  ' },
+        { ...publicNote, id: -1, content: 'Invalid negative identifier' },
         publicNote,
         { ...publicNote, content: 'duplicate' },
       ],
@@ -47,6 +48,19 @@ describe('market clarifications metadata', () => {
     expect(notes.map((note) => [note.source, note.content, note.txTimestamp])).toEqual([
       ['polymarket', 'The source report must include the full month.', '2026-11-25T00:12:00.000Z'],
       ['kuest', 'Clarification from Kuest.', null],
+    ])
+  })
+
+  it('deduplicates notes without a source in the Kuest namespace', () => {
+    const notes = normalizeVisibleMarketClarifications([
+      publicNote,
+      { ...publicNote, source: 'kuest', content: 'Duplicate native note' },
+      { ...publicNote, source: 'polymarket', content: 'Imported note with the same ID' },
+    ])
+    expect(notes.map((note) => note.source)).toEqual([undefined, 'polymarket'])
+    expect(notes.map((note) => note.content)).toEqual([
+      'The source report must include the full month.',
+      'Imported note with the same ID',
     ])
   })
 

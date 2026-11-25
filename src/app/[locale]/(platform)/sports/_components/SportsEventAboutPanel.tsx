@@ -48,19 +48,12 @@ function useAboutPanelDerivations({
 
     const prioritizedMarket = sourceEvent.markets.find((item) => item.condition_id === market.condition_id)
     const marketRules = market.market_rules?.trim() || prioritizedMarket?.market_rules?.trim() || sourceEvent.rules
-    if (!prioritizedMarket) {
-      return {
-        ...sourceEvent,
-        rules: marketRules || sourceEvent.rules,
-      }
-    }
-
     return {
       ...sourceEvent,
       rules: marketRules || sourceEvent.rules,
       markets: [
-        prioritizedMarket,
-        ...sourceEvent.markets.filter((item) => item.condition_id !== prioritizedMarket.condition_id),
+        prioritizedMarket ?? market,
+        ...sourceEvent.markets.filter((item) => item.condition_id !== market.condition_id),
       ],
     }
   }, [event, market, rulesEvent])

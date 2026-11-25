@@ -32,7 +32,7 @@ export function normalizeVisibleMarketClarifications(value: unknown): VisibleMar
       continue
     }
     const { id } = note
-    if (!((typeof id === 'number' && Number.isSafeInteger(id)) || (typeof id === 'string' && id.trim()))) {
+    if (!((typeof id === 'number' && Number.isSafeInteger(id) && id >= 0) || (typeof id === 'string' && id.trim()))) {
       continue
     }
     const content = note.content.trim()
@@ -40,7 +40,7 @@ export function normalizeVisibleMarketClarifications(value: unknown): VisibleMar
       continue
     }
     const source = note.source === 'kuest' || note.source === 'polymarket' ? note.source : undefined
-    const key = `${source ?? 'polymarket'}:${id}`
+    const key = `${source ?? 'kuest'}:${id}`
     if (!unique.has(key)) {
       unique.set(key, {
         id,
