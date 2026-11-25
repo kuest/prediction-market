@@ -15,6 +15,7 @@ import {
   extractLivePriceUpdates,
   isSnapshotMessage,
   keepWithinLiveWindow,
+  livePriceFeedKey,
   LIVE_IDLE_RECOVERY_DISPLAY_MS,
   LIVE_DATA_RETENTION_MS,
   LIVE_PRICE_TRANSITION_MS,
@@ -30,7 +31,8 @@ import {
 
 interface UseLiveSeriesWebSocketOptions {
   topic: string
-  eventType: string
+  provider: string | null
+  windowSeconds: number | null
   eventEndTimestamp: number | null
   subscriptionSymbol: string
   isLiveView: boolean
@@ -43,15 +45,19 @@ interface LiveSeriesIdleRecovery {
 
 export function useLiveSeriesWebSocket({
   topic,
-  eventType,
+  provider,
+  windowSeconds,
   eventEndTimestamp,
   subscriptionSymbol,
   isLiveView,
 }: UseLiveSeriesWebSocketOptions) {
   const { wsLiveDataUrl } = usePublicRuntimeConfig()
   const wsUrl = wsLiveDataUrl
+  const storageKey = livePriceFeedKey({ topic, provider, window_seconds: windowSeconds })
   const eventEndTimestampRef = useRef(eventEndTimestamp)
   const [data, setData] = useState<DataPoint[]>([])
+  const [feedUnavailable, setFeedUnavailable] = useState(false)
+  const [marketStatus, setMarketStatus] = useState<'open' | 'closed' | 'unknown' | null>(null)
   const [idleRecovery, setIdleRecovery] = useState<LiveSeriesIdleRecovery | null>(null)
   const [idleRecoveryVersion, setIdleRecoveryVersion] = useState(0)
   const [resumedAtTimestamp, setResumedAtTimestamp] = useState<number | null>(null)
@@ -78,6 +84,8 @@ export function useLiveSeriesWebSocket({
 
       let isActive = true
       let ws: WebSocket | null = null
+      let lastSequence: number | null = null
+      let subscriptionRejected = false
       let previousPriceMessageTimestamp: number | null = null
       let lastMessageArrivalTimestamp: number | null = null
       let latestKnownPrice: number | null = null
@@ -122,7 +130,7 @@ export function useLiveSeriesWebSocket({
                 timestamp,
               ),
             )
-            writePersistedLivePrice(topic, subscriptionSymbol, update.price, update.timestamp)
+            writePersistedLivePrice(storageKey, subscriptionSymbol, update.price, update.timestamp)
           }
           lastRecoveredSourceTimestamp = recoveryLatestSourceTimestamp
           recoveryLatestSourceTimestamp = null
@@ -131,17 +139,17 @@ export function useLiveSeriesWebSocket({
       }
 
       function buildSubscriptionPayload(action: 'subscribe' | 'unsubscribe') {
-        const filters = JSON.stringify({
-          symbol: subscriptionSymbol,
-        })
-
         return JSON.stringify({
-          action,
+          op: action,
+          rid: 'live-price',
           subscriptions: [
             {
-              topic,
-              type: eventType,
-              filters,
+              channel: topic,
+              filter: {
+                symbol: subscriptionSymbol,
+                ...(provider ? { provider } : {}),
+                ...(windowSeconds != null ? { window_seconds: windowSeconds } : {}),
+              },
             },
           ],
         })
@@ -151,6 +159,9 @@ export function useLiveSeriesWebSocket({
         if (ws !== socket) {
           return
         }
+        lastSequence = null
+        setFeedUnavailable(false)
+        setMarketStatus(null)
         reconnectController?.markConnected()
         heartbeatController?.markOpen(socket)
         setStatus('connecting')
@@ -175,8 +186,64 @@ export function useLiveSeriesWebSocket({
           return
         }
 
+        if (payload.op === 'pong') {
+          heartbeatController?.markActivity(socket, arrivalTimestamp)
+          return
+        }
+        if (
+          (payload.op === 'error' || payload.op === 'subscribed') &&
+          ((payload.rid != null && payload.rid !== 'live-price') ||
+            (payload.op === 'error' && payload.channel != null && payload.channel !== topic))
+        ) {
+          return
+        }
+        const acknowledgedFilter = payload.filter
+        const invalidAcknowledgment =
+          payload.op === 'subscribed' &&
+          (payload.channel !== topic ||
+            (acknowledgedFilter?.symbol != null && acknowledgedFilter.symbol !== subscriptionSymbol) ||
+            (provider != null &&
+              ((payload.provider != null && payload.provider !== provider) ||
+                (acknowledgedFilter?.provider != null && acknowledgedFilter.provider !== provider))) ||
+            (windowSeconds != null && acknowledgedFilter?.window_seconds !== windowSeconds))
+        if (payload.op === 'error' || invalidAcknowledgment) {
+          subscriptionRejected =
+            invalidAcknowledgment || payload.code === 'bad_filter' || payload.code === 'source_mismatch'
+          setStatus('offline')
+          setFeedUnavailable(subscriptionRejected)
+          setMarketStatus(null)
+          setData([])
+          heartbeatController?.clear()
+          ws = null
+          closeWebSocketWhenReady(socket)
+          if (!subscriptionRejected) {
+            scheduleReconnect()
+          }
+          return
+        }
+        if (payload.op === 'subscribed') {
+          heartbeatController?.markActivity(socket, arrivalTimestamp)
+          return
+        }
+        if (payload.v !== 1 || payload.channel !== topic) {
+          return
+        }
+        if (!Number.isSafeInteger(payload.seq) || payload.seq < 1) {
+          return
+        }
+        if (payload.dropped || (lastSequence != null && payload.seq !== lastSequence + 1)) {
+          idleRecoveryRequested = true
+          setData([])
+          setStatus('connecting')
+          heartbeatController?.clear()
+          ws = null
+          closeWebSocketWhenReady(socket)
+          scheduleReconnect()
+          return
+        }
+        lastSequence = payload.seq
         const activeEventEndTimestamp = eventEndTimestampRef.current
-        const updates = extractLivePriceUpdates(payload, topic, subscriptionSymbol, arrivalTimestamp)
+        const updates = extractLivePriceUpdates(payload, topic, subscriptionSymbol, provider, windowSeconds)
         const normalizedUpdates = updates
           .map((update) => {
             const normalizedPrice = normalizeLiveChartPrice(update.price, topic)
@@ -199,6 +266,12 @@ export function useLiveSeriesWebSocket({
           return
         }
         heartbeatController?.markActivity(socket, arrivalTimestamp)
+        const sourceMarketStatus = payload.payload?.market_status
+        setMarketStatus((previous) =>
+          sourceMarketStatus === 'open' || sourceMarketStatus === 'closed' || sourceMarketStatus === 'unknown'
+            ? sourceMarketStatus
+            : previous,
+        )
 
         const latest = wsUpdatesForRender.at(-1)
         if (!latest) {
@@ -209,7 +282,9 @@ export function useLiveSeriesWebSocket({
         if (lastRecoveredSourceTimestamp != null) {
           if (
             latest.timestamp < lastRecoveredSourceTimestamp ||
-            (latest.timestamp === lastRecoveredSourceTimestamp && !restoresClearedWindow)
+            (latest.timestamp === lastRecoveredSourceTimestamp &&
+              latest.price === latestKnownPrice &&
+              !restoresClearedWindow)
           ) {
             return
           }
@@ -281,7 +356,7 @@ export function useLiveSeriesWebSocket({
         previousPriceMessageTimestamp = arrivalTimestamp
 
         setStatus('live')
-        writePersistedLivePrice(topic, subscriptionSymbol, latest.price, latest.timestamp)
+        writePersistedLivePrice(storageKey, subscriptionSymbol, latest.price, latest.timestamp)
 
         setData((prev) => {
           const cutoff = arrivalTimestamp - LIVE_DATA_RETENTION_MS
@@ -401,7 +476,7 @@ export function useLiveSeriesWebSocket({
       }
 
       function connect() {
-        if (!isActive || ws || document.hidden) {
+        if (!isActive || subscriptionRejected || ws || document.hidden) {
           return
         }
         const socket = new WebSocket(resolvedWsUrl)
@@ -417,13 +492,21 @@ export function useLiveSeriesWebSocket({
         connect,
         getWebSocket: () => ws,
         isActive: () => isActive,
-        probeWebSocket: probeWebSocketWithPong,
+        probeWebSocket: (socket) =>
+          probeWebSocketWithPong(socket, 5_000, '{"op":"ping"}', (data) => {
+            try {
+              return typeof data === 'string' && JSON.parse(data).op === 'pong'
+            } catch {
+              return false
+            }
+          }),
         resetWebSocket: () => {
           heartbeatController?.clear()
           ws = null
         },
       })
       heartbeatController = createWebSocketHeartbeatController({
+        pingMessage: '{"op":"ping"}',
         getWebSocket: () => ws,
         isActive: () => isActive,
         onConnectionLost: (socket) => {
@@ -447,6 +530,8 @@ export function useLiveSeriesWebSocket({
         lastRecoveredSourceTimestamp = null
         setData([])
         setIdleRecovery(null)
+        setFeedUnavailable(false)
+        setMarketStatus(null)
         setIdleRecoveryVersion(0)
         setResumedAtTimestamp(null)
         heartbeatController.clear()
@@ -465,8 +550,8 @@ export function useLiveSeriesWebSocket({
         }
       }
     },
-    [eventType, topic, isLiveView, wsUrl, subscriptionSymbol],
+    [provider, windowSeconds, storageKey, topic, isLiveView, wsUrl, subscriptionSymbol],
   )
 
-  return { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status }
+  return { data, idleRecovery, idleRecoveryVersion, resumedAtTimestamp, status, feedUnavailable, marketStatus }
 }

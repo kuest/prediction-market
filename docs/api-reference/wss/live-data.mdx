@@ -1,0 +1,92 @@
+---
+title: Live Data Channel
+description: Stream public activity, comments, and external price updates
+_openapi:
+  method: WSS
+---
+
+The Live Data channel multiplexes public topics over one connection. Subscribe only to
+the topics and event types your application uses.
+
+## Endpoint
+
+<code>
+  <PublicRuntimeServiceUrl service="wsLiveData" />
+</code>
+
+## Prices
+
+Price subscriptions are public and do not require upstream credentials. Use `op`,
+`channel` and an object `filter`; the previous price-topic protocol is no longer supported.
+
+```json
+{
+  "op": "subscribe",
+  "subscriptions": [
+    {
+      "channel": "price.crypto.twap",
+      "filter": { "symbol": "btcusd", "provider": "chainlink", "window_seconds": 60 }
+    }
+  ]
+}
+```
+
+Use `price.crypto` for spot crypto, `price.crypto.twap` for TWAP, and `price.equity`
+for equity prices. Unsupported providers or windows return `bad_filter`; do not
+substitute a different source or TWAP window for a market's stated rules.
+
+Price frames contain `v`, `channel`, `seq`, `ts` and `payload`. Read
+`payload.full_accuracy_value` for the precise decimal value, alongside `symbol`,
+`timestamp` and `source`. A `snapshot: true` frame contains `payload.data` points.
+Preserve `market_status` when supplied; its absence does not mean the market is open.
+
+Sequence numbers belong to the connection and channel. On `dropped`, a sequence
+gap or disconnect, reconnect and subscribe again for a fresh snapshot. Send
+`{"op":"ping"}` to receive `{"op":"pong"}`. Use `op: "unsubscribe"` with the
+same subscription to stop receiving prices. Do not put upstream API credentials
+in browser code.
+
+## Activity and comments
+
+Local activity and comments keep their own envelope:
+
+| Field           | Description                                                  |
+| --------------- | ------------------------------------------------------------ |
+| `action`        | `subscribe` or `unsubscribe`                                 |
+| `subscriptions` | Array of subscriptions                                       |
+| `topic`         | `activity`, `comments` or authenticated `following_activity` |
+| `type`          | Event name, or `*`                                           |
+| `filters`       | Optional filter object or JSON-encoded object                |
+
+For these streams, send `PING` and receive `PONG`. Activity uses `orders_matched`;
+comments use `comment_created`. Activity includes `creator` when known.
+
+## Activity example
+
+```json
+{
+  "topic": "activity",
+  "type": "orders_matched",
+  "payload": {
+    "proxyWallet": "0xe25b9180f5687aa85bd94ee309bb72a464320f1b",
+    "creator": "0x8f2a6db31d2f3f3c8e4f9e74d5f5f9d2a7b0c123",
+    "transactionHash": "0xdeadbeef",
+    "eventSlug": "x-banned-in-uk-by-march-31"
+  }
+}
+```
+
+## Try it
+
+<PublicRuntimeWebSocketPlayground
+  service="wsLiveData"
+  defaultMessage={`{
+  "action": "subscribe",
+  "subscriptions": [
+    {
+      "topic": "activity",
+      "type": "orders_matched"
+    }
+  ]
+}`}
+/>

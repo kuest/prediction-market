@@ -277,7 +277,8 @@ export interface HomeFeaturedSettings {
 export interface EventLiveChartConfig {
   series_slug: string
   topic: string
-  event_type: string
+  provider: string | null
+  window_seconds: number | null
   symbol: string
   display_name: string
   display_symbol: string
