@@ -78,19 +78,11 @@ Kalshi can do that one deal at a time. Kuest makes the same capability available
 | 🔧  | **[Vercel + Supabase](https://docs.kuest.com/manual-installation/vercel)** - hosted deployment with full codebase control                  | Technical operators   |
 | 🏗️  | **[Manual installation](https://docs.kuest.com/manual-installation/overview)** - Docker, VPS, Cloud Run, Fly.io, Kubernetes, and Terraform | Advanced / enterprise |
 
-### Custom domains
+### [Custom domains](https://docs.kuest.com/configuration/custom-domain)
 
-The [Kuest Custom Domain Proxy](https://github.com/kuest/custom-domain) maps
-`assets.<your-domain>` to `assets.kuest.com` for market metadata, images, and avatars.
-The one-click deployment adds the hostname automatically. Existing independent proxy installations
-must update and redeploy the Worker with the same `DOMAIN` to add the Assets hostname.
-See the [custom-domain setup guide](https://docs.kuest.com/configuration/custom-domain) for the deployment steps.
-
-After deploying the proxy, set `ASSETS_URL=https://assets.<your-domain>` in your Prediction Market environment
-and redeploy the app. Use the HTTPS origin only, without a path. Leave `ASSETS_URL` blank to use
-`https://assets.kuest.com`. Both Mainnet and Amoy use the same Assets origin. The selected origin serves raw asset
-IDs and canonical Kuest asset URLs; external image URLs and images already stored by your site are unchanged.
-The app does not fall back to another origin if an asset is missing. This configuration is for reads only.
+| Operator hostname      | Kuest upstream     |
+| ---------------------- | ------------------ |
+| `assets.<your-domain>` | `assets.kuest.com` |
 
 ---
 
