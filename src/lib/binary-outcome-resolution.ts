@@ -30,6 +30,11 @@ function resolveBinaryPayoutNumerators(payoutNumerators: Array<OutcomeNumerator>
   return [yesPayout, noPayout] as const
 }
 
+export function hasEqualPositiveBinaryPayout(payoutNumerators: Array<OutcomeNumerator> | null | undefined) {
+  const numerators = resolveBinaryPayoutNumerators(payoutNumerators)
+  return numerators !== null && numerators[0] > 0 && numerators[0] === numerators[1]
+}
+
 export function resolveUniqueBinaryWinningOutcomeIndexFromPayoutNumerators(
   payoutNumerators: Array<OutcomeNumerator> | null | undefined,
 ): BinaryOutcomeIndex | null {

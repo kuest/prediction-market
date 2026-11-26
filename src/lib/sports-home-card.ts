@@ -1,6 +1,10 @@
 import type { Event, Market, Outcome, SportsTeam } from '@/types'
 
-import { resolveUniqueBinaryWinningOutcomeIndexFromPayoutNumerators } from '@/lib/binary-outcome-resolution'
+import {
+  hasEqualPositiveBinaryPayout,
+  resolveUniqueBinaryWinningOutcomeIndexFromPayoutNumerators,
+} from '@/lib/binary-outcome-resolution'
+import { OUTCOME_INDEX } from '@/lib/constants'
 import { doesTextMatchTeam, normalizeComparableText, parseSportsScore } from '@/lib/sports-resolution'
 
 const normalizeText = normalizeComparableText
@@ -278,6 +282,21 @@ function resolveBinaryWinningOutcomeIndex(market: Pick<Market, 'outcomes' | 'con
   return resolveUniqueBinaryWinningOutcomeIndexFromPayoutNumerators(market.condition?.payout_numerators)
 }
 
+function hasExplicitSplitPayout(market: Pick<Market, 'outcomes' | 'condition'>) {
+  if (hasEqualPositiveBinaryPayout(market.condition?.payout_numerators)) {
+    return true
+  }
+
+  const yesPayout = market.outcomes.find((outcome) => outcome.outcome_index === OUTCOME_INDEX.YES)?.payout_value
+  const noPayout = market.outcomes.find((outcome) => outcome.outcome_index === OUTCOME_INDEX.NO)?.payout_value
+  if (yesPayout != null && noPayout != null) {
+    return hasEqualPositiveBinaryPayout([yesPayout, noPayout])
+  }
+
+  // A reported price alone is not final while the condition is still unresolved.
+  return market.condition?.resolved === true && market.condition.resolution_price === 0.5
+}
+
 function resolveResolvedWinnerLabel(model: HomeSportsMoneylineModel, tone: HomeSportsMoneylineButton['tone']) {
   if (tone === 'team1') {
     return model.team1.name
@@ -296,23 +315,33 @@ export function resolveResolvedHomeSportsMoneylineWinner(
     (button): button is HomeSportsMoneylineButton => Boolean(button),
   )
 
+  let resolvedWinner: ResolvedHomeSportsMoneylineWinner | null = null
   for (const button of buttons) {
     const market = event.markets.find((candidate) => candidate.condition_id === button.conditionId)
     if (!market) {
       continue
     }
 
+    if (hasExplicitSplitPayout(market)) {
+      // The card combines these markets, so a split cannot produce a single winner.
+      return null
+    }
+
     const winnerIndex = resolveBinaryWinningOutcomeIndex(market)
-    if (winnerIndex !== button.outcomeIndex) {
+    if (resolvedWinner || winnerIndex !== button.outcomeIndex) {
       continue
     }
 
-    return {
+    resolvedWinner = {
       conditionId: button.conditionId,
       label: resolveResolvedWinnerLabel(model, button.tone),
       outcomeIndex: button.outcomeIndex,
       tone: button.tone,
     }
+  }
+
+  if (resolvedWinner) {
+    return resolvedWinner
   }
 
   const finalScore = parseSportsScore(event.sports_score)

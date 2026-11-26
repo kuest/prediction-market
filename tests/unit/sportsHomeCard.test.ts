@@ -269,68 +269,112 @@ describe('sportsHomeCard', () => {
     expect(model?.drawButton?.conditionId).toBe('draw-market')
   })
 
-  it('resolves the winning sports moneyline button for binary markets', () => {
-    const event = {
-      sports_sport_slug: 'cs2',
-      main_tag: 'games',
-      tags: [
-        {
-          id: 1,
-          name: 'Games',
-          slug: 'games',
-          isMainCategory: true,
-        },
-      ],
-      sports_teams: [
-        {
-          name: 'Liquid',
-          abbreviation: 'TL',
-          color: '#1d4ed8',
-          host_status: 'home',
-        },
-        {
-          name: 'BESTIA',
-          abbreviation: 'BST',
-          color: '#dc2626',
-          host_status: 'away',
-        },
-      ],
-      markets: [
-        {
-          condition_id: 'match-winner-condition',
-          sports_market_type: null,
-          sports_group_item_title: null,
-          short_title: 'Match Winner',
-          title: 'Match Winner',
-          outcomes: [
-            {
-              outcome_index: 0,
-              outcome_text: 'Liquid',
-              is_winning_outcome: true,
-            },
-            {
-              outcome_index: 1,
-              outcome_text: 'BESTIA',
-              is_winning_outcome: false,
-            },
-          ],
-          condition: {
-            payout_numerators: [1, 0],
+  it.each([
+    { label: 'a unique payout', payouts: [1, 0], hasWinningFlag: true, showsWinner: true },
+    { label: 'an equal payout', payouts: [1, 1], hasWinningFlag: false, showsWinner: false },
+    {
+      label: 'an equal payout with a stale winning flag',
+      payouts: ['1', '1'],
+      hasWinningFlag: true,
+      showsWinner: false,
+    },
+    {
+      label: 'a persisted split with no numerators',
+      payouts: undefined,
+      resolutionPrice: 0.5,
+      outcomePayouts: [0.5, 0.5],
+      hasWinningFlag: false,
+      showsWinner: false,
+    },
+    {
+      label: 'equal outcome payouts with no resolution price',
+      payouts: undefined,
+      outcomePayouts: [0.5, 0.5],
+      hasWinningFlag: false,
+      showsWinner: false,
+    },
+    {
+      label: 'a split resolution price with no outcome payouts',
+      payouts: undefined,
+      resolutionPrice: 0.5,
+      hasWinningFlag: false,
+      showsWinner: false,
+    },
+    {
+      label: 'a non-final reported price with no outcome payouts',
+      payouts: undefined,
+      resolutionPrice: 0.5,
+      conditionResolved: false,
+      hasWinningFlag: false,
+      showsWinner: true,
+    },
+  ])(
+    'uses $label instead of the sports score for binary markets',
+    ({ payouts, resolutionPrice, outcomePayouts, conditionResolved = true, hasWinningFlag, showsWinner }) => {
+      const event = {
+        sports_sport_slug: 'cs2',
+        sports_score: '2 - 1',
+        main_tag: 'games',
+        tags: [
+          {
+            id: 1,
+            name: 'Games',
+            slug: 'games',
+            isMainCategory: true,
           },
-        },
-      ],
-    } as any
+        ],
+        sports_teams: [
+          {
+            name: 'Liquid',
+            abbreviation: 'TL',
+            color: '#1d4ed8',
+            host_status: 'home',
+          },
+          {
+            name: 'BESTIA',
+            abbreviation: 'BST',
+            color: '#dc2626',
+            host_status: 'away',
+          },
+        ],
+        markets: [
+          {
+            condition_id: 'match-winner-condition',
+            sports_market_type: null,
+            sports_group_item_title: null,
+            short_title: 'Match Winner',
+            title: 'Match Winner',
+            outcomes: [
+              {
+                outcome_index: 0,
+                outcome_text: 'Liquid',
+                is_winning_outcome: hasWinningFlag,
+                payout_value: outcomePayouts?.[0],
+              },
+              {
+                outcome_index: 1,
+                outcome_text: 'BESTIA',
+                is_winning_outcome: false,
+                payout_value: outcomePayouts?.[1],
+              },
+            ],
+            condition: {
+              resolved: conditionResolved,
+              payout_numerators: payouts,
+              resolution_price: resolutionPrice,
+            },
+          },
+        ],
+      } as any
 
-    const model = buildHomeSportsMoneylineModel(event)
+      const model = buildHomeSportsMoneylineModel(event)
 
-    expect(model).not.toBeNull()
-    expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual({
-      conditionId: 'match-winner-condition',
-      label: 'Liquid',
-      outcomeIndex: 0,
-      tone: 'team1',
-    })
-  })
+      expect(model).not.toBeNull()
+      expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual(
+        showsWinner ? { conditionId: 'match-winner-condition', label: 'Liquid', outcomeIndex: 0, tone: 'team1' } : null,
+      )
+    },
+  )
 
   it('resolves draw as the winning sports moneyline button for separated neg-risk markets', () => {
     const event = {
@@ -438,7 +482,17 @@ describe('sportsHomeCard', () => {
     })
   })
 
-  it('falls back to the sports score when separated moneyline markets have no explicit winner', () => {
+  it.each([
+    { label: 'no payout', firstPayout: undefined, lastPayout: undefined, showsWinner: true },
+    { label: 'one winner', firstPayout: [1, 0], lastPayout: [0, 1], showsWinner: true },
+    { label: 'a split after a winning payout', firstPayout: [1, 0], lastPayout: [1, 1], showsWinner: false },
+    {
+      label: 'a persisted split after a winning payout',
+      firstPayout: [1, 0],
+      lastOutcomePayouts: [0.5, 0.5],
+      showsWinner: false,
+    },
+  ])('renders separated moneylines with $label', ({ firstPayout, lastPayout, lastOutcomePayouts, showsWinner }) => {
     const event = {
       sports_score: '2 - 1',
       sports_sport_slug: 'soccer',
@@ -473,6 +527,7 @@ describe('sportsHomeCard', () => {
           sports_market_type: 'moneyline',
           short_title: 'Santos FC',
           title: 'Will Santos FC win?',
+          condition: { payout_numerators: firstPayout },
           outcomes: [
             { outcome_index: 0, outcome_text: 'Yes' },
             { outcome_index: 1, outcome_text: 'No' },
@@ -493,9 +548,10 @@ describe('sportsHomeCard', () => {
           sports_market_type: 'moneyline',
           short_title: 'CR Vasco da Gama',
           title: 'Will CR Vasco da Gama win?',
+          condition: { payout_numerators: lastPayout },
           outcomes: [
-            { outcome_index: 0, outcome_text: 'Yes' },
-            { outcome_index: 1, outcome_text: 'No' },
+            { outcome_index: 0, outcome_text: 'Yes', payout_value: lastOutcomePayouts?.[0] },
+            { outcome_index: 1, outcome_text: 'No', payout_value: lastOutcomePayouts?.[1] },
           ],
         },
       ],
@@ -504,12 +560,9 @@ describe('sportsHomeCard', () => {
     const model = buildHomeSportsMoneylineModel(event)
 
     expect(model).not.toBeNull()
-    expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual({
-      conditionId: 'santos-market',
-      label: 'Santos FC',
-      outcomeIndex: 0,
-      tone: 'team1',
-    })
+    expect(resolveResolvedHomeSportsMoneylineWinner(event, model!)).toEqual(
+      showsWinner ? { conditionId: 'santos-market', label: 'Santos FC', outcomeIndex: 0, tone: 'team1' } : null,
+    )
   })
 
   it('does not map non-neg-risk separated yes/no moneylines as a binary market', () => {
